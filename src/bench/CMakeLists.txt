@@ -55,6 +55,7 @@ add_executable(bench_bitcoin
   util_time.cpp
   verify_script.cpp
 )
+set_target_properties(bench_bitcoin PROPERTIES OUTPUT_NAME bench_tidecoin)
 
 include(TargetDataSources)
 target_raw_data_sources(bench_bitcoin NAMESPACE benchmark::data

@@ -104,23 +104,26 @@ target_include_directories(bitcoinkernel PRIVATE $<BUILD_INTERFACE:${PROJECT_SOU
 # incrementally define what to export from the library.
 set_target_properties(bitcoinkernel PROPERTIES
   CXX_VISIBILITY_PRESET default
+  OUTPUT_NAME tidecoinkernel
 )
 
-# Add a convenience libbitcoinkernel target as a synonym for bitcoinkernel.
+# Add convenience targets for building the kernel library.
+add_custom_target(libtidecoinkernel)
+add_dependencies(libtidecoinkernel bitcoinkernel)
 add_custom_target(libbitcoinkernel)
 add_dependencies(libbitcoinkernel bitcoinkernel)
 
-configure_file(${PROJECT_SOURCE_DIR}/libbitcoinkernel.pc.in ${PROJECT_BINARY_DIR}/libbitcoinkernel.pc @ONLY)
-install(FILES ${PROJECT_BINARY_DIR}/libbitcoinkernel.pc DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig" COMPONENT libbitcoinkernel)
+configure_file(${PROJECT_SOURCE_DIR}/libtidecoinkernel.pc.in ${PROJECT_BINARY_DIR}/libtidecoinkernel.pc @ONLY)
+install(FILES ${PROJECT_BINARY_DIR}/libtidecoinkernel.pc DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig" COMPONENT libtidecoinkernel)
 
 install(TARGETS bitcoinkernel
   RUNTIME
     DESTINATION ${CMAKE_INSTALL_BINDIR}
-    COMPONENT libbitcoinkernel
+    COMPONENT libtidecoinkernel
   LIBRARY
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT libbitcoinkernel
+    COMPONENT libtidecoinkernel
   ARCHIVE
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT libbitcoinkernel
+    COMPONENT libtidecoinkernel
 )

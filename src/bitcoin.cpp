@@ -20,26 +20,26 @@ const TranslateFn G_TRANSLATION_FUN{nullptr};
 static constexpr auto HELP_USAGE = R"(Usage: %s [OPTIONS] COMMAND...
 
 Options:
-  -m, --multiprocess     Run multiprocess binaries bitcoin-node, bitcoin-gui.
-  -M, --monolithic       Run monolithic binaries bitcoind, bitcoin-qt. (Default behavior)
+  -m, --multiprocess     Run multiprocess binaries tidecoin-node, tidecoin-gui.
+  -M, --monolithic       Run monolithic binaries tidecoind, tidecoin-qt. (Default behavior)
   -v, --version          Show version information
   -h, --help             Show full help message
 
 Commands:
-  gui [ARGS]     Start GUI, equivalent to running 'bitcoin-qt [ARGS]' or 'bitcoin-gui [ARGS]'.
-  node [ARGS]    Start node, equivalent to running 'bitcoind [ARGS]' or 'bitcoin-node [ARGS]'.
-  rpc [ARGS]     Call RPC method, equivalent to running 'bitcoin-cli -named [ARGS]'.
-  wallet [ARGS]  Call wallet command, equivalent to running 'bitcoin-wallet [ARGS]'.
-  tx [ARGS]      Manipulate hex-encoded transactions, equivalent to running 'bitcoin-tx [ARGS]'.
+  gui [ARGS]     Start GUI, equivalent to running 'tidecoin-qt [ARGS]' or 'tidecoin-gui [ARGS]'.
+  node [ARGS]    Start node, equivalent to running 'tidecoind [ARGS]' or 'tidecoin-node [ARGS]'.
+  rpc [ARGS]     Call RPC method, equivalent to running 'tidecoin-cli -named [ARGS]'.
+  wallet [ARGS]  Call wallet command, equivalent to running 'tidecoin-wallet [ARGS]'.
+  tx [ARGS]      Manipulate hex-encoded transactions, equivalent to running 'tidecoin-tx [ARGS]'.
   help           Show full help message.
 )";
 
 static constexpr auto HELP_FULL = R"(
 Additional less commonly used commands:
-  bench [ARGS]      Run bench command, equivalent to running 'bench_bitcoin [ARGS]'.
-  chainstate [ARGS] Run bitcoin kernel chainstate util, equivalent to running 'bitcoin-chainstate [ARGS]'.
-  test [ARGS]       Run unit tests, equivalent to running 'test_bitcoin [ARGS]'.
-  test-gui [ARGS]   Run GUI unit tests, equivalent to running 'test_bitcoin-qt [ARGS]'.
+  bench [ARGS]      Run bench command, equivalent to running 'bench_tidecoin [ARGS]'.
+  chainstate [ARGS] Run tidecoin kernel chainstate util, equivalent to running 'tidecoin-chainstate [ARGS]'.
+  test [ARGS]       Run unit tests, equivalent to running 'test_tidecoin [ARGS]'.
+  test-gui [ARGS]   Run GUI unit tests, equivalent to running 'test_tidecoin-qt [ARGS]'.
 )";
 
 static constexpr auto HELP_SHORT = R"(
@@ -78,12 +78,12 @@ int main(int argc, char* argv[])
                 return EXIT_FAILURE;
             }
         } else if (cmd.command == "gui") {
-            args.emplace_back(cmd.use_multiprocess ? "bitcoin-gui" : "bitcoin-qt");
+            args.emplace_back(cmd.use_multiprocess ? "tidecoin-gui" : "tidecoin-qt");
         } else if (cmd.command == "node") {
-            args.emplace_back(cmd.use_multiprocess ? "bitcoin-node" : "bitcoind");
+            args.emplace_back(cmd.use_multiprocess ? "tidecoin-node" : "tidecoind");
         } else if (cmd.command == "rpc") {
-            args.emplace_back("bitcoin-cli");
-            // Since "bitcoin rpc" is a new interface that doesn't need to be
+            args.emplace_back("tidecoin-cli");
+            // Since "tidecoin rpc" is a new interface that doesn't need to be
             // backward compatible, enable -named by default so it is convenient
             // for callers to use a mix of named and unnamed parameters. Callers
             // can override this by specifying -nonamed, but should not need to
@@ -91,19 +91,19 @@ int main(int argc, char* argv[])
             // as unnamed parameters.
             args.emplace_back("-named");
         } else if (cmd.command == "wallet") {
-            args.emplace_back("bitcoin-wallet");
+            args.emplace_back("tidecoin-wallet");
         } else if (cmd.command == "tx") {
-            args.emplace_back("bitcoin-tx");
+            args.emplace_back("tidecoin-tx");
         } else if (cmd.command == "bench") {
-            args.emplace_back("bench_bitcoin");
+            args.emplace_back("bench_tidecoin");
         } else if (cmd.command == "chainstate") {
-            args.emplace_back("bitcoin-chainstate");
+            args.emplace_back("tidecoin-chainstate");
         } else if (cmd.command == "test") {
-            args.emplace_back("test_bitcoin");
+            args.emplace_back("test_tidecoin");
         } else if (cmd.command == "test-gui") {
-            args.emplace_back("test_bitcoin-qt");
+            args.emplace_back("test_tidecoin-qt");
         } else if (cmd.command == "util") {
-            args.emplace_back("bitcoin-util");
+            args.emplace_back("tidecoin-util");
         } else {
             throw std::runtime_error(strprintf("Unrecognized command: '%s'", cmd.command));
         }
@@ -143,12 +143,12 @@ CommandLine ParseCommandLine(int argc, char* argv[])
     return cmd;
 }
 
-//! Execute the specified bitcoind, bitcoin-qt or other command line in `args`
+//! Execute the specified tidecoind, tidecoin-qt or other command line in `args`
 //! using src, bin and libexec directory paths relative to this executable, where
 //! the path to this executable is specified in `wrapper_argv0`.
 //!
 //! @param args Command line arguments to execute, where first argument should
-//!             be a relative path to a bitcoind, bitcoin-qt or other executable
+//!             be a relative path to a tidecoind, tidecoin-qt or other executable
 //!             that will be located on the PATH or relative to wrapper_argv0.
 //!
 //! @param wrapper_argv0 String containing first command line argument passed to
@@ -159,7 +159,7 @@ CommandLine ParseCommandLine(int argc, char* argv[])
 //! @note This function doesn't currently print anything but can be debugged
 //! from the command line using strace or dtrace like:
 //!
-//!     strace -e trace=execve -s 10000 build/bin/bitcoin ...
+//!     strace -e trace=execve -s 10000 build/bin/tidecoin ...
 //!     dtrace -n 'proc:::exec-success  /pid == $target/ { trace(curpsinfo->pr_psargs); }' -c ...
 static void ExecCommand(const std::vector<const char*>& args, std::string_view wrapper_argv0)
 {

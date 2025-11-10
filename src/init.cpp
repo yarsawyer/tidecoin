@@ -1300,7 +1300,7 @@ static ChainstateLoadResult InitAndLoadChainstate(
 
     // This is defined and set here instead of inline in validation.h to avoid a hard
     // dependency between validation and index/base, since the latter is not in
-    // libbitcoinkernel.
+    // libtidecoinkernel.
     chainman.snapshot_download_completed = [&node]() {
         if (!node.chainman->m_blockman.IsPruneMode()) {
             LogInfo("[snapshot] re-enabling NODE_NETWORK services");

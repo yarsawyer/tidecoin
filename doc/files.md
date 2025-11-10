@@ -133,35 +133,35 @@ Subdirectory | File(s)           | Description
 
 ## Installed Files
 
-This table describes the files installed by Bitcoin Core across different platforms.
+This table describes the files installed by Tidecoin Core across different platforms.
 
 | **Path**                                                   | **Description**                                                             |
 |------------------------------------------------------------|-----------------------------------------------------------------------------|
 | [README.md](README.md) or [readme.txt](README_windows.txt) | Project information and instructions                                        |
 | bitcoin.conf                                               | [Generated](../contrib/devtools/gen-bitcoin-conf.sh) configuration file     |
-| bin/bitcoin                                                | Command-line tool for interacting with Bitcoin. Calls other binaries below. |
-| bin/bitcoin-cli                                            | Tool for making node and wallet RPC calls.                                  |
-| bin/bitcoin-qt                                             | Bitcoin node and wallet GUI                                                 |
-| bin/bitcoin-tx                                             | Tool for creating and modifying transactions                                |
-| bin/bitcoin-util                                           | Miscellaneous utilities                                                     |
-| bin/bitcoin-wallet                                         | Bitcoin wallet tool                                                         |
-| bin/bitcoind                                               | Bitcoin node and wallet daemon                                              |
-| *lib/libbitcoinkernel.so*                                  | Shared library containing core consensus and validation code                |
-| *lib/pkgconfig/libbitcoinkernel.pc*                        | Pkg-config metadata for linking to `libbitcoinkernel`                       |
-| *libexec/bench_bitcoin*                                    | Benchmarking tool for measuring node performance                            |
-| *libexec/bitcoin-chainstate*                               | Tool to validate and connect blocks                                         |
-| libexec/bitcoin-gui                                        | IPC-enabled alternative to `bitcoin-qt`                                     |
-| libexec/bitcoin-node                                       | IPC-enabled alternative to `bitcoind`                                       |
-| libexec/test_bitcoin                                       | Unit test binary                                                            |
-| *libexec/test_bitcoin-qt*                                  | GUI-specific unit tests                                                     |
-| share/man/man1/                                            | Man pages for command-line tools like `bitcoin-cli`, `bitcoind`, and others |
+| bin/tidecoin                                               | Command-line tool for interacting with Tidecoin. Calls other binaries below.|
+| bin/tidecoin-cli                                           | Tool for making node and wallet RPC calls.                                  |
+| bin/tidecoin-qt                                            | Tidecoin node and wallet GUI                                                |
+| bin/tidecoin-tx                                            | Tool for creating and modifying transactions                                |
+| bin/tidecoin-util                                          | Miscellaneous utilities                                                     |
+| bin/tidecoin-wallet                                        | Tidecoin wallet tool                                                        |
+| bin/tidecoind                                              | Tidecoin node and wallet daemon                                             |
+| *lib/libtidecoinkernel.so*                                 | Shared library containing core consensus and validation code                |
+| *lib/pkgconfig/libtidecoinkernel.pc*                       | Pkg-config metadata for linking to `libtidecoinkernel`                      |
+| *libexec/bench_tidecoin*                                   | Benchmarking tool for measuring node performance                            |
+| *libexec/tidecoin-chainstate*                              | Tool to validate and connect blocks                                         |
+| libexec/tidecoin-gui                                       | IPC-enabled alternative to `tidecoin-qt`                                    |
+| libexec/tidecoin-node                                      | IPC-enabled alternative to `tidecoind`                                      |
+| libexec/test_tidecoin                                      | Unit test binary                                                            |
+| *libexec/test_tidecoin-qt*                                 | GUI-specific unit tests                                                     |
+| share/man/man1/                                            | Man pages for command-line tools like `tidecoin-cli`, `tidecoind`, and others|
 | share/rpcauth/                                             | Documentation and scripts for RPC authentication setup                      |
 
 ### Notes
 
 - *Italicized* files are only installed in source builds if relevant CMake options are enabled. They are not included in binary releases.
 - README and bitcoin.conf files are included in binary releases but not installed in source builds.
-- On Windows, binaries have a `.exe` suffix (e.g., `bitcoin-cli.exe`).
+- On Windows, binaries have a `.exe` suffix (e.g., `tidecoin-cli.exe`).
 
 ## Filesystem recommendations
 

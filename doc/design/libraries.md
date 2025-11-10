@@ -101,12 +101,12 @@ class bitcoin-qt,bitcoind,bitcoin-cli,bitcoin-wallet bold
 
 - *libbitcoin_common* is a home for miscellaneous shared code used by different Bitcoin Core applications. It should not depend on anything other than *libbitcoin_util*, *libbitcoin_consensus*, and *libbitcoin_crypto*.
 
-- *libbitcoin_kernel* should only depend on *libbitcoin_util*, *libbitcoin_consensus*, and *libbitcoin_crypto*.
+- *libtidecoin_kernel* should only depend on *libbitcoin_util*, *libbitcoin_consensus*, and *libbitcoin_crypto*.
 
-- The only thing that should depend on *libbitcoin_kernel* internally should be *libbitcoin_node*. GUI and wallet libraries *libbitcoinqt* and *libbitcoin_wallet* in particular should not depend on *libbitcoin_kernel* and the unneeded functionality it would pull in, like block validation. To the extent that GUI and wallet code need scripting and signing functionality, they should be able to get it from *libbitcoin_consensus*, *libbitcoin_common*, *libbitcoin_crypto*, and *libbitcoin_util*, instead of *libbitcoin_kernel*.
+- The only thing that should depend on *libtidecoin_kernel* internally should be *libbitcoin_node*. GUI and wallet libraries *libbitcoinqt* and *libbitcoin_wallet* in particular should not depend on *libtidecoin_kernel* and the unneeded functionality it would pull in, like block validation. To the extent that GUI and wallet code need scripting and signing functionality, they should be able to get it from *libbitcoin_consensus*, *libbitcoin_common*, *libbitcoin_crypto*, and *libbitcoin_util*, instead of *libtidecoin_kernel*.
 
 - GUI, node, and wallet code internal implementations should all be independent of each other, and the *libbitcoinqt*, *libbitcoin_node*, *libbitcoin_wallet* libraries should never reference each other's symbols. They should only call each other through [`src/interfaces/`](../../src/interfaces/) abstract interfaces.
 
 ## Work in progress
 
-- Validation code is moving from *libbitcoin_node* to *libbitcoin_kernel* as part of [The libbitcoinkernel Project #27587](https://github.com/bitcoin/bitcoin/issues/27587)
+- Validation code is moving from *libbitcoin_node* to *libtidecoin_kernel* as part of [The libtidecoinkernel Project #27587](https://github.com/bitcoin/bitcoin/issues/27587)

@@ -251,6 +251,7 @@ add_executable(bitcoin-qt
   main.cpp
   ../init/bitcoin-qt.cpp
 )
+set_target_properties(bitcoin-qt PROPERTIES OUTPUT_NAME tidecoin-qt)
 
 add_windows_resources(bitcoin-qt res/bitcoin-qt-res.rc)
 add_windows_application_manifest(bitcoin-qt)
@@ -272,6 +273,7 @@ if(ENABLE_IPC)
     main.cpp
     ../init/bitcoin-gui.cpp
   )
+  set_target_properties(bitcoin-gui PROPERTIES OUTPUT_NAME tidecoin-gui)
   target_link_libraries(bitcoin-gui
     core_interface
     bitcoinqt

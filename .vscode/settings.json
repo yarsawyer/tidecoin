@@ -1,0 +1,16 @@
+{
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build_dev_mode",
+        "--background-index",
+        "--clang-tidy",
+        "--header-insertion=never",
+        "--completion-style=detailed",
+        "--pch-storage=memory"
+    ],
+    "cmake.configureSettings": {
+        "CMAKE_TOOLCHAIN_FILE": "${workspaceFolder}/depends/x86_64-pc-linux-gnu/toolchain.cmake"
+    }
+}

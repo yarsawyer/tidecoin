@@ -1,0 +1,17 @@
+CompileFlags:
+  Remove:
+    - -fno-extended-identifiers
+    - -fstack-reuse=none
+    - -fstack-clash-protection
+    - -fcf-protection=full
+    - -Wduplicated-branches
+    - -Wduplicated-cond
+    - -Wlogical-op
+    - -Wsuggest-override
+    - -Wbidi-chars=any
+  Add:
+    - -Wno-unknown-warning-option
+
+Diagnostics:
+  UnusedIncludes: None
+  MissingIncludes: None

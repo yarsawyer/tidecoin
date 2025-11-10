@@ -282,13 +282,13 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
 
         paths = types.SimpleNamespace()
         binaries = {
-            "bitcoin": "BITCOIN_BIN",
-            "bitcoind": "BITCOIND",
-            "bitcoin-cli": "BITCOINCLI",
-            "bitcoin-util": "BITCOINUTIL",
-            "bitcoin-tx": "BITCOINTX",
-            "bitcoin-chainstate": "BITCOINCHAINSTATE",
-            "bitcoin-wallet": "BITCOINWALLET",
+            "tidecoin": "BITCOIN_BIN",
+            "tidecoind": "BITCOIND",
+            "tidecoin-cli": "BITCOINCLI",
+            "tidecoin-util": "BITCOINUTIL",
+            "tidecoin-tx": "BITCOINTX",
+            "tidecoin-chainstate": "BITCOINCHAINSTATE",
+            "tidecoin-wallet": "BITCOINWALLET",
         }
         # Set paths to bitcoin core binaries allowing overrides with environment
         # variables.
@@ -299,7 +299,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
                 binary + self.config["environment"]["EXEEXT"],
             )
             setattr(paths, env_variable_name.lower(), os.getenv(env_variable_name, default=default_filename))
-        # BITCOIN_CMD environment variable can be specified to invoke bitcoin
+        # BITCOIN_CMD environment variable can be specified to invoke tidecoin
         # wrapper binary instead of other executables.
         paths.bitcoin_cmd = shlex.split(os.getenv("BITCOIN_CMD", "")) or None
         return paths

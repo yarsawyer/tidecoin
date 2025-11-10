@@ -1,0 +1,409 @@
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /bin/g++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Setting build type to "RelWithDebInfo" as none was specified
+-- Performing Test CXX_SUPPORTS__WERROR
+-- Performing Test CXX_SUPPORTS__WERROR - Success
+-- Performing Test CXX_SUPPORTS__G3
+-- Performing Test CXX_SUPPORTS__G3 - Success
+-- Performing Test LINKER_SUPPORTS__G3
+-- Performing Test LINKER_SUPPORTS__G3 - Success
+-- Performing Test CXX_SUPPORTS__FTRAPV
+-- Performing Test CXX_SUPPORTS__FTRAPV - Success
+-- Performing Test LINKER_SUPPORTS__FTRAPV
+-- Performing Test LINKER_SUPPORTS__FTRAPV - Success
+-- Found SQLite3: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/include (found suitable version "3.46.1", minimum required is "3.7.17")
+-- Found ZeroMQ: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/cmake/ZeroMQ (found suitable version "4.3.5", minimum required is "4.0.0")
+-- Performing Test HAVE_USDT_H
+-- Performing Test HAVE_USDT_H - Success
+-- Found USDT: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/include
+-- Found QRencode: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libqrencode.a (found version "4.1.1")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Using Qt bundled ZLIB.
+-- Found WrapZLIB: TRUE
+-- Performing Test HAVE_STDATOMIC
+-- Performing Test HAVE_STDATOMIC - Success
+-- Found WrapAtomic: TRUE
+-- Using Qt bundled PCRE2.
+-- Found WrapPCRE2: TRUE
+-- Performing Test HAVE_GETTIME
+-- Performing Test HAVE_GETTIME - Success
+-- Performing Test HAVE_SHM_OPEN_SHM_UNLINK
+-- Performing Test HAVE_SHM_OPEN_SHM_UNLINK - Success
+-- Found WrapRt: TRUE
+-- Using Qt bundled PNG.
+-- Found WrapPNG: TRUE
+-- Using Qt bundled Harfbuzz.
+-- Found WrapHarfbuzz: TRUE
+-- Found WrapSystemFreetype: TRUE (found version "2.11.0")
+-- Using system Freetype.
+-- Found WrapFreetype: TRUE
+-- Found Fontconfig: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libfontconfig.so (found version "2.12.6")
+-- Found XKB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxkbcommon.so (found suitable version "0.8.4", minimum required is "0.5.0")
+-- Checking for module 'xkbcommon-x11>=0.4.1'
+--   Found xkbcommon-x11, version 0.8.4
+-- XCB: CURSOR requires XCB
+-- Found XCB_XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so (found version "1.14")
+-- Found XCB_CURSOR: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a (found version "0.1.5")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a (found suitable version "1.14", minimum required is "0.1.1") found components: CURSOR
+-- XCB: ICCCM requires XCB
+-- Found XCB_ICCCM: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so (found version "0.4.1")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so (found suitable version "1.14", minimum required is "0.3.9") found components: ICCCM
+-- XCB: IMAGE requires XCB;SHM
+-- XCB: IMAGE requires XCB;SHM
+-- Found XCB_SHM: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so (found version "1.14")
+-- Found XCB_IMAGE: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so (found version "0.4.0")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so (found suitable version "1.14", minimum required is "0.3.9") found components: IMAGE
+-- XCB: KEYSYMS requires XCB
+-- Found XCB_KEYSYMS: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so (found version "0.4.0")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so (found suitable version "1.14", minimum required is "0.3.9") found components: KEYSYMS
+-- XCB: RANDR requires XCB
+-- Found XCB_RANDR: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so (found version "1.14")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so (found version "1.14") found components: RANDR
+-- XCB: RENDER requires XCB
+-- Found XCB_RENDER: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so (found version "1.14")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so (found version "1.14") found components: RENDER
+-- XCB: RENDERUTIL requires XCB;RENDER
+-- XCB: RENDERUTIL requires XCB;RENDER
+-- Found XCB_RENDERUTIL: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so (found version "0.3.9")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so (found suitable version "1.14", minimum required is "0.3.9") found components: RENDERUTIL
+-- XCB: SHAPE requires XCB
+-- Found XCB_SHAPE: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so (found version "1.14")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so (found version "1.14") found components: SHAPE
+-- XCB: SHM requires XCB
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so (found version "1.14") found components: SHM
+-- XCB: SYNC requires XCB
+-- Found XCB_SYNC: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-sync.so (found version "1.14")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-sync.so (found version "1.14") found components: SYNC
+-- Found XCB_XFIXES: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xfixes.so (found version "1.14")
+-- Found XCB_ATOM: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a (found version "0.4.0")
+-- Found XCB_AUX: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a (found version "0.4.0")
+-- Could NOT find XCB_COMPOSITE (missing: XCB_COMPOSITE_LIBRARY) (found version "")
+-- Could NOT find XCB_DAMAGE (missing: XCB_DAMAGE_LIBRARY) (found version "")
+-- Could NOT find XCB_DPMS (missing: XCB_DPMS_LIBRARY) (found version "")
+-- Could NOT find XCB_DRI2 (missing: XCB_DRI2_LIBRARY) (found version "")
+-- Could NOT find XCB_DRI3 (missing: XCB_DRI3_LIBRARY) (found version "")
+-- Found XCB_EVENT: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a (found version "0.4.0")
+-- Found XCB_EWMH: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-ewmh.so (found version "0.4.1")
+-- Could NOT find XCB_GLX (missing: XCB_GLX_LIBRARY) (found version "")
+-- Could NOT find XCB_PRESENT (missing: XCB_PRESENT_LIBRARY) (found version "")
+-- Could NOT find XCB_RECORD (missing: XCB_RECORD_LIBRARY) (found version "")
+-- Could NOT find XCB_RES (missing: XCB_RES_LIBRARY) (found version "")
+-- Could NOT find XCB_SCREENSAVER (missing: XCB_SCREENSAVER_LIBRARY) (found version "")
+-- Found XCB_UTIL: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a (found version "0.4.0")
+-- Could NOT find XCB_XEVIE (missing: XCB_XEVIE_LIBRARY) (found version "")
+-- Could NOT find XCB_XF86DRI (missing: XCB_XF86DRI_LIBRARY) (found version "")
+-- Could NOT find XCB_XINERAMA (missing: XCB_XINERAMA_LIBRARY) (found version "")
+-- Could NOT find XCB_XINPUT (missing: XCB_XINPUT_LIBRARY) (found version "")
+-- Found XCB_XKB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xkb.so (found version "1.14")
+-- Could NOT find XCB_XPRINT (missing: XCB_XPRINT_LIBRARY) (found version "")
+-- Could NOT find XCB_XTEST (missing: XCB_XTEST_LIBRARY) (found version "")
+-- Could NOT find XCB_XV (missing: XCB_XV_LIBRARY) (found version "")
+-- Could NOT find XCB_XVMC (missing: XCB_XVMC_LIBRARY XCB_XV_FOUND) (found version "")
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-sync.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xfixes.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-ewmh.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xkb.so (found suitable version "1.14", minimum required is "1.11")
+-- XCB: XFIXES requires XCB;RENDER;SHAPE
+-- XCB: XFIXES requires XCB;RENDER;SHAPE
+-- XCB: XFIXES requires XCB;RENDER;SHAPE
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-sync.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xfixes.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-ewmh.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xkb.so (found version "1.14") found components: XFIXES
+-- XCB: XKB requires XCB
+-- Found XCB: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-cursor.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-icccm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shm.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-image.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-keysyms.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-randr.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-render-util.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-shape.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-sync.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xfixes.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-util.a;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-ewmh.so;/home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/libxcb-xkb.so (found version "1.14") found components: XKB
+-- Found Qt: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/cmake/Qt6 (found suitable version "6.7.3", minimum required is "6.2")
+-- Performing Test LINKER_SUPPORTS__WL___FATAL_WARNINGS
+-- Performing Test LINKER_SUPPORTS__WL___FATAL_WARNINGS - Success
+-- Performing Test FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION
+-- Performing Test FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION - Failed
+-- Performing Test NO_DIAGNOSTICS_BOOST_NO_CXX98_FUNCTION_BASE
+-- Performing Test NO_DIAGNOSTICS_BOOST_NO_CXX98_FUNCTION_BASE - Failed
+-- Found Libevent: /home/yaroslav/dev/tidecoin/tidecoin/depends/x86_64-pc-linux-gnu/lib/cmake/libevent (found suitable version "2.1.12", minimum required is "2.1.8")
+-- Performing Test HAVE_EVHTTP_CONNECTION_GET_PEER_CONST_CHAR
+-- Performing Test HAVE_EVHTTP_CONNECTION_GET_PEER_CONST_CHAR - Failed
+-- Looking for O_CLOEXEC
+-- Looking for O_CLOEXEC - found
+-- Looking for fdatasync
+-- Looking for fdatasync - found
+-- Looking for fork
+-- Looking for fork - found
+-- Looking for pipe2
+-- Looking for pipe2 - found
+-- Looking for setsid
+-- Looking for setsid - found
+-- Performing Test IFADDR_LINKS_WITHOUT_LIBSOCKET
+-- Performing Test IFADDR_LINKS_WITHOUT_LIBSOCKET - Success
+-- Performing Test STD_ATOMIC_LINKS_WITHOUT_LIBATOMIC
+-- Performing Test STD_ATOMIC_LINKS_WITHOUT_LIBATOMIC - Success
+-- Looking for std::system
+-- Looking for std::system - found
+-- Looking for ::_wsystem
+-- Looking for ::_wsystem - not found
+-- Performing Test STRERROR_R_CHAR_P
+-- Performing Test STRERROR_R_CHAR_P - Success
+-- Looking for malloc_info
+-- Looking for malloc_info - found
+-- Performing Test HAVE_MALLOPT_ARENA_MAX
+-- Performing Test HAVE_MALLOPT_ARENA_MAX - Success
+-- Performing Test HAVE_POSIX_FALLOCATE
+-- Performing Test HAVE_POSIX_FALLOCATE - Success
+-- Performing Test HAVE_STRONG_GETAUXVAL
+-- Performing Test HAVE_STRONG_GETAUXVAL - Success
+-- Performing Test HAVE_SOCKADDR_UN
+-- Performing Test HAVE_SOCKADDR_UN - Success
+-- Performing Test HAVE_GETRANDOM
+-- Performing Test HAVE_GETRANDOM - Success
+-- Performing Test HAVE_GETENTROPY_RAND
+-- Performing Test HAVE_GETENTROPY_RAND - Success
+-- Performing Test HAVE_SYSCTL
+-- Performing Test HAVE_SYSCTL - Failed
+-- Performing Test HAVE_SYSCTL_ARND
+-- Performing Test HAVE_SYSCTL_ARND - Failed
+-- Performing Test HAVE_SSE41
+-- Performing Test HAVE_SSE41 - Success
+-- Performing Test HAVE_AVX2
+-- Performing Test HAVE_AVX2 - Success
+-- Performing Test HAVE_X86_SHANI
+-- Performing Test HAVE_X86_SHANI - Success
+-- Performing Test HAVE_ARM_SHANI
+-- Performing Test HAVE_ARM_SHANI - Failed
+-- Performing Test CXX_SUPPORTS__WALL
+-- Performing Test CXX_SUPPORTS__WALL - Success
+-- Performing Test CXX_SUPPORTS__WEXTRA
+-- Performing Test CXX_SUPPORTS__WEXTRA - Success
+-- Performing Test CXX_SUPPORTS__WGNU
+-- Performing Test CXX_SUPPORTS__WGNU - Failed
+-- Performing Test CXX_SUPPORTS__WFORMAT__WFORMAT_SECURITY
+-- Performing Test CXX_SUPPORTS__WFORMAT__WFORMAT_SECURITY - Success
+-- Performing Test CXX_SUPPORTS__WVLA
+-- Performing Test CXX_SUPPORTS__WVLA - Success
+-- Performing Test CXX_SUPPORTS__WSHADOW_FIELD
+-- Performing Test CXX_SUPPORTS__WSHADOW_FIELD - Failed
+-- Performing Test CXX_SUPPORTS__WTHREAD_SAFETY
+-- Performing Test CXX_SUPPORTS__WTHREAD_SAFETY - Failed
+-- Performing Test CXX_SUPPORTS__WTHREAD_SAFETY_POINTER
+-- Performing Test CXX_SUPPORTS__WTHREAD_SAFETY_POINTER - Failed
+-- Performing Test CXX_SUPPORTS__WLOOP_ANALYSIS
+-- Performing Test CXX_SUPPORTS__WLOOP_ANALYSIS - Failed
+-- Performing Test CXX_SUPPORTS__WREDUNDANT_DECLS
+-- Performing Test CXX_SUPPORTS__WREDUNDANT_DECLS - Success
+-- Performing Test CXX_SUPPORTS__WUNUSED_MEMBER_FUNCTION
+-- Performing Test CXX_SUPPORTS__WUNUSED_MEMBER_FUNCTION - Failed
+-- Performing Test CXX_SUPPORTS__WDATE_TIME
+-- Performing Test CXX_SUPPORTS__WDATE_TIME - Success
+-- Performing Test CXX_SUPPORTS__WCONDITIONAL_UNINITIALIZED
+-- Performing Test CXX_SUPPORTS__WCONDITIONAL_UNINITIALIZED - Failed
+-- Performing Test CXX_SUPPORTS__WDUPLICATED_BRANCHES
+-- Performing Test CXX_SUPPORTS__WDUPLICATED_BRANCHES - Success
+-- Performing Test CXX_SUPPORTS__WDUPLICATED_COND
+-- Performing Test CXX_SUPPORTS__WDUPLICATED_COND - Success
+-- Performing Test CXX_SUPPORTS__WLOGICAL_OP
+-- Performing Test CXX_SUPPORTS__WLOGICAL_OP - Success
+-- Performing Test CXX_SUPPORTS__WOVERLOADED_VIRTUAL
+-- Performing Test CXX_SUPPORTS__WOVERLOADED_VIRTUAL - Success
+-- Performing Test CXX_SUPPORTS__WSUGGEST_OVERRIDE
+-- Performing Test CXX_SUPPORTS__WSUGGEST_OVERRIDE - Success
+-- Performing Test CXX_SUPPORTS__WIMPLICIT_FALLTHROUGH
+-- Performing Test CXX_SUPPORTS__WIMPLICIT_FALLTHROUGH - Success
+-- Performing Test CXX_SUPPORTS__WUNREACHABLE_CODE
+-- Performing Test CXX_SUPPORTS__WUNREACHABLE_CODE - Success
+-- Performing Test CXX_SUPPORTS__WDOCUMENTATION
+-- Performing Test CXX_SUPPORTS__WDOCUMENTATION - Failed
+-- Performing Test CXX_SUPPORTS__WSELF_ASSIGN
+-- Performing Test CXX_SUPPORTS__WSELF_ASSIGN - Failed
+-- Performing Test CXX_SUPPORTS__WBIDI_CHARS_ANY
+-- Performing Test CXX_SUPPORTS__WBIDI_CHARS_ANY - Success
+-- Performing Test CXX_SUPPORTS__WUNDEF
+-- Performing Test CXX_SUPPORTS__WUNDEF - Success
+-- Performing Test CXX_SUPPORTS__WUNUSED_PARAMETER
+-- Performing Test CXX_SUPPORTS__WUNUSED_PARAMETER - Success
+-- Performing Test CXX_SUPPORTS__FNO_EXTENDED_IDENTIFIERS
+-- Performing Test CXX_SUPPORTS__FNO_EXTENDED_IDENTIFIERS - Success
+-- Performing Test CXX_SUPPORTS__FDEBUG_PREFIX_MAP_A_B
+-- Performing Test CXX_SUPPORTS__FDEBUG_PREFIX_MAP_A_B - Success
+-- Performing Test CXX_SUPPORTS__FMACRO_PREFIX_MAP_A_B
+-- Performing Test CXX_SUPPORTS__FMACRO_PREFIX_MAP_A_B - Success
+-- Performing Test CXX_SUPPORTS__FSTACK_REUSE_NONE
+-- Performing Test CXX_SUPPORTS__FSTACK_REUSE_NONE - Success
+-- Performing Test LINKER_SUPPORTS__FSTACK_REUSE_NONE
+-- Performing Test LINKER_SUPPORTS__FSTACK_REUSE_NONE - Success
+-- Performing Test CXX_SUPPORTS__U_FORTIFY_SOURCE__D_FORTIFY_SOURCE_3_2d08
+-- Performing Test CXX_SUPPORTS__U_FORTIFY_SOURCE__D_FORTIFY_SOURCE_3_2d08 - Success
+-- Performing Test LINKER_SUPPORTS__U_FORTIFY_SOURCE__D_FORTIFY_SOURCE_3_2d08
+-- Performing Test LINKER_SUPPORTS__U_FORTIFY_SOURCE__D_FORTIFY_SOURCE_3_2d08 - Success
+-- Performing Test CXX_SUPPORTS__WSTACK_PROTECTOR
+-- Performing Test CXX_SUPPORTS__WSTACK_PROTECTOR - Success
+-- Performing Test CXX_SUPPORTS__FSTACK_PROTECTOR_ALL
+-- Performing Test CXX_SUPPORTS__FSTACK_PROTECTOR_ALL - Success
+-- Performing Test LINKER_SUPPORTS__FSTACK_PROTECTOR_ALL
+-- Performing Test LINKER_SUPPORTS__FSTACK_PROTECTOR_ALL - Success
+-- Performing Test CXX_SUPPORTS__FCF_PROTECTION_FULL
+-- Performing Test CXX_SUPPORTS__FCF_PROTECTION_FULL - Success
+-- Performing Test LINKER_SUPPORTS__FCF_PROTECTION_FULL
+-- Performing Test LINKER_SUPPORTS__FCF_PROTECTION_FULL - Success
+-- Performing Test CXX_SUPPORTS__FSTACK_CLASH_PROTECTION
+-- Performing Test CXX_SUPPORTS__FSTACK_CLASH_PROTECTION - Success
+-- Performing Test LINKER_SUPPORTS__FSTACK_CLASH_PROTECTION
+-- Performing Test LINKER_SUPPORTS__FSTACK_CLASH_PROTECTION - Success
+-- Performing Test LINKER_SUPPORTS__WL___ENABLE_RELOC_SECTION
+-- Performing Test LINKER_SUPPORTS__WL___ENABLE_RELOC_SECTION - Failed
+-- Performing Test LINKER_SUPPORTS__WL___DYNAMICBASE
+-- Performing Test LINKER_SUPPORTS__WL___DYNAMICBASE - Failed
+-- Performing Test LINKER_SUPPORTS__WL___NXCOMPAT
+-- Performing Test LINKER_SUPPORTS__WL___NXCOMPAT - Failed
+-- Performing Test LINKER_SUPPORTS__WL___HIGH_ENTROPY_VA
+-- Performing Test LINKER_SUPPORTS__WL___HIGH_ENTROPY_VA - Failed
+-- Performing Test LINKER_SUPPORTS__WL__Z_RELRO
+-- Performing Test LINKER_SUPPORTS__WL__Z_RELRO - Success
+-- Performing Test LINKER_SUPPORTS__WL__Z_NOW
+-- Performing Test LINKER_SUPPORTS__WL__Z_NOW - Success
+-- Performing Test LINKER_SUPPORTS__WL__Z_SEPARATE_CODE
+-- Performing Test LINKER_SUPPORTS__WL__Z_SEPARATE_CODE - Success
+-- Found Python3: /home/yaroslav/miniconda3/bin/python3 (found suitable version "3.11.7", minimum required is "3.10") found components: Interpreter
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+-- Performing Test HAVE_BUILTIN_PREFETCH
+-- Performing Test HAVE_BUILTIN_PREFETCH - Success
+-- Performing Test HAVE_MM_PREFETCH
+-- Performing Test HAVE_MM_PREFETCH - Success
+-- Performing Test HAVE_SSE42
+-- Performing Test HAVE_SSE42 - Success
+-- Performing Test HAVE_ARM64_CRC32C
+-- Performing Test HAVE_ARM64_CRC32C - Failed
+-- Looking for F_FULLFSYNC
+-- Looking for F_FULLFSYNC - not found
+-- Performing Test HAVE_CLMUL
+-- Performing Test HAVE_CLMUL - Success
+-- Performing Test HAVE_PTHREAD_GETNAME_NP
+-- Performing Test HAVE_PTHREAD_GETNAME_NP - Success
+-- Performing Test HAVE_PTHREAD_THREADID_NP
+-- Performing Test HAVE_PTHREAD_THREADID_NP - Failed
+-- Performing Test HAVE_PTHREAD_GETTHREADID_NP
+-- Performing Test HAVE_PTHREAD_GETTHREADID_NP - Failed
+-- The C compiler identification is GNU 14.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /bin/gcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+
+Configuring secp256k1 subtree...
+-- Performing Test HAVE_X86_64_ASM
+-- Performing Test HAVE_X86_64_ASM - Success
+-- Could NOT find Valgrind (missing: Valgrind_INCLUDE_DIR Valgrind_WORKS) 
+-- Performing Test C_SUPPORTS__WALL
+-- Performing Test C_SUPPORTS__WALL - Success
+-- Performing Test C_SUPPORTS__PEDANTIC
+-- Performing Test C_SUPPORTS__PEDANTIC - Success
+-- Performing Test C_SUPPORTS__WCAST_ALIGN
+-- Performing Test C_SUPPORTS__WCAST_ALIGN - Success
+-- Performing Test C_SUPPORTS__WCAST_ALIGN_STRICT
+-- Performing Test C_SUPPORTS__WCAST_ALIGN_STRICT - Success
+-- Performing Test C_SUPPORTS__WCONDITIONAL_UNINITIALIZED
+-- Performing Test C_SUPPORTS__WCONDITIONAL_UNINITIALIZED - Failed
+-- Performing Test C_SUPPORTS__WEXTRA
+-- Performing Test C_SUPPORTS__WEXTRA - Success
+-- Performing Test C_SUPPORTS__WNESTED_EXTERNS
+-- Performing Test C_SUPPORTS__WNESTED_EXTERNS - Success
+-- Performing Test C_SUPPORTS__WNO_LONG_LONG
+-- Performing Test C_SUPPORTS__WNO_LONG_LONG - Success
+-- Performing Test C_SUPPORTS__WNO_OVERLENGTH_STRINGS
+-- Performing Test C_SUPPORTS__WNO_OVERLENGTH_STRINGS - Success
+-- Performing Test C_SUPPORTS__WNO_UNUSED_FUNCTION
+-- Performing Test C_SUPPORTS__WNO_UNUSED_FUNCTION - Success
+-- Performing Test C_SUPPORTS__WRESERVED_IDENTIFIER
+-- Performing Test C_SUPPORTS__WRESERVED_IDENTIFIER - Failed
+-- Performing Test C_SUPPORTS__WSHADOW
+-- Performing Test C_SUPPORTS__WSHADOW - Success
+-- Performing Test C_SUPPORTS__WSTRICT_PROTOTYPES
+-- Performing Test C_SUPPORTS__WSTRICT_PROTOTYPES - Success
+-- Performing Test C_SUPPORTS__WUNDEF
+-- Performing Test C_SUPPORTS__WUNDEF - Success
+
+
+secp256k1 configure summary
+===========================
+Build artifacts:
+  library type ........................ Static
+Optional modules:
+  ECDH ................................ OFF
+  ECDSA pubkey recovery ............... ON
+  extrakeys ........................... ON
+  schnorrsig .......................... ON
+  musig ............................... ON
+  ElligatorSwift ...................... ON
+Parameters:
+  ecmult window size .................. 15
+  ecmult gen table size ............... 86 KiB
+Optional features:
+  assembly ............................ x86_64
+  external callbacks .................. OFF
+Optional binaries:
+  benchmark ........................... OFF
+  noverify_tests ...................... ON
+  tests ............................... ON
+  exhaustive tests .................... ON
+  ctime_tests ......................... OFF
+  examples ............................ OFF
+
+Cross compiling ....................... FALSE
+API visibility attributes ............. ON
+Valgrind .............................. OFF
+Preprocessor defined macros ........... ECMULT_WINDOW_SIZE=15 COMB_BLOCKS=43 COMB_TEETH=6 USE_ASM_X86_64=1
+C compiler ............................ GNU 14.2.0, /bin/gcc
+CFLAGS ................................ 
+Compile options ....................... -Wall -pedantic -Wcast-align -Wcast-align=strict -Wextra -Wnested-externs -Wno-long-long -Wno-overlength-strings -Wno-unused-function -Wshadow -Wstrict-prototypes -Wundef
+Build type:
+ - CMAKE_BUILD_TYPE ................... RelWithDebInfo
+ - CFLAGS ............................. -O2 -O2 -g 
+ - LDFLAGS for executables ............ 
+ - LDFLAGS for shared libraries ....... 
+
+
+
+Configure summary
+=================
+Executables:
+  tidecoin ............................ ON
+  tidecoind ........................... ON
+  tidecoin-node (multiprocess)........ ON
+  tidecoin-qt (GUI) ................... ON
+  tidecoin-gui (GUI, multiprocess) .... ON
+  tidecoin-cli ........................ ON
+  tidecoin-tx ......................... ON
+  tidecoin-util ....................... ON
+  tidecoin-wallet ..................... ON
+  tidecoin-chainstate (experimental) .. ON
+  libtidecoinkernel (experimental) .... ON
+Optional features:
+  wallet support ...................... ON
+  external signer ..................... ON
+  ZeroMQ .............................. ON
+  IPC ................................. ON
+  USDT tracing ........................ ON
+  QR code (GUI) ....................... ON
+  DBus (GUI) .......................... ON
+Tests:
+  test_tidecoin ....................... ON
+  test_tidecoin-qt .................... ON
+  bench_tidecoin ...................... ON
+  fuzz binary ......................... ON
+
+Cross compiling ....................... FALSE
+C++ compiler .......................... GNU 14.2.0, /bin/g++
+CMAKE_BUILD_TYPE ...................... RelWithDebInfo
+Preprocessor defined macros ........... 
+C++ compiler flags .................... -m64 -O2 -O2 -g -std=c++20 -fPIC -fno-extended-identifiers -fdebug-prefix-map=/home/yaroslav/dev/tidecoin/tidecoin/src=. -fmacro-prefix-map=/home/yaroslav/dev/tidecoin/tidecoin/src=. -fstack-reuse=none -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -Wstack-protector -fstack-protector-all -fcf-protection=full -fstack-clash-protection -Wall -Wextra -Wformat -Wformat-security -Wvla -Wredundant-decls -Wdate-time -Wduplicated-branches -Wduplicated-cond -Wlogical-op -Woverloaded-virtual -Wsuggest-override -Wimplicit-fallthrough -Wunreachable-code -Wbidi-chars=any -Wundef -Wno-unused-parameter
+Linker flags .......................... -O2 -O2 -g -fstack-reuse=none -fstack-protector-all -fcf-protection=full -fstack-clash-protection -Wl,-z,relro -Wl,-z,now -Wl,-z,separate-code -fPIE -pie
+
+NOTE: The summary above may not exactly match the final applied build flags
+      if any additional CMAKE_* or environment variables have been modified.
+      To see the exact flags applied, build with the --verbose option.
+
+Treat compiler warnings as errors ..... OFF
+Use ccache for compiling .............. OFF
+
+
+-- Configuring done (18.4s)
+-- Generating done (0.2s)
+-- Build files have been written to: /home/yaroslav/dev/tidecoin/tidecoin/build_dev_mode

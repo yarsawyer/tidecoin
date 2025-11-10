@@ -9,7 +9,7 @@ function(install_binary_component component)
   cmake_parse_arguments(PARSE_ARGV 1
     IC                          # prefix
     "HAS_MANPAGE;INTERNAL"      # options
-    ""                          # one_value_keywords
+    "MANPAGE"                   # one_value_keywords
     ""                          # multi_value_keywords
   )
   set(target_name ${component})
@@ -23,7 +23,11 @@ function(install_binary_component component)
     COMPONENT ${component}
   )
   if(INSTALL_MAN AND IC_HAS_MANPAGE)
-    install(FILES ${PROJECT_SOURCE_DIR}/doc/man/${target_name}.1
+    set(manpage_name ${target_name})
+    if(IC_MANPAGE)
+      set(manpage_name ${IC_MANPAGE})
+    endif()
+    install(FILES ${PROJECT_SOURCE_DIR}/doc/man/${manpage_name}.1
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
       COMPONENT ${component}
     )
