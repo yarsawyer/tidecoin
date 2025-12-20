@@ -40,8 +40,9 @@ This document tracks the detailed plan and progress for removing Taproot
 ### 3) Addressing, output types, and key handling
 - DONE Remove P2TR output type handling and Bech32m paths
   - Files: `src/outputtype.cpp`, `src/key_io.cpp`, `src/outputtype.h`
-- TODO Remove x-only pubkey taproot helpers if no longer used
-  - Files: `src/key.h`
+- DONE Remove x-only pubkey and schnorr helpers now that taproot is gone
+  - Files: `src/key.h`, `src/key.cpp`, `src/pubkey.h`, `src/pubkey.cpp`,
+    `src/test/key_tests.cpp`, `src/test/compress_tests.cpp`
 
 ### 4) PSBT and signing
 - DONE Remove PSBT taproot fields (parse/serialize) and taproot signing data paths
@@ -99,3 +100,4 @@ This document tracks the detailed plan and progress for removing Taproot
 - 2025-12-20: Removed segwit v1+ test data and anchor cases; restricted segwit test utilities to v0; updated docs and wallet migration expectations.
 - 2025-12-20: Removed segwit v1+ key_io valid vectors, aligned bech32 error expectations, simplified segwit version functional coverage, and pruned taproot PSBT invalid vectors/testgen inputs.
 - 2025-12-20: Removed MuSig2 PSBT fields, signing-provider hooks, and decodepsbt RPC output; dropped MuSig2 tests/data and musig build sources.
+- 2025-12-20: Removed x-only pubkey and schnorr helpers (CKey/CPubKey) plus related unit tests.

@@ -134,17 +134,24 @@ BOOST_AUTO_TEST_CASE(compress_script_to_uncompressed_pubkey_id)
 
 BOOST_AUTO_TEST_CASE(compress_p2pk_scripts_not_on_curve)
 {
-    XOnlyPubKey x_not_on_curve;
-    do {
-        x_not_on_curve = XOnlyPubKey(m_rng.randbytes(32));
-    } while (x_not_on_curve.IsFullyValid());
+    CPubKey pubkey_not_on_curve;
+    bool found = false;
+    for (int i = 0; i < 100; ++i) {
+        std::vector<unsigned char> pubkey_raw(65);
+        pubkey_raw[0] = 4;
+        auto random_bytes = m_rng.randbytes(64);
+        std::copy(random_bytes.begin(), random_bytes.end(), pubkey_raw.begin() + 1);
+        CPubKey candidate(pubkey_raw);
+        if (candidate.IsValid() && !candidate.IsFullyValid()) {
+            pubkey_not_on_curve = candidate;
+            found = true;
+            break;
+        }
+    }
+    BOOST_REQUIRE(found);
 
     // Check that P2PK script with uncompressed pubkey [=> OP_PUSH65 <0x04 .....> OP_CHECKSIG]
     // which is not fully valid (i.e. point is not on curve) can't be compressed
-    std::vector<unsigned char> pubkey_raw(65, 0);
-    pubkey_raw[0] = 4;
-    std::copy(x_not_on_curve.begin(), x_not_on_curve.end(), &pubkey_raw[1]);
-    CPubKey pubkey_not_on_curve(pubkey_raw);
     assert(pubkey_not_on_curve.IsValid());
     assert(!pubkey_not_on_curve.IsFullyValid());
     CScript script = CScript() << ToByteVector(pubkey_not_on_curve) << OP_CHECKSIG;
@@ -156,7 +163,7 @@ BOOST_AUTO_TEST_CASE(compress_p2pk_scripts_not_on_curve)
 
     // Check that compressed P2PK script with uncompressed pubkey that is not fully
     // valid (i.e. x coordinate of the pubkey is not on curve) can't be decompressed
-    CompressedScript compressed_script(x_not_on_curve.begin(), x_not_on_curve.end());
+    CompressedScript compressed_script(pubkey_not_on_curve.begin() + 1, pubkey_not_on_curve.begin() + 33);
     for (unsigned int compression_id : {4, 5}) {
         CScript uncompressed_script;
         bool success = DecompressScript(uncompressed_script, compression_id, compressed_script);

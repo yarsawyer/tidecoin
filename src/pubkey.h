@@ -13,7 +13,6 @@
 #include <uint256.h>
 
 #include <cstring>
-#include <optional>
 #include <vector>
 
 const unsigned int BIP32_EXTKEY_SIZE = 74;
@@ -225,88 +224,6 @@ public:
 
     //! Derive BIP32 child pubkey.
     [[nodiscard]] bool Derive(CPubKey& pubkeyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;
-};
-
-class XOnlyPubKey
-{
-private:
-    uint256 m_keydata;
-
-public:
-    /** Nothing Up My Sleeve point H
-     *  Used as an internal key for provably disabling the key path spend
-     *  see BIP341 for more details */
-    static const XOnlyPubKey NUMS_H;
-
-    /** Construct an empty x-only pubkey. */
-    XOnlyPubKey() = default;
-
-    XOnlyPubKey(const XOnlyPubKey&) = default;
-    XOnlyPubKey& operator=(const XOnlyPubKey&) = default;
-
-    /** Determine if this pubkey is fully valid. This is true for approximately 50% of all
-     *  possible 32-byte arrays. If false, VerifySchnorr, CheckTapTweak and CreateTapTweak
-     *  will always fail. */
-    bool IsFullyValid() const;
-
-    /** Test whether this is the 0 key (the result of default construction). This implies
-     *  !IsFullyValid(). */
-    bool IsNull() const { return m_keydata.IsNull(); }
-
-    /** Construct an x-only pubkey from exactly 32 bytes. */
-    constexpr explicit XOnlyPubKey(std::span<const unsigned char> bytes) : m_keydata{bytes} {}
-
-    /** Construct an x-only pubkey from a normal pubkey. */
-    explicit XOnlyPubKey(const CPubKey& pubkey) : XOnlyPubKey(std::span{pubkey}.subspan(1, 32)) {}
-
-    /** Verify a Schnorr signature against this public key.
-     *
-     * sigbytes must be exactly 64 bytes.
-     */
-    bool VerifySchnorr(const uint256& msg, std::span<const unsigned char> sigbytes) const;
-
-    /** Compute the Taproot tweak as specified in BIP341, with *this as internal
-     * key:
-     *  - if merkle_root == nullptr: H_TapTweak(xonly_pubkey)
-     *  - otherwise:                 H_TapTweak(xonly_pubkey || *merkle_root)
-     *
-     * Note that the behavior of this function with merkle_root != nullptr is
-     * consensus critical.
-     */
-    uint256 ComputeTapTweakHash(const uint256* merkle_root) const;
-
-    /** Verify that this is a Taproot tweaked output point, against a specified internal key,
-     *  Merkle root, and parity. */
-    bool CheckTapTweak(const XOnlyPubKey& internal, const uint256& merkle_root, bool parity) const;
-
-    /** Construct a Taproot tweaked output point with this point as internal key. */
-    std::optional<std::pair<XOnlyPubKey, bool>> CreateTapTweak(const uint256* merkle_root) const;
-
-    /** Returns a list of CKeyIDs for the CPubKeys that could have been used to create this XOnlyPubKey.
-     * As the CKeyID is the Hash160(full pubkey), the produced CKeyIDs are for the versions of this
-     * XOnlyPubKey with 0x02 and 0x03 prefixes.
-     * This is needed for key lookups since keys are indexed by CKeyID.
-     */
-    std::vector<CKeyID> GetKeyIDs() const;
-    /** Returns this XOnlyPubKey with 0x02 and 0x03 prefixes */
-    std::vector<CPubKey> GetCPubKeys() const;
-
-    CPubKey GetEvenCorrespondingCPubKey() const;
-
-    const unsigned char& operator[](int pos) const { return *(m_keydata.begin() + pos); }
-    static constexpr size_t size() { return decltype(m_keydata)::size(); }
-    const unsigned char* data() const { return m_keydata.begin(); }
-    const unsigned char* begin() const { return m_keydata.begin(); }
-    const unsigned char* end() const { return m_keydata.end(); }
-    unsigned char* data() { return m_keydata.begin(); }
-    unsigned char* begin() { return m_keydata.begin(); }
-    unsigned char* end() { return m_keydata.end(); }
-    bool operator==(const XOnlyPubKey& other) const { return m_keydata == other.m_keydata; }
-    bool operator!=(const XOnlyPubKey& other) const { return m_keydata != other.m_keydata; }
-    bool operator<(const XOnlyPubKey& other) const { return m_keydata < other.m_keydata; }
-
-    //! Implement serialization without length prefixes since it is a fixed length
-    SERIALIZE_METHODS(XOnlyPubKey, obj) { READWRITE(obj.m_keydata); }
 };
 
 /** An ElligatorSwift-encoded public key. */
