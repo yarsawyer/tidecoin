@@ -50,7 +50,7 @@ std::string GetAllOutputTypes()
 {
     std::vector<std::string> ret;
     using U = std::underlying_type_t<TxoutType>;
-    for (U i = (U)TxoutType::NONSTANDARD; i <= (U)TxoutType::WITNESS_UNKNOWN; ++i) {
+    for (U i = (U)TxoutType::NONSTANDARD; i <= (U)TxoutType::WITNESS_V0_KEYHASH; ++i) {
         ret.emplace_back(GetTxnOutputType(static_cast<TxoutType>(i)));
     }
     return Join(ret, ", ");
@@ -319,32 +319,6 @@ public:
         return obj;
     }
 
-    UniValue operator()(const WitnessV1Taproot& tap) const
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.pushKV("isscript", true);
-        obj.pushKV("iswitness", true);
-        obj.pushKV("witness_version", 1);
-        obj.pushKV("witness_program", HexStr(tap));
-        return obj;
-    }
-
-    UniValue operator()(const PayToAnchor& anchor) const
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.pushKV("isscript", true);
-        obj.pushKV("iswitness", true);
-        return obj;
-    }
-
-    UniValue operator()(const WitnessUnknown& id) const
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.pushKV("iswitness", true);
-        obj.pushKV("witness_version", id.GetWitnessVersion());
-        obj.pushKV("witness_program", HexStr(id.GetWitnessProgram()));
-        return obj;
-    }
 };
 
 UniValue DescribeAddress(const CTxDestination& dest)

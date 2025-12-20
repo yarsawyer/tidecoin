@@ -82,7 +82,7 @@ FUZZ_TARGET(mocked_descriptor_parse, .init = initialize_mocked_descriptor_parse)
     // out strings which could correspond to a descriptor containing a too large derivation path.
     if (HasDeepDerivPath(buffer)) return;
 
-    // Some fragments can take a virtually unlimited number of sub-fragments (thresh, multi_a) but
+    // Some fragments can take a virtually unlimited number of sub-fragments (thresh) but
     // may perform quadratic operations on them. Limit the number of sub-fragments per fragment.
     if (HasTooManySubFrag(buffer)) return;
 

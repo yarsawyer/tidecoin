@@ -33,8 +33,6 @@ The payout address is derived from first BIP32 test vector master key:
 pkh(xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi/44h/0h/0h/<0;1>/*)#fkjtr0yn
 ```
 
-It uses `pkh()` because `tr()` outputs at low heights are not spendable (`unexpected-witness`).
-
 This makes each block deterministic except for its timestamp and nonce, which
 are stored in `mainnet_alt.json` and used to reconstruct the chain without
 having to redo the proof-of-work.

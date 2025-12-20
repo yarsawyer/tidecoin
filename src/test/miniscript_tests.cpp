@@ -34,9 +34,7 @@ struct TestData {
     //! A map from the public keys to their CKeyIDs (faster than hashing every time).
     std::map<CPubKey, CKeyID> pkhashes;
     std::map<CKeyID, CPubKey> pkmap;
-    std::map<XOnlyPubKey, CKeyID> xonly_pkhashes;
     std::map<CPubKey, std::vector<unsigned char>> signatures;
-    std::map<XOnlyPubKey, std::vector<unsigned char>> schnorr_signatures;
 
     // Various precomputed hashes
     std::vector<std::vector<unsigned char>> sha256;
@@ -52,9 +50,6 @@ struct TestData {
     {
         // All our signatures sign (and are required to sign) this constant message.
         constexpr uint256 MESSAGE_HASH{"0000000000000000f5cd94e18b6fe77dd7aca9e35c2b0c9cbd86356c80a71065"};
-        // We don't pass additional randomness when creating a schnorr signature.
-        const auto EMPTY_AUX{uint256::ZERO};
-
         // We generate 255 public keys and 255 hashes of each type.
         for (int i = 1; i <= 255; ++i) {
             // This 32-byte array functions as both private key data and hash preimage (31 zero bytes plus any nonzero byte).
@@ -69,19 +64,11 @@ struct TestData {
             pubkeys.push_back(pubkey);
             pkhashes.emplace(pubkey, keyid);
             pkmap.emplace(keyid, pubkey);
-            XOnlyPubKey xonly_pubkey{pubkey};
-            uint160 xonly_hash{Hash160(xonly_pubkey)};
-            xonly_pkhashes.emplace(xonly_pubkey, xonly_hash);
-            pkmap.emplace(xonly_hash, pubkey);
-
             // Compute ECDSA signatures on MESSAGE_HASH with the private keys.
-            std::vector<unsigned char> sig, schnorr_sig(64);
+            std::vector<unsigned char> sig;
             BOOST_CHECK(key.Sign(MESSAGE_HASH, sig));
             sig.push_back(1); // sighash byte
             signatures.emplace(pubkey, sig);
-            BOOST_CHECK(key.SignSchnorr(MESSAGE_HASH, schnorr_sig, nullptr, EMPTY_AUX));
-            schnorr_sig.push_back(1); // Maximally sized Schnorr sigs have a sighash byte.
-            schnorr_signatures.emplace(XOnlyPubKey{pubkey}, schnorr_sig);
 
             // Compute various hashes
             std::vector<unsigned char> hash;
@@ -140,21 +127,12 @@ struct KeyConverter {
 
     //! Convert a public key to bytes.
     std::vector<unsigned char> ToPKBytes(const CPubKey& key) const {
-        if (!miniscript::IsTapscript(m_script_ctx)) {
-            return {key.begin(), key.end()};
-        }
-        const XOnlyPubKey xonly_pubkey{key};
-        return {xonly_pubkey.begin(), xonly_pubkey.end()};
+        return {key.begin(), key.end()};
     }
 
     //! Convert a public key to its Hash160 bytes (precomputed).
     std::vector<unsigned char> ToPKHBytes(const CPubKey& key) const {
-        if (!miniscript::IsTapscript(m_script_ctx)) {
-            auto hash = g_testdata->pkhashes.at(key);
-            return {hash.begin(), hash.end()};
-        }
-        const XOnlyPubKey xonly_key{key};
-        auto hash = g_testdata->xonly_pkhashes.at(xonly_key);
+        auto hash = g_testdata->pkhashes.at(key);
         return {hash.begin(), hash.end()};
     }
 
@@ -169,15 +147,9 @@ struct KeyConverter {
 
     template<typename I>
     std::optional<Key> FromPKBytes(I first, I last) const {
-        if (!miniscript::IsTapscript(m_script_ctx)) {
-            Key key{first, last};
-            if (key.IsValid()) return key;
-            return {};
-        }
-        if (last - first != 32) return {};
-        XOnlyPubKey xonly_pubkey;
-        std::copy(first, last, xonly_pubkey.begin());
-        return xonly_pubkey.GetEvenCorrespondingCPubKey();
+        Key key{first, last};
+        if (key.IsValid()) return key;
+        return {};
     }
 
     template<typename I>
@@ -218,15 +190,9 @@ struct Satisfier : public KeyConverter {
     //! Produce a signature for the given key.
     miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
         if (supported.count(Challenge(ChallengeType::PK, ChallengeNumber(key)))) {
-            if (!miniscript::IsTapscript(m_script_ctx)) {
-                auto it = g_testdata->signatures.find(key);
-                if (it == g_testdata->signatures.end()) return miniscript::Availability::NO;
-                sig = it->second;
-            } else {
-                auto it = g_testdata->schnorr_signatures.find(XOnlyPubKey{key});
-                if (it == g_testdata->schnorr_signatures.end()) return miniscript::Availability::NO;
-                sig = it->second;
-            }
+            auto it = g_testdata->signatures.find(key);
+            if (it == g_testdata->signatures.end()) return miniscript::Availability::NO;
+            sig = it->second;
             return miniscript::Availability::YES;
         }
         return miniscript::Availability::NO;
@@ -270,14 +236,6 @@ public:
         auto it = g_testdata->signatures.find(pk);
         if (it == g_testdata->signatures.end()) return false;
         return sig == it->second;
-    }
-
-    bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion,
-                               ScriptExecutionData&, ScriptError*) const override {
-        XOnlyPubKey pk{pubkey};
-        auto it = g_testdata->schnorr_signatures.find(pk);
-        if (it == g_testdata->schnorr_signatures.end()) return false;
-        return std::ranges::equal(sig, it->second);
     }
 
     bool CheckLockTime(const CScriptNum& locktime) const override {
@@ -324,24 +282,15 @@ std::set<Challenge> FindChallenges(const Node* root)
     return chal;
 }
 
-//! The spk for this script under the given context. If it's a Taproot output also record the spend data.
-CScript ScriptPubKey(miniscript::MiniscriptContext ctx, const CScript& script, TaprootBuilder& builder)
+//! The spk for this script under P2WSH.
+CScript ScriptPubKey(const CScript& script)
 {
-    if (!miniscript::IsTapscript(ctx)) return CScript() << OP_0 << WitnessV0ScriptHash(script);
-
-    // For Taproot outputs we always use a tree with a single script and a dummy internal key.
-    builder.Add(0, script, TAPROOT_LEAF_TAPSCRIPT);
-    builder.Finalize(XOnlyPubKey::NUMS_H);
-    return GetScriptForDestination(builder.GetOutput());
+    return CScript() << OP_0 << WitnessV0ScriptHash(script);
 }
 
 //! Fill the witness with the data additional to the script satisfaction.
-void SatisfactionToWitness(miniscript::MiniscriptContext ctx, CScriptWitness& witness, const CScript& script, TaprootBuilder& builder) {
-    // For P2WSH, it's only the witness script.
+void SatisfactionToWitness(CScriptWitness& witness, const CScript& script) {
     witness.stack.emplace_back(script.begin(), script.end());
-    if (!miniscript::IsTapscript(ctx)) return;
-    // For Tapscript we also need the control block.
-    witness.stack.push_back(*builder.GetSpendData().scripts.begin()->second.begin());
 }
 
 struct MiniScriptTest : BasicTestingSetup {
@@ -359,27 +308,24 @@ void TestSatisfy(const KeyConverter& converter, const std::string& testcase, con
         for (int add = -1; add < (int)challist.size(); ++add) {
             if (add >= 0) satisfier.supported.insert(challist[add]); // The first iteration does not add anything
 
-            // Get the ScriptPubKey for this script, filling spend data if it's Taproot.
-            TaprootBuilder builder;
-            const CScript script_pubkey{ScriptPubKey(converter.MsContext(), script, builder)};
+            // Get the ScriptPubKey for this script.
+            const CScript script_pubkey{ScriptPubKey(script)};
 
             // Run malleable satisfaction algorithm.
             CScriptWitness witness_mal;
             const bool mal_success = node->Satisfy(satisfier, witness_mal.stack, false) == miniscript::Availability::YES;
-            SatisfactionToWitness(converter.MsContext(), witness_mal, script, builder);
+            SatisfactionToWitness(witness_mal, script);
 
             // Run non-malleable satisfaction algorithm.
             CScriptWitness witness_nonmal;
             const bool nonmal_success = node->Satisfy(satisfier, witness_nonmal.stack, true) == miniscript::Availability::YES;
             // Compute witness size (excluding script push, control block, and witness count encoding).
             const size_t wit_size = GetSerializeSize(witness_nonmal.stack) - GetSizeOfCompactSize(witness_nonmal.stack.size());
-            SatisfactionToWitness(converter.MsContext(), witness_nonmal, script, builder);
+            SatisfactionToWitness(witness_nonmal, script);
 
             if (nonmal_success) {
-                // Non-malleable satisfactions are bounded by the satisfaction size plus:
-                // - For P2WSH spends, the witness script
-                // - For Tapscript spends, both the witness script and the control block
-                const size_t max_stack_size{*node->GetStackSize() + 1 + miniscript::IsTapscript(converter.MsContext())};
+                // Non-malleable satisfactions are bounded by the satisfaction size plus the witness script.
+                const size_t max_stack_size{*node->GetStackSize() + 1};
                 BOOST_CHECK(witness_nonmal.stack.size() <= max_stack_size);
                 // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
                 BOOST_CHECK(mal_success);
@@ -443,7 +389,7 @@ enum TestMode : int {
     TESTMODE_TIMELOCKMIX = 8,
     //! Invalid only under P2WSH context
     TESTMODE_P2WSH_INVALID = 16,
-    //! Invalid only under Tapscript context
+    //! Invalid only under Tapscript context (unused, tapscript removed)
     TESTMODE_TAPSCRIPT_INVALID = 32,
 };
 
@@ -452,8 +398,7 @@ void Test(const std::string& ms, const std::string& hexscript, int mode, const K
           std::optional<uint32_t> stack_exec = {})
 {
     auto node = miniscript::FromString(ms, converter);
-    const bool is_tapscript{miniscript::IsTapscript(converter.MsContext())};
-    if (mode == TESTMODE_INVALID || ((mode & TESTMODE_P2WSH_INVALID) && !is_tapscript) || ((mode & TESTMODE_TAPSCRIPT_INVALID) && is_tapscript)) {
+    if (mode == TESTMODE_INVALID || (mode & TESTMODE_P2WSH_INVALID)) {
         BOOST_CHECK_MESSAGE(!node || !node->IsValid(), "Unexpectedly valid: " + ms);
     } else {
         BOOST_CHECK_MESSAGE(node, "Unparseable: " + ms);
@@ -476,15 +421,13 @@ void Test(const std::string& ms, const std::string& hexscript, int mode, const K
     }
 }
 
-void Test(const std::string& ms, const std::string& hexscript, const std::string& hextapscript, int mode,
+void Test(const std::string& ms, const std::string& hexscript, const std::string& /*hextapscript*/, int mode,
           int opslimit, int stacklimit, std::optional<uint32_t> max_wit_size,
-          std::optional<uint32_t> max_tap_wit_size,
+          std::optional<uint32_t> /*max_tap_wit_size*/,
           std::optional<uint32_t> stack_exec)
 {
     KeyConverter wsh_converter(miniscript::MiniscriptContext::P2WSH);
     Test(ms, hexscript, mode, wsh_converter, opslimit, stacklimit, max_wit_size, stack_exec);
-    KeyConverter tap_converter(miniscript::MiniscriptContext::TAPSCRIPT);
-    Test(ms, hextapscript == "=" ? hexscript : hextapscript, mode, tap_converter, opslimit, stacklimit, max_tap_wit_size, stack_exec);
 }
 
 void Test(const std::string& ms, const std::string& hexscript, const std::string& hextapscript, int mode)
@@ -502,6 +445,7 @@ BOOST_FIXTURE_TEST_SUITE(miniscript_tests, MiniScriptTest)
 BOOST_AUTO_TEST_CASE(fixed_tests)
 {
     g_testdata.reset(new TestData());
+    const KeyConverter wsh_converter{miniscript::MiniscriptContext::P2WSH};
 
     // Validity rules
     Test("l:older(1)", "?", "?", TESTMODE_VALID | TESTMODE_NONMAL); // older(1): valid
@@ -592,71 +536,15 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     Test("thresh(1,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),altv:after(1000000000),altv:after(100))", "2103d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b6300670400ca9a3bb16951686c936b6300670164b16951686c935187", "20d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b6300670400ca9a3bb16951686c936b6300670164b16951686c935187", TESTMODE_VALID, 18, 3, 73 + 2 + 2, 66 + 2 + 2, 4);
     Test("thresh(2,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),ac:pk_k(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556),altv:after(1000000000),altv:after(100))", "2103d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b2103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac6c936b6300670400ca9a3bb16951686c936b6300670164b16951686c935287", "20d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b20fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac6c936b6300670400ca9a3bb16951686c936b6300670164b16951686c935287", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_TIMELOCKMIX, 22, 4, 73 + 73 + 2 + 2, 66 + 66 + 2 + 2, 5);
 
-    // Additional Tapscript-related tests
-    // Edge cases when parsing multi_a from script:
-    //  - no pubkey at all
-    //  - no pubkey before a CHECKSIGADD
-    //  - no pubkey before the CHECKSIG
-    constexpr KeyConverter tap_converter{miniscript::MiniscriptContext::TAPSCRIPT};
-    constexpr KeyConverter wsh_converter{miniscript::MiniscriptContext::P2WSH};
-    const auto no_pubkey{"ac519c"_hex_u8};
-    BOOST_CHECK(miniscript::FromScript({no_pubkey.begin(), no_pubkey.end()}, tap_converter) == nullptr);
-    const auto incomplete_multi_a{"ba20c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5ba519c"_hex_u8};
-    BOOST_CHECK(miniscript::FromScript({incomplete_multi_a.begin(), incomplete_multi_a.end()}, tap_converter) == nullptr);
-    const auto incomplete_multi_a_2{"ac2079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac20c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5ba519c"_hex_u8};
-    BOOST_CHECK(miniscript::FromScript({incomplete_multi_a_2.begin(), incomplete_multi_a_2.end()}, tap_converter) == nullptr);
-    // Can use multi_a under Tapscript but not P2WSH.
-    Test("and_v(v:multi_a(2,03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a,025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc),after(1231488000))", "?", "20d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85aac205601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7ccba529d0400046749b1", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 4, 2, {}, {}, 3);
-    // Can use more than 20 keys in a multi_a.
-    std::string ms_str_multi_a{"multi_a(1,"};
-    for (size_t i = 0; i < 21; ++i) {
-        ms_str_multi_a += HexStr(g_testdata->pubkeys[i]);
-        if (i < 20) ms_str_multi_a += ",";
-    }
-    ms_str_multi_a += ")";
-    Test(ms_str_multi_a, "?", "2079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac20c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5ba20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ba20e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13ba202f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4ba20fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ba205cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bcba202f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01ba20acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbeba20a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7ba20774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cbba20d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85aba20f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8ba20499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4ba20d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080eba20e60fce93b59e9ec53011aabc21c23e97b2a31369b87a5ae9c44ee89e2a6dec0aba20defdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34ba205601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7ccba202b4ea0a797a443d293ef5cff444f4979f06acfebd7e86d277475656138385b6cba204ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97ba20352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5ba519c", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 22, 21, {}, {}, 22);
-    // Since 'd:' is 'u' we can use it directly inside a thresh. But we can't under P2WSH.
-    Test("thresh(2,dv:older(42),s:pk(025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc),s:pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65))", "?", "7663012ab269687c205cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bcac937c20d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac935287", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 12, 3, {}, {}, 4);
-    // We can have a script that has more than 201 ops (n = 99), that needs a stack size > 100 (n = 110), or has a
-    // script that is larger than 3600 bytes (n = 200). All that can't be under P2WSH.
-    for (const auto pk_count: {99, 110, 200}) {
-        std::string ms_str_large;
-        for (auto i = 0; i < pk_count - 1; ++i) {
-            ms_str_large += "and_b(pk(" + HexStr(g_testdata->pubkeys[i]) + "),a:";
-        }
-        ms_str_large += "pk(" + HexStr(g_testdata->pubkeys[pk_count - 1]) + ")";
-        ms_str_large.insert(ms_str_large.end(), pk_count - 1, ')');
-        Test(ms_str_large, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, pk_count + (pk_count - 1) * 3, pk_count, {}, {}, pk_count + 1);
-    }
-    // We can have a script that reaches a stack size of 1000 during execution.
-    std::string ms_stack_limit;
-    auto count{998};
-    for (auto i = 0; i < count; ++i) {
-        ms_stack_limit += "and_b(older(1),a:";
-    }
-    ms_stack_limit += "pk(" + HexStr(g_testdata->pubkeys[0]) + ")";
-    ms_stack_limit.insert(ms_stack_limit.end(), count, ')');
-    const auto ms_stack_ok{miniscript::FromString(ms_stack_limit, tap_converter)};
-    BOOST_CHECK(ms_stack_ok && ms_stack_ok->CheckStackSize());
-    Test(ms_stack_limit, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 4 * count + 1, 1, {}, {}, 1 + count + 1);
-    // But one more element on the stack during execution will make it fail. And we'd detect that.
-    count++;
-    ms_stack_limit = "and_b(older(1),a:" + ms_stack_limit + ")";
-    const auto ms_stack_nok{miniscript::FromString(ms_stack_limit, tap_converter)};
-    BOOST_CHECK(ms_stack_nok && !ms_stack_nok->CheckStackSize());
-    Test(ms_stack_limit, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 4 * count + 1, 1, {}, {}, 1 + count + 1);
-
     // Misc unit tests
     // A Script with a non minimal push is invalid
     constexpr auto nonminpush{"0000210232780000feff00ffffffffffff21ff005f00ae21ae00000000060602060406564c2102320000060900fe00005f00ae21ae00100000060606060606000000000000000000000000000000000000000000000000000000000000000000"_hex_u8};
     const CScript nonminpush_script(nonminpush.begin(), nonminpush.end());
     BOOST_CHECK(miniscript::FromScript(nonminpush_script, wsh_converter) == nullptr);
-    BOOST_CHECK(miniscript::FromScript(nonminpush_script, tap_converter) == nullptr);
     // A non-minimal VERIFY (<key> CHECKSIG VERIFY 1)
     constexpr auto nonminverify{"2103a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7ac6951"_hex_u8};
     const CScript nonminverify_script(nonminverify.begin(), nonminverify.end());
     BOOST_CHECK(miniscript::FromScript(nonminverify_script, wsh_converter) == nullptr);
-    BOOST_CHECK(miniscript::FromScript(nonminverify_script, tap_converter) == nullptr);
     // A threshold as large as the number of subs is valid.
     Test("thresh(2,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),altv:after(100))", "2103d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b6300670164b16951686c935287", "20d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b6300670164b16951686c935287", TESTMODE_VALID | TESTMODE_NEEDSIG | TESTMODE_NONMAL);
     // A threshold of 1 is valid.
@@ -674,7 +562,7 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     // Since it contains an OP_IF just after on the same element, we can make sure that the element
     // in question must be OP_1 if OP_IF enforces that its argument must only be OP_1 or the empty
     // vector (since otherwise the execution would immediately fail). This is the MINIMALIF rule.
-    // Unfortunately, this rule is consensus for Taproot but only policy for P2WSH. Therefore we can't
+    // Unfortunately, this rule is only policy for P2WSH. Therefore we can't
     // (for now) have 'd:' be 'u'. This tests we can't use a 'd:' wrapper for a thresh, which requires
     // its subs to all be 'u' (taken from https://github.com/rust-bitcoin/rust-miniscript/discussions/341).
     const auto ms_minimalif = miniscript::FromString("thresh(3,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),sc:pk_k(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556),sc:pk_k(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798),sdv:older(32))", wsh_converter);

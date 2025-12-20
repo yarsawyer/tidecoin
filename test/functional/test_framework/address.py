@@ -5,8 +5,7 @@
 """Encode and decode Bitcoin addresses.
 
 - base58 P2PKH and P2SH addresses.
-- bech32 segwit v0 P2WPKH and P2WSH addresses.
-- bech32m segwit v1 P2TR addresses."""
+- bech32 segwit v0 P2WPKH and P2WSH addresses."""
 
 import enum
 import unittest
@@ -18,9 +17,7 @@ from .script import (
     hash160,
     hash256,
     sha256,
-    taproot_construct,
 )
-from .util import assert_equal
 from test_framework.script_util import (
     keyhash_to_p2pkh_script,
     program_to_witness_script,
@@ -47,20 +44,13 @@ class AddressType(enum.Enum):
 b58chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 
-def create_deterministic_address_bcrt1_p2tr_op_true(explicit_internal_key=None):
-    """
-    Generates a deterministic bech32m address (segwit v1 output) that
-    can be spent with a witness stack of OP_TRUE and the control block
-    with internal public key (script-path spending).
+def create_deterministic_address_bcrt1_p2wsh_op_true():
+    """Generates a deterministic bech32 address (segwit v0 P2WSH) that
+    can be spent with a witness stack of OP_TRUE.
 
-    Returns a tuple with the generated address and the TaprootInfo object.
+    Returns a tuple with the generated address and the witness script.
     """
-    internal_key = explicit_internal_key or (1).to_bytes(32, 'big')
-    taproot_info = taproot_construct(internal_key, [("only-path", CScript([OP_TRUE]))])
-    address = output_key_to_p2tr(taproot_info.output_pubkey)
-    if explicit_internal_key is None:
-        assert_equal(address, 'bcrt1p9yfmy5h72durp7zrhlw9lf7jpwjgvwdg0jr0lqmmjtgg83266lqsekaqka')
-    return (address, taproot_info)
+    return (ADDRESS_BCRT1_P2WSH_OP_TRUE, CScript([OP_TRUE]))
 
 
 def byte_to_base58(b, version):
@@ -133,7 +123,7 @@ def key_to_p2sh_p2wpkh(key, main=False):
 def program_to_witness(version, program, main=False):
     if (type(program) is str):
         program = bytes.fromhex(program)
-    assert 0 <= version <= 16
+    assert version == 0
     assert 2 <= len(program) <= 40
     assert version > 0 or len(program) in [20, 32]
     return encode_segwit_address("bc" if main else "bcrt", version, program)
@@ -150,13 +140,6 @@ def script_to_p2sh_p2wsh(script, main=False):
     script = check_script(script)
     p2shscript = CScript([OP_0, sha256(script)])
     return script_to_p2sh(p2shscript, main)
-
-def output_key_to_p2tr(key, main=False):
-    assert len(key) == 32
-    return program_to_witness(1, key, main)
-
-def p2a(main=False):
-    return program_to_witness(1, "4e73", main)
 
 def check_key(key):
     if (type(key) is str):
@@ -224,9 +207,6 @@ class TestFrameworkScript(unittest.TestCase):
 
         check_bech32_decode(bytes.fromhex('36e3e2a33f328de12e4b43c515a75fba2632ecc3'), 0)
         check_bech32_decode(bytes.fromhex('823e9790fc1d1782321140d4f4aa61aabd5e045b'), 0)
-        check_bech32_decode(bytes.fromhex('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'), 1)
-        check_bech32_decode(bytes.fromhex('39cf8ebd95134f431c39db0220770bd127f5dd3cc103c988b7dcd577ae34e354'), 1)
-        check_bech32_decode(bytes.fromhex('708244006d27c757f6f1fc6f853b6ec26268b727866f7ce632886e34eb5839a3'), 1)
         check_bech32_decode(bytes.fromhex('616211ab00dffe0adcb6ce258d6d3fd8cbd901e2'), 0)
         check_bech32_decode(bytes.fromhex('b6a7c98b482d7fb21c9fa8e65692a0890410ff22'), 0)
         check_bech32_decode(bytes.fromhex('f0c2109cb1008cfa7b5a09cc56f7267cd8e50929'), 0)

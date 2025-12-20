@@ -273,9 +273,6 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
         for node in descriptors_nodes:
             self.log.info(f"- {node.version}")
             for wallet_name in ["w1", "w2", "w3"]:
-                if self.major_version_less_than(node, 22) and wallet_name == "w1":
-                    # Descriptor wallets created after 0.21 have taproot descriptors which 0.21 does not support, tested below
-                    continue
                 # Also try to reopen on master after opening on old
                 for n in [node, node_master]:
                     n.loadwallet(wallet_name)
@@ -319,10 +316,6 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
         for wallet_name in ["w1", "w2", "w3"]:
             assert_raises_rpc_error(-4, "Wallet file verification failed: wallet.dat corrupt, salvage failed", node_v20.loadwallet, wallet_name)
 
-        # w1 cannot be opened by 0.21 since it contains a taproot descriptor
-        self.log.info("Test that 0.21 cannot open wallet containing tr() descriptors")
-        assert_raises_rpc_error(-1, "map::at", node_v21.loadwallet, "w1")
-
         self.log.info("Test that a wallet can upgrade to and downgrade from master, from:")
         for node in descriptors_nodes:
             self.log.info(f"- {node.version}")
@@ -357,24 +350,6 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
             down_wallet_name = f"re_down_{node.version}"
             down_backup_path = os.path.join(self.options.tmpdir, f"{down_wallet_name}.dat")
             wallet.backupwallet(down_backup_path)
-
-            # Check that taproot descriptors can be added to 0.21 wallets
-            # This must be done after the backup is created so that 0.21 can still load
-            # the backup
-            if self.major_version_equals(node, 21):
-                assert_raises_rpc_error(-12, "No bech32m addresses available", wallet.getnewaddress, address_type="bech32m")
-                xpubs = wallet.gethdkeys(active_only=True)
-                assert_equal(len(xpubs), 1)
-                assert_equal(len(xpubs[0]["descriptors"]), 6)
-                wallet.createwalletdescriptor("bech32m")
-                xpubs = wallet.gethdkeys(active_only=True)
-                assert_equal(len(xpubs), 1)
-                assert_equal(len(xpubs[0]["descriptors"]), 8)
-                tr_descs = [desc["desc"] for desc in xpubs[0]["descriptors"] if desc["desc"].startswith("tr(")]
-                assert_equal(len(tr_descs), 2)
-                for desc in tr_descs:
-                    assert info["hdmasterfingerprint"] in desc
-                wallet.getnewaddress(address_type="bech32m")
 
             wallet.unloadwallet()
 

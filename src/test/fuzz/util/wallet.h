@@ -40,7 +40,6 @@ struct FuzzedWallet {
         const std::vector<std::string> DESCS{
             "pkh(%s/%s/*)",
             "sh(wpkh(%s/%s/*))",
-            "tr(%s/%s/*)",
             "wpkh(%s/%s/*)",
         };
 

@@ -84,11 +84,12 @@ struct PrecomputedData
                 coins[i].out.scriptPubKey[1] = 32;
                 std::copy(hash.begin(), hash.begin() + 32, coins[i].out.scriptPubKey.begin() + 2);
                 break;
-            case 4: /* P2TR */
-                coins[i].out.scriptPubKey.resize(34);
-                coins[i].out.scriptPubKey[0] = OP_1;
-                coins[i].out.scriptPubKey[1] = 32;
+            case 4: /* P2PK */
+                coins[i].out.scriptPubKey.resize(35);
+                coins[i].out.scriptPubKey[0] = 33;
+                coins[i].out.scriptPubKey[1] = 0x02;
                 std::copy(hash.begin(), hash.begin() + 32, coins[i].out.scriptPubKey.begin() + 2);
+                coins[i].out.scriptPubKey[34] = OP_CHECKSIG;
                 break;
             }
             /* Hash again to construct nValue and fCoinBase. */

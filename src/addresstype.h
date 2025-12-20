@@ -85,48 +85,6 @@ struct WitnessV0KeyHash : public BaseHash<uint160>
 };
 CKeyID ToKeyID(const WitnessV0KeyHash& key_hash);
 
-struct WitnessV1Taproot : public XOnlyPubKey
-{
-    WitnessV1Taproot() : XOnlyPubKey() {}
-    explicit WitnessV1Taproot(const XOnlyPubKey& xpk) : XOnlyPubKey(xpk) {}
-};
-
-//! CTxDestination subtype to encode any future Witness version
-struct WitnessUnknown
-{
-private:
-    unsigned int m_version;
-    std::vector<unsigned char> m_program;
-
-public:
-    WitnessUnknown(unsigned int version, const std::vector<unsigned char>& program) : m_version(version), m_program(program) {}
-    WitnessUnknown(int version, const std::vector<unsigned char>& program) : m_version(static_cast<unsigned int>(version)), m_program(program) {}
-
-    unsigned int GetWitnessVersion() const { return m_version; }
-    const std::vector<unsigned char>& GetWitnessProgram() const LIFETIMEBOUND { return m_program; }
-
-    friend bool operator==(const WitnessUnknown& w1, const WitnessUnknown& w2) {
-        if (w1.GetWitnessVersion() != w2.GetWitnessVersion()) return false;
-        return w1.GetWitnessProgram() == w2.GetWitnessProgram();
-    }
-
-    friend bool operator<(const WitnessUnknown& w1, const WitnessUnknown& w2) {
-        if (w1.GetWitnessVersion() < w2.GetWitnessVersion()) return true;
-        if (w1.GetWitnessVersion() > w2.GetWitnessVersion()) return false;
-        return w1.GetWitnessProgram() < w2.GetWitnessProgram();
-    }
-};
-
-/** Witness program for Pay-to-Anchor output script type */
-static const std::vector<unsigned char> ANCHOR_BYTES{0x4e, 0x73};
-
-struct PayToAnchor : public WitnessUnknown
-{
-    PayToAnchor() : WitnessUnknown(1, ANCHOR_BYTES) {
-        Assume(CScript::IsPayToAnchor(1, ANCHOR_BYTES));
-    };
-};
-
 /**
  * A txout script categorized into standard templates.
  *  * CNoDestination: Optionally a script, no corresponding address.
@@ -135,12 +93,9 @@ struct PayToAnchor : public WitnessUnknown
  *  * ScriptHash: TxoutType::SCRIPTHASH destination (P2SH address)
  *  * WitnessV0ScriptHash: TxoutType::WITNESS_V0_SCRIPTHASH destination (P2WSH address)
  *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH address)
- *  * WitnessV1Taproot: TxoutType::WITNESS_V1_TAPROOT destination (P2TR address)
- *  * PayToAnchor: TxoutType::ANCHOR destination (P2A address)
- *  * WitnessUnknown: TxoutType::WITNESS_UNKNOWN destination (P2W??? address)
  *  A CTxDestination is the internal data type encoded in a bitcoin address
  */
-using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, PayToAnchor, WitnessUnknown>;
+using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash>;
 
 /** Check whether a CTxDestination corresponds to one with an address. */
 bool IsValidDestination(const CTxDestination& dest);
@@ -152,7 +107,7 @@ bool IsValidDestination(const CTxDestination& dest);
  * is assigned to addressRet.
  * For all other scripts. addressRet is assigned as a CNoDestination containing the scriptPubKey.
  *
- * Returns true for standard destinations with addresses - P2PKH, P2SH, P2WPKH, P2WSH, P2TR and P2W??? scripts.
+ * Returns true for standard destinations with addresses - P2PKH, P2SH, P2WPKH, and P2WSH scripts.
  * Returns false for non-standard destinations and those without addresses - P2PK, bare multisig, null data, and nonstandard scripts.
  */
 bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet);

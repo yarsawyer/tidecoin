@@ -17,8 +17,7 @@
 /*
  * Creates a test block containing transactions with the following properties:
  * - Each transaction has the same number of inputs and outputs
- * - All Taproot inputs use simple key path spends (no script path spends)
- * - All signatures use SIGHASH_ALL (default sighash)
+ * - All signatures use SIGHASH_ALL
  * - Each transaction spends all outputs from the previous transaction
  */
 CBlock CreateTestBlock(
@@ -29,8 +28,6 @@ CBlock CreateTestBlock(
 {
     Chainstate& chainstate{test_setup.m_node.chainman->ActiveChainstate()};
 
-    const WitnessV1Taproot coinbase_taproot{XOnlyPubKey(test_setup.coinbaseKey.GetPubKey())};
-
     // Create the outputs that will be spent in the first transaction of the test block
     // Doing this in a separate block excludes the validation of its inputs from the benchmark
     auto& coinbase_to_spend{test_setup.m_coinbase_txns[0]};
@@ -38,7 +35,7 @@ CBlock CreateTestBlock(
         {coinbase_to_spend},
         {COutPoint(coinbase_to_spend->GetHash(), 0)},
         chainstate.m_chain.Height() + 1, keys, outputs, {}, {})};
-    const CScript coinbase_spk{GetScriptForDestination(coinbase_taproot)};
+    const CScript coinbase_spk{GetScriptForDestination(WitnessV0KeyHash{test_setup.coinbaseKey.GetPubKey()})};
     test_setup.CreateAndProcessBlock({first_tx}, coinbase_spk, &chainstate);
 
     std::vector<CMutableTransaction> txs;
@@ -64,26 +61,20 @@ CBlock CreateTestBlock(
 
 /*
  * Creates key pairs and corresponding outputs for the benchmark transactions.
- * - For Schnorr signatures: Creates simple key path spendable outputs
- * - For Ecdsa signatures: Creates P2WPKH (native SegWit v0) outputs
+ * - All outputs are P2WPKH (native SegWit v0)
  * - All outputs have value of 1 BTC
  */
-std::pair<std::vector<CKey>, std::vector<CTxOut>> CreateKeysAndOutputs(const CKey& coinbaseKey, size_t num_schnorr, size_t num_ecdsa)
+std::pair<std::vector<CKey>, std::vector<CTxOut>> CreateKeysAndOutputs(const CKey& coinbaseKey, size_t num_ecdsa)
 {
     std::vector<CKey> keys{coinbaseKey};
-    keys.reserve(num_schnorr + num_ecdsa + 1);
+    keys.reserve(num_ecdsa + 1);
 
     std::vector<CTxOut> outputs;
-    outputs.reserve(num_schnorr + num_ecdsa);
+    outputs.reserve(num_ecdsa);
 
     for (size_t i{0}; i < num_ecdsa; ++i) {
         keys.emplace_back(GenerateRandomKey());
         outputs.emplace_back(COIN, GetScriptForDestination(WitnessV0KeyHash{keys.back().GetPubKey()}));
-    }
-
-    for (size_t i{0}; i < num_schnorr; ++i) {
-        keys.emplace_back(GenerateRandomKey());
-        outputs.emplace_back(COIN, GetScriptForDestination(WitnessV1Taproot{XOnlyPubKey(keys.back().GetPubKey())}));
     }
 
     return {keys, outputs};
@@ -104,28 +95,11 @@ void BenchmarkConnectBlock(benchmark::Bench& bench, std::vector<CKey>& keys, std
     });
 }
 
-static void ConnectBlockAllSchnorr(benchmark::Bench& bench)
-{
-    const auto test_setup{MakeNoLogFileContext<TestChain100Setup>()};
-    auto [keys, outputs]{CreateKeysAndOutputs(test_setup->coinbaseKey, /*num_schnorr=*/5, /*num_ecdsa=*/0)};
-    BenchmarkConnectBlock(bench, keys, outputs, *test_setup);
-}
-
-static void ConnectBlockMixedEcdsaSchnorr(benchmark::Bench& bench)
-{
-    const auto test_setup{MakeNoLogFileContext<TestChain100Setup>()};
-    // Blocks in range 848000 to 868000 have a roughly 20 to 80 ratio of schnorr to ecdsa inputs
-    auto [keys, outputs]{CreateKeysAndOutputs(test_setup->coinbaseKey, /*num_schnorr=*/1, /*num_ecdsa=*/4)};
-    BenchmarkConnectBlock(bench, keys, outputs, *test_setup);
-}
-
 static void ConnectBlockAllEcdsa(benchmark::Bench& bench)
 {
     const auto test_setup{MakeNoLogFileContext<TestChain100Setup>()};
-    auto [keys, outputs]{CreateKeysAndOutputs(test_setup->coinbaseKey, /*num_schnorr=*/0, /*num_ecdsa=*/5)};
+    auto [keys, outputs]{CreateKeysAndOutputs(test_setup->coinbaseKey, /*num_ecdsa=*/5)};
     BenchmarkConnectBlock(bench, keys, outputs, *test_setup);
 }
 
-BENCHMARK(ConnectBlockAllSchnorr, benchmark::PriorityLevel::HIGH);
-BENCHMARK(ConnectBlockMixedEcdsaSchnorr, benchmark::PriorityLevel::HIGH);
 BENCHMARK(ConnectBlockAllEcdsa, benchmark::PriorityLevel::HIGH);

@@ -2,7 +2,7 @@
 # Copyright (c) 2017 Pieter Wuille
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Reference implementation for Bech32/Bech32m and segwit addresses."""
+"""Reference implementation for Bech32 and segwit v0 addresses."""
 import unittest
 from enum import Enum
 
@@ -100,25 +100,27 @@ def convertbits(data, frombits, tobits, pad=True):
 
 
 def decode_segwit_address(hrp, addr):
-    """Decode a segwit address."""
+    """Decode a segwit v0 address."""
     encoding, hrpgot, data = bech32_decode(addr)
     if hrpgot != hrp:
         return (None, None)
     decoded = convertbits(data[1:], 5, 8, False)
     if decoded is None or len(decoded) < 2 or len(decoded) > 40:
         return (None, None)
-    if data[0] > 16:
+    if data[0] != 0:
         return (None, None)
-    if data[0] == 0 and len(decoded) != 20 and len(decoded) != 32:
+    if len(decoded) != 20 and len(decoded) != 32:
         return (None, None)
-    if (data[0] == 0 and encoding != Encoding.BECH32) or (data[0] != 0 and encoding != Encoding.BECH32M):
+    if encoding != Encoding.BECH32:
         return (None, None)
     return (data[0], decoded)
 
 
 def encode_segwit_address(hrp, witver, witprog):
-    """Encode a segwit address."""
-    encoding = Encoding.BECH32 if witver == 0 else Encoding.BECH32M
+    """Encode a segwit v0 address."""
+    if witver != 0:
+        return None
+    encoding = Encoding.BECH32
     ret = bech32_encode(encoding, hrp, [witver] + convertbits(witprog, 8, 5))
     if decode_segwit_address(hrp, ret) == (None, None):
         return None
@@ -137,5 +139,3 @@ class TestFrameworkScript(unittest.TestCase):
         # P2WSH
         test_python_bech32('bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj')
         test_python_bech32('bcrt1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqseac85')
-        # P2TR
-        test_python_bech32('bcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc8gma6')

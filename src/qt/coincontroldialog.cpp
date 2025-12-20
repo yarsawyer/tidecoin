@@ -419,12 +419,8 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
             if (witnessversion == 0) { // P2WPKH
                 // 1 WU (witness item count) + 72 WU (ECDSA signature with len byte) + 34 WU (pubkey with len byte)
                 nBytesInputs += 107 / WITNESS_SCALE_FACTOR;
-            } else if (witnessversion == 1) { // P2TR key-path spend
-                // 1 WU (witness item count) + 65 WU (Schnorr signature with len byte)
-                nBytesInputs += 66 / WITNESS_SCALE_FACTOR;
             } else {
-                // not supported, should be unreachable
-                throw std::runtime_error("Trying to spend future segwit version script");
+                throw std::runtime_error("Unsupported segwit version script");
             }
             fWitness = true;
         }

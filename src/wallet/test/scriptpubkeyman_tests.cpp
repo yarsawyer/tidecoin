@@ -24,17 +24,17 @@ BOOST_AUTO_TEST_CASE(DescriptorScriptPubKeyManTests)
 
     // Verify that a SigningProvider for a pubkey is only returned if its corresponding private key is available
     auto key_internal = GenerateRandomKey();
-    std::string desc_str = "tr(" + EncodeSecret(key_internal) + ",pk(" + HexStr(key_scriptpath.GetPubKey()) + "))";
+    std::string desc_str = "wpkh(" + EncodeSecret(key_internal) + ")";
     auto spk_man1 = CreateDescriptor(keystore, desc_str, true);
     BOOST_CHECK(spk_man1 != nullptr);
     auto signprov_keypath_spendable = spk_man1->GetSigningProvider(key_internal.GetPubKey());
     BOOST_CHECK(signprov_keypath_spendable != nullptr);
 
-    desc_str = "tr(" + HexStr(XOnlyPubKey::NUMS_H) + ",pk(" + HexStr(key_scriptpath.GetPubKey()) + "))";
+    desc_str = "wpkh(" + HexStr(key_scriptpath.GetPubKey()) + ")";
     auto spk_man2 = CreateDescriptor(keystore, desc_str, true);
     BOOST_CHECK(spk_man2 != nullptr);
-    auto signprov_keypath_nums_h = spk_man2->GetSigningProvider(XOnlyPubKey::NUMS_H.GetEvenCorrespondingCPubKey());
-    BOOST_CHECK(signprov_keypath_nums_h == nullptr);
+    auto signprov_keypath_pubonly = spk_man2->GetSigningProvider(key_scriptpath.GetPubKey());
+    BOOST_CHECK(signprov_keypath_pubonly == nullptr);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

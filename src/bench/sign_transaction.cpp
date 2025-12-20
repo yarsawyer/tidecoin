@@ -23,7 +23,6 @@
 
 enum class InputType {
     P2WPKH, // segwitv0, witness-pubkey-hash (ECDSA signature)
-    P2TR,   // segwitv1, taproot key-path spend (Schnorr signature)
 };
 
 static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_type)
@@ -45,7 +44,6 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
         CScript prev_spk;
         switch (input_type) {
         case InputType::P2WPKH: prev_spk = GetScriptForDestination(WitnessV0KeyHash(pubkey)); break;
-        case InputType::P2TR:   prev_spk = GetScriptForDestination(WitnessV1Taproot(XOnlyPubKey{pubkey})); break;
         default: assert(false);
         }
         prev_spks.push_back(prev_spk);
@@ -71,36 +69,4 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
 }
 
 static void SignTransactionECDSA(benchmark::Bench& bench)   { SignTransactionSingleInput(bench, InputType::P2WPKH); }
-static void SignTransactionSchnorr(benchmark::Bench& bench) { SignTransactionSingleInput(bench, InputType::P2TR);   }
-
-static void SignSchnorrTapTweakBenchmark(benchmark::Bench& bench, bool use_null_merkle_root)
-{
-    FastRandomContext rng;
-    ECC_Context ecc_context{};
-
-    auto key = GenerateRandomKey();
-    auto msg = rng.rand256();
-    auto merkle_root = use_null_merkle_root ? uint256() : rng.rand256();
-    auto aux = rng.rand256();
-    std::vector<unsigned char> sig(64);
-
-    bench.minEpochIterations(100).run([&] {
-        bool success = key.SignSchnorr(msg, sig, &merkle_root, aux);
-        assert(success);
-    });
-}
-
-static void SignSchnorrWithMerkleRoot(benchmark::Bench& bench)
-{
-    SignSchnorrTapTweakBenchmark(bench, /*use_null_merkle_root=*/false);
-}
-
-static void SignSchnorrWithNullMerkleRoot(benchmark::Bench& bench)
-{
-    SignSchnorrTapTweakBenchmark(bench, /*use_null_merkle_root=*/true);
-}
-
 BENCHMARK(SignTransactionECDSA, benchmark::PriorityLevel::HIGH);
-BENCHMARK(SignTransactionSchnorr, benchmark::PriorityLevel::HIGH);
-BENCHMARK(SignSchnorrWithMerkleRoot, benchmark::PriorityLevel::HIGH);
-BENCHMARK(SignSchnorrWithNullMerkleRoot, benchmark::PriorityLevel::HIGH);

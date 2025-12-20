@@ -90,9 +90,6 @@ public:
             m_sigs_weight += weight;
             m_sigs_count++;
             break;
-        case SigVersion::TAPROOT:
-        case SigVersion::TAPSCRIPT:
-            assert(false);
         }
     }
 

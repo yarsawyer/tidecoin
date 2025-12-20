@@ -1287,92 +1287,40 @@ class SegWitTest(BitcoinTestFramework):
 
     @subtest
     def test_segwit_versions(self):
-        """Test validity of future segwit version transactions.
+        """Segwit v1+ witness programs are disabled; only v0 is supported."""
 
-        Future segwit versions are non-standard to spend, but valid in blocks.
-        Sending to future segwit versions is always allowed.
-        Can run this before and after segwit activation."""
-
-        NUM_SEGWIT_VERSIONS = 17  # will test OP_0, OP1, ..., OP_16
-        if len(self.utxo) < NUM_SEGWIT_VERSIONS:
-            tx = CTransaction()
-            tx.vin.append(CTxIn(COutPoint(self.utxo[0].sha256, self.utxo[0].n), b""))
-            split_value = (self.utxo[0].nValue - 4000) // NUM_SEGWIT_VERSIONS
-            for _ in range(NUM_SEGWIT_VERSIONS):
-                tx.vout.append(CTxOut(split_value, CScript([OP_TRUE])))
-            block = self.build_next_block()
-            self.update_witness_block_with_transactions(block, [tx])
-            test_witness_block(self.nodes[0], self.test_node, block, accepted=True)
-            self.utxo.pop(0)
-            for i in range(NUM_SEGWIT_VERSIONS):
-                self.utxo.append(UTXO(tx.txid_int, i, split_value))
-
-        self.sync_blocks()
-        temp_utxo = []
-        tx = CTransaction()
         witness_script = CScript([OP_TRUE])
         witness_hash = sha256(witness_script)
-        assert_equal(len(self.nodes[1].getrawmempool()), 0)
-        for version in list(range(OP_1, OP_16 + 1)) + [OP_0]:
-            # First try to spend to a future version segwit script_pubkey.
-            if version == OP_1:
-                # Don't use 32-byte v1 witness (used by Taproot; see BIP 341)
-                script_pubkey = CScript([CScriptOp(version), witness_hash + b'\x00'])
-            else:
-                script_pubkey = CScript([CScriptOp(version), witness_hash])
-            tx.vin = [CTxIn(COutPoint(self.utxo[0].sha256, self.utxo[0].n), b"")]
-            tx.vout = [CTxOut(self.utxo[0].nValue - 1000, script_pubkey)]
-            test_transaction_acceptance(self.nodes[1], self.std_node, tx, with_witness=True, accepted=False)
-            test_transaction_acceptance(self.nodes[0], self.test_node, tx, with_witness=True, accepted=True)
-            self.utxo.pop(0)
-            temp_utxo.append(UTXO(tx.txid_int, 0, tx.vout[0].nValue))
 
-        self.generate(self.nodes[0], 1)  # Mine all the transactions
-        assert len(self.nodes[0].getrawmempool()) == 0
+        # Create a v1 witness program output (non-standard, but can be mined).
+        script_pubkey = CScript([CScriptOp(OP_1), witness_hash + b'\x00'])
+        tx = CTransaction()
+        tx.vin = [CTxIn(COutPoint(self.utxo[0].sha256, self.utxo[0].n), b"")]
+        tx.vout = [CTxOut(self.utxo[0].nValue - 1000, script_pubkey)]
 
-        # Finally, verify that version 0 -> version 2 transactions
-        # are standard
-        script_pubkey = CScript([CScriptOp(OP_2), witness_hash])
-        tx2 = CTransaction()
-        tx2.vin = [CTxIn(COutPoint(tx.txid_int, 0), b"")]
-        tx2.vout = [CTxOut(tx.vout[0].nValue - 1000, script_pubkey)]
-        tx2.wit.vtxinwit.append(CTxInWitness())
-        tx2.wit.vtxinwit[0].scriptWitness.stack = [witness_script]
-        # Gets accepted to both policy-enforcing nodes and others.
-        test_transaction_acceptance(self.nodes[0], self.test_node, tx2, with_witness=True, accepted=True)
-        test_transaction_acceptance(self.nodes[1], self.std_node, tx2, with_witness=True, accepted=True)
-        temp_utxo.pop()  # last entry in temp_utxo was the output we just spent
-        temp_utxo.append(UTXO(tx2.txid_int, 0, tx2.vout[0].nValue))
+        test_transaction_acceptance(self.nodes[1], self.std_node, tx, with_witness=True, accepted=False)
+        test_transaction_acceptance(self.nodes[0], self.test_node, tx, with_witness=True, accepted=True)
 
-        # Spend everything in temp_utxo into an segwit v1 output.
-        tx3 = CTransaction()
-        total_value = 0
-        for i in temp_utxo:
-            tx3.vin.append(CTxIn(COutPoint(i.sha256, i.n), b""))
-            tx3.wit.vtxinwit.append(CTxInWitness())
-            total_value += i.nValue
-        tx3.wit.vtxinwit[-1].scriptWitness.stack = [witness_script]
-        tx3.vout.append(CTxOut(total_value - 1000, script_pubkey))
-
-        # First we test this transaction against std_node
-        # making sure the txid is added to the reject filter
-        self.std_node.announce_tx_and_wait_for_getdata(tx3)
-        test_transaction_acceptance(self.nodes[1], self.std_node, tx3, with_witness=True, accepted=False, reason="bad-txns-nonstandard-inputs")
-        # Now the node will no longer ask for getdata of this transaction when advertised by same txid
-        self.std_node.announce_tx_and_wait_for_getdata(tx3, success=False)
-
-        # Spending a higher version witness output is not allowed by policy,
-        # even with the node that accepts non-standard txs.
-        test_transaction_acceptance(self.nodes[0], self.test_node, tx3, with_witness=True, accepted=False, reason="reserved for soft-fork upgrades")
-
-        # Building a block with the transaction must be valid, however.
         block = self.build_next_block()
-        self.update_witness_block_with_transactions(block, [tx2, tx3])
+        self.update_witness_block_with_transactions(block, [tx])
         test_witness_block(self.nodes[0], self.test_node, block, accepted=True)
         self.sync_blocks()
 
-        # Add utxo to our list
-        self.utxo.append(UTXO(tx3.txid_int, 0, tx3.vout[0].nValue))
+        self.utxo.pop(0)
+
+        # Spending a v1 witness output is invalid at consensus.
+        spend_tx = CTransaction()
+        spend_tx.vin = [CTxIn(COutPoint(tx.txid_int, 0), b"")]
+        spend_tx.vout = [CTxOut(tx.vout[0].nValue - 1000, CScript([OP_TRUE]))]
+        spend_tx.wit.vtxinwit.append(CTxInWitness())
+        spend_tx.wit.vtxinwit[0].scriptWitness.stack = [witness_script]
+
+        test_transaction_acceptance(self.nodes[0], self.test_node, spend_tx, with_witness=True, accepted=False)
+        test_transaction_acceptance(self.nodes[1], self.std_node, spend_tx, with_witness=True, accepted=False)
+
+        block = self.build_next_block()
+        self.update_witness_block_with_transactions(block, [spend_tx])
+        test_witness_block(self.nodes[0], self.test_node, block, accepted=False)
 
     @subtest
     def test_premature_coinbase_witness_spend(self):

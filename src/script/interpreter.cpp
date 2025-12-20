@@ -343,47 +343,7 @@ static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPu
     return true;
 }
 
-static bool EvalChecksigTapscript(const valtype& sig, const valtype& pubkey, ScriptExecutionData& execdata, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* serror, bool& success)
-{
-    assert(sigversion == SigVersion::TAPSCRIPT);
-
-    /*
-     *  The following validation sequence is consensus critical. Please note how --
-     *    upgradable public key versions precede other rules;
-     *    the script execution fails when using empty signature with invalid public key;
-     *    the script execution fails when using non-empty invalid signature.
-     */
-    success = !sig.empty();
-    if (success) {
-        // Implement the sigops/witnesssize ratio test.
-        // Passing with an upgradable public key version is also counted.
-        assert(execdata.m_validation_weight_left_init);
-        execdata.m_validation_weight_left -= VALIDATION_WEIGHT_PER_SIGOP_PASSED;
-        if (execdata.m_validation_weight_left < 0) {
-            return set_error(serror, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
-        }
-    }
-    if (pubkey.size() == 0) {
-        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
-    } else if (pubkey.size() == 32) {
-        if (success && !checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror)) {
-            return false; // serror is set
-        }
-    } else {
-        /*
-         *  New public key version softforks should be defined before this `else` block.
-         *  Generally, the new code should not do anything but failing the script execution. To avoid
-         *  consensus bugs, it should not modify any existing values (including `success`).
-         */
-        if ((flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE) != 0) {
-            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
-        }
-    }
-
-    return true;
-}
-
-/** Helper for OP_CHECKSIG, OP_CHECKSIGVERIFY, and (in Tapscript) OP_CHECKSIGADD.
+/** Helper for OP_CHECKSIG and OP_CHECKSIGVERIFY.
  *
  * A return value of false means the script fails entirely. When true is returned, the
  * success variable indicates whether the signature check itself succeeded.
@@ -394,11 +354,6 @@ static bool EvalChecksig(const valtype& sig, const valtype& pubkey, CScript::con
     case SigVersion::BASE:
     case SigVersion::WITNESS_V0:
         return EvalChecksigPreTapscript(sig, pubkey, pbegincodehash, pend, flags, checker, sigversion, serror, success);
-    case SigVersion::TAPSCRIPT:
-        return EvalChecksigTapscript(sig, pubkey, execdata, flags, checker, sigversion, serror, success);
-    case SigVersion::TAPROOT:
-        // Key path spending in Taproot has no script, so this is unreachable.
-        break;
     }
     assert(false);
 }
@@ -413,8 +368,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     // static const valtype vchZero(0);
     static const valtype vchTrue(1, 1);
 
-    // sigversion cannot be TAPROOT here, as it admits no script execution.
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::TAPSCRIPT);
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0);
 
     CScript::const_iterator pc = script.begin();
     CScript::const_iterator pend = script.end();
@@ -430,8 +384,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     int nOpCount = 0;
     bool fRequireMinimal = (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
     uint32_t opcode_pos = 0;
-    execdata.m_codeseparator_pos = 0xFFFFFFFFUL;
-    execdata.m_codeseparator_pos_init = true;
 
     try
     {
@@ -609,14 +561,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         if (stack.size() < 1)
                             return set_error(serror, SCRIPT_ERR_UNBALANCED_CONDITIONAL);
                         valtype& vch = stacktop(-1);
-                        // Tapscript requires minimal IF/NOTIF inputs as a consensus rule.
-                        if (sigversion == SigVersion::TAPSCRIPT) {
-                            // The input argument to the OP_IF and OP_NOTIF opcodes must be either
-                            // exactly 0 (the empty vector) or exactly 1 (the one-byte vector with value 1).
-                            if (vch.size() > 1 || (vch.size() == 1 && vch[0] != 1)) {
-                                return set_error(serror, SCRIPT_ERR_TAPSCRIPT_MINIMALIF);
-                            }
-                        }
                         // Under witness v0 rules it is only a policy rule, enabled through SCRIPT_VERIFY_MINIMALIF.
                         if (sigversion == SigVersion::WITNESS_V0 && (flags & SCRIPT_VERIFY_MINIMALIF)) {
                             if (vch.size() > 1)
@@ -1051,7 +995,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 
                     // Hash starts after the code separator
                     pbegincodehash = pc;
-                    execdata.m_codeseparator_pos = opcode_pos;
                 }
                 break;
 
@@ -1082,30 +1025,13 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 
                 case OP_CHECKSIGADD:
                 {
-                    // OP_CHECKSIGADD is only available in Tapscript
-                    if (sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0) return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
-
-                    // (sig num pubkey -- num)
-                    if (stack.size() < 3) return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
-
-                    const valtype& sig = stacktop(-3);
-                    const CScriptNum num(stacktop(-2), fRequireMinimal);
-                    const valtype& pubkey = stacktop(-1);
-
-                    bool success = true;
-                    if (!EvalChecksig(sig, pubkey, pbegincodehash, pend, execdata, flags, checker, sigversion, serror, success)) return false;
-                    popstack(stack);
-                    popstack(stack);
-                    popstack(stack);
-                    stack.push_back((num + (success ? 1 : 0)).getvch());
+                    return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
                 }
                 break;
 
                 case OP_CHECKMULTISIG:
                 case OP_CHECKMULTISIGVERIFY:
                 {
-                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG);
-
                     // ([sig ...] num_of_signatures [pubkey ...] num_of_pubkeys -- bool)
 
                     int i = 1;
@@ -1371,27 +1297,6 @@ uint256 GetOutputsSHA256(const T& txTo)
     return ss.GetSHA256();
 }
 
-/** Compute the (single) SHA256 of the concatenation of all amounts spent by a tx. */
-uint256 GetSpentAmountsSHA256(const std::vector<CTxOut>& outputs_spent)
-{
-    HashWriter ss{};
-    for (const auto& txout : outputs_spent) {
-        ss << txout.nValue;
-    }
-    return ss.GetSHA256();
-}
-
-/** Compute the (single) SHA256 of the concatenation of all scriptPubKeys spent by a tx. */
-uint256 GetSpentScriptsSHA256(const std::vector<CTxOut>& outputs_spent)
-{
-    HashWriter ss{};
-    for (const auto& txout : outputs_spent) {
-        ss << txout.scriptPubKey;
-    }
-    return ss.GetSHA256();
-}
-
-
 } // namespace
 
 template <class T>
@@ -1407,42 +1312,20 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
 
     // Determine which precomputation-impacting features this transaction uses.
     bool uses_bip143_segwit = force;
-    bool uses_bip341_taproot = force;
-    for (size_t inpos = 0; inpos < txTo.vin.size() && !(uses_bip143_segwit && uses_bip341_taproot); ++inpos) {
+    for (size_t inpos = 0; inpos < txTo.vin.size() && !uses_bip143_segwit; ++inpos) {
         if (!txTo.vin[inpos].scriptWitness.IsNull()) {
-            if (m_spent_outputs_ready && m_spent_outputs[inpos].scriptPubKey.size() == 2 + WITNESS_V1_TAPROOT_SIZE &&
-                m_spent_outputs[inpos].scriptPubKey[0] == OP_1) {
-                // Treat every witness-bearing spend with 34-byte scriptPubKey that starts with OP_1 as a Taproot
-                // spend. This only works if spent_outputs was provided as well, but if it wasn't, actual validation
-                // will fail anyway. Note that this branch may trigger for scriptPubKeys that aren't actually segwit
-                // but in that case validation will fail as SCRIPT_ERR_WITNESS_UNEXPECTED anyway.
-                uses_bip341_taproot = true;
-            } else {
-                // Treat every spend that's not known to native witness v1 as a Witness v0 spend. This branch may
-                // also be taken for unknown witness versions, but it is harmless, and being precise would require
-                // P2SH evaluation to find the redeemScript.
-                uses_bip143_segwit = true;
-            }
+            uses_bip143_segwit = true;
         }
-        if (uses_bip341_taproot && uses_bip143_segwit) break; // No need to scan further if we already need all.
     }
 
-    if (uses_bip143_segwit || uses_bip341_taproot) {
-        // Computations shared between both sighash schemes.
+    if (uses_bip143_segwit) {
         m_prevouts_single_hash = GetPrevoutsSHA256(txTo);
         m_sequences_single_hash = GetSequencesSHA256(txTo);
         m_outputs_single_hash = GetOutputsSHA256(txTo);
-    }
-    if (uses_bip143_segwit) {
         hashPrevouts = SHA256Uint256(m_prevouts_single_hash);
         hashSequence = SHA256Uint256(m_sequences_single_hash);
         hashOutputs = SHA256Uint256(m_outputs_single_hash);
         m_bip143_segwit_ready = true;
-    }
-    if (uses_bip341_taproot && m_spent_outputs_ready) {
-        m_spent_amounts_single_hash = GetSpentAmountsSHA256(m_spent_outputs);
-        m_spent_scripts_single_hash = GetSpentScriptsSHA256(m_spent_outputs);
-        m_bip341_taproot_ready = true;
     }
 }
 
@@ -1458,10 +1341,6 @@ template void PrecomputedTransactionData::Init(const CMutableTransaction& txTo, 
 template PrecomputedTransactionData::PrecomputedTransactionData(const CTransaction& txTo);
 template PrecomputedTransactionData::PrecomputedTransactionData(const CMutableTransaction& txTo);
 
-const HashWriter HASHER_TAPSIGHASH{TaggedHash("TapSighash")};
-const HashWriter HASHER_TAPLEAF{TaggedHash("TapLeaf")};
-const HashWriter HASHER_TAPBRANCH{TaggedHash("TapBranch")};
-
 static bool HandleMissingData(MissingDataBehavior mdb)
 {
     switch (mdb) {
@@ -1472,96 +1351,6 @@ static bool HandleMissingData(MissingDataBehavior mdb)
         return false;
     }
     assert(!"Unknown MissingDataBehavior value");
-}
-
-template<typename T>
-bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, const T& tx_to, uint32_t in_pos, uint8_t hash_type, SigVersion sigversion, const PrecomputedTransactionData& cache, MissingDataBehavior mdb)
-{
-    uint8_t ext_flag, key_version;
-    switch (sigversion) {
-    case SigVersion::TAPROOT:
-        ext_flag = 0;
-        // key_version is not used and left uninitialized.
-        break;
-    case SigVersion::TAPSCRIPT:
-        ext_flag = 1;
-        // key_version must be 0 for now, representing the current version of
-        // 32-byte public keys in the tapscript signature opcode execution.
-        // An upgradable public key version (with a size not 32-byte) may
-        // request a different key_version with a new sigversion.
-        key_version = 0;
-        break;
-    default:
-        assert(false);
-    }
-    assert(in_pos < tx_to.vin.size());
-    if (!(cache.m_bip341_taproot_ready && cache.m_spent_outputs_ready)) {
-        return HandleMissingData(mdb);
-    }
-
-    HashWriter ss{HASHER_TAPSIGHASH};
-
-    // Epoch
-    static constexpr uint8_t EPOCH = 0;
-    ss << EPOCH;
-
-    // Hash type
-    const uint8_t output_type = (hash_type == SIGHASH_DEFAULT) ? SIGHASH_ALL : (hash_type & SIGHASH_OUTPUT_MASK); // Default (no sighash byte) is equivalent to SIGHASH_ALL
-    const uint8_t input_type = hash_type & SIGHASH_INPUT_MASK;
-    if (!(hash_type <= 0x03 || (hash_type >= 0x81 && hash_type <= 0x83))) return false;
-    ss << hash_type;
-
-    // Transaction level data
-    ss << tx_to.version;
-    ss << tx_to.nLockTime;
-    if (input_type != SIGHASH_ANYONECANPAY) {
-        ss << cache.m_prevouts_single_hash;
-        ss << cache.m_spent_amounts_single_hash;
-        ss << cache.m_spent_scripts_single_hash;
-        ss << cache.m_sequences_single_hash;
-    }
-    if (output_type == SIGHASH_ALL) {
-        ss << cache.m_outputs_single_hash;
-    }
-
-    // Data about the input/prevout being spent
-    assert(execdata.m_annex_init);
-    const bool have_annex = execdata.m_annex_present;
-    const uint8_t spend_type = (ext_flag << 1) + (have_annex ? 1 : 0); // The low bit indicates whether an annex is present.
-    ss << spend_type;
-    if (input_type == SIGHASH_ANYONECANPAY) {
-        ss << tx_to.vin[in_pos].prevout;
-        ss << cache.m_spent_outputs[in_pos];
-        ss << tx_to.vin[in_pos].nSequence;
-    } else {
-        ss << in_pos;
-    }
-    if (have_annex) {
-        ss << execdata.m_annex_hash;
-    }
-
-    // Data about the output (if only one).
-    if (output_type == SIGHASH_SINGLE) {
-        if (in_pos >= tx_to.vout.size()) return false;
-        if (!execdata.m_output_hash) {
-            HashWriter sha_single_output{};
-            sha_single_output << tx_to.vout[in_pos];
-            execdata.m_output_hash = sha_single_output.GetSHA256();
-        }
-        ss << execdata.m_output_hash.value();
-    }
-
-    // Additional data for BIP 342 signatures
-    if (sigversion == SigVersion::TAPSCRIPT) {
-        assert(execdata.m_tapleaf_hash_init);
-        ss << execdata.m_tapleaf_hash;
-        ss << key_version;
-        assert(execdata.m_codeseparator_pos_init);
-        ss << execdata.m_codeseparator_pos;
-    }
-
-    hash_out = ss.GetSHA256();
-    return true;
 }
 
 int SigHashCache::CacheIndex(int32_t hash_type) const noexcept
@@ -1678,12 +1467,6 @@ bool GenericTransactionSignatureChecker<T>::VerifyECDSASignature(const std::vect
 }
 
 template <class T>
-bool GenericTransactionSignatureChecker<T>::VerifySchnorrSignature(std::span<const unsigned char> sig, const XOnlyPubKey& pubkey, const uint256& sighash) const
-{
-    return pubkey.VerifySchnorr(sighash, sig);
-}
-
-template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
 {
     CPubKey pubkey(vchPubKey);
@@ -1705,34 +1488,6 @@ bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vecto
     if (!VerifyECDSASignature(vchSig, pubkey, sighash))
         return false;
 
-    return true;
-}
-
-template <class T>
-bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey_in, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const
-{
-    assert(sigversion == SigVersion::TAPROOT || sigversion == SigVersion::TAPSCRIPT);
-    // Schnorr signatures have 32-byte public keys. The caller is responsible for enforcing this.
-    assert(pubkey_in.size() == 32);
-    // Note that in Tapscript evaluation, empty signatures are treated specially (invalid signature that does not
-    // abort script execution). This is implemented in EvalChecksigTapscript, which won't invoke
-    // CheckSchnorrSignature in that case. In other contexts, they are invalid like every other signature with
-    // size different from 64 or 65.
-    if (sig.size() != 64 && sig.size() != 65) return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_SIZE);
-
-    XOnlyPubKey pubkey{pubkey_in};
-
-    uint8_t hashtype = SIGHASH_DEFAULT;
-    if (sig.size() == 65) {
-        hashtype = SpanPopBack(sig);
-        if (hashtype == SIGHASH_DEFAULT) return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_HASHTYPE);
-    }
-    uint256 sighash;
-    if (!this->txdata) return HandleMissingData(m_mdb);
-    if (!SignatureHashSchnorr(sighash, execdata, *txTo, nIn, hashtype, sigversion, *this->txdata, m_mdb)) {
-        return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_HASHTYPE);
-    }
-    if (!VerifySchnorrSignature(sig, pubkey, sighash)) return set_error(serror, SCRIPT_ERR_SCHNORR_SIG);
     return true;
 }
 
@@ -1828,28 +1583,6 @@ static bool ExecuteWitnessScript(const std::span<const valtype>& stack_span, con
 {
     std::vector<valtype> stack{stack_span.begin(), stack_span.end()};
 
-    if (sigversion == SigVersion::TAPSCRIPT) {
-        // OP_SUCCESSx processing overrides everything, including stack element size limits
-        CScript::const_iterator pc = exec_script.begin();
-        while (pc < exec_script.end()) {
-            opcodetype opcode;
-            if (!exec_script.GetOp(pc, opcode)) {
-                // Note how this condition would not be reached if an unknown OP_SUCCESSx was found
-                return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
-            }
-            // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
-            if (IsOpSuccess(opcode)) {
-                if (flags & SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS) {
-                    return set_error(serror, SCRIPT_ERR_DISCOURAGE_OP_SUCCESS);
-                }
-                return set_success(serror);
-            }
-        }
-
-        // Tapscript enforces initial stack size limits (altstack is empty here)
-        if (stack.size() > MAX_STACK_SIZE) return set_error(serror, SCRIPT_ERR_STACK_SIZE);
-    }
-
     // Disallow stack item size > MAX_SCRIPT_ELEMENT_SIZE in witness stack
     for (const valtype& elem : stack) {
         if (elem.size() > MAX_SCRIPT_ELEMENT_SIZE) return set_error(serror, SCRIPT_ERR_PUSH_SIZE);
@@ -1864,54 +1597,9 @@ static bool ExecuteWitnessScript(const std::span<const valtype>& stack_span, con
     return true;
 }
 
-uint256 ComputeTapleafHash(uint8_t leaf_version, std::span<const unsigned char> script)
-{
-    return (HashWriter{HASHER_TAPLEAF} << leaf_version << CompactSizeWriter(script.size()) << script).GetSHA256();
-}
-
-uint256 ComputeTapbranchHash(std::span<const unsigned char> a, std::span<const unsigned char> b)
-{
-    HashWriter ss_branch{HASHER_TAPBRANCH};
-    if (std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end())) {
-        ss_branch << a << b;
-    } else {
-        ss_branch << b << a;
-    }
-    return ss_branch.GetSHA256();
-}
-
-uint256 ComputeTaprootMerkleRoot(std::span<const unsigned char> control, const uint256& tapleaf_hash)
-{
-    assert(control.size() >= TAPROOT_CONTROL_BASE_SIZE);
-    assert(control.size() <= TAPROOT_CONTROL_MAX_SIZE);
-    assert((control.size() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE == 0);
-
-    const int path_len = (control.size() - TAPROOT_CONTROL_BASE_SIZE) / TAPROOT_CONTROL_NODE_SIZE;
-    uint256 k = tapleaf_hash;
-    for (int i = 0; i < path_len; ++i) {
-        std::span node{std::span{control}.subspan(TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * i, TAPROOT_CONTROL_NODE_SIZE)};
-        k = ComputeTapbranchHash(k, node);
-    }
-    return k;
-}
-
-static bool VerifyTaprootCommitment(const std::vector<unsigned char>& control, const std::vector<unsigned char>& program, const uint256& tapleaf_hash)
-{
-    assert(control.size() >= TAPROOT_CONTROL_BASE_SIZE);
-    assert(program.size() >= uint256::size());
-    //! The internal pubkey (x-only, so no Y coordinate parity).
-    const XOnlyPubKey p{std::span{control}.subspan(1, TAPROOT_CONTROL_BASE_SIZE - 1)};
-    //! The output pubkey (taken from the scriptPubKey).
-    const XOnlyPubKey q{program};
-    // Compute the Merkle root from the leaf and the provided path.
-    const uint256 merkle_root = ComputeTaprootMerkleRoot(control, tapleaf_hash);
-    // Verify that the output pubkey matches the tweaked internal pubkey, after correcting for parity.
-    return q.CheckTapTweak(p, merkle_root, control[0] & 1);
-}
-
 static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror, bool is_p2sh)
 {
-    CScript exec_script; //!< Actually executed script (last stack item in P2WSH; implied P2PKH script in P2WPKH; leaf script in P2TR)
+    CScript exec_script; //!< Actually executed script (last stack item in P2WSH; implied P2PKH script in P2WPKH)
     std::span stack{witness.stack};
     ScriptExecutionData execdata;
 
@@ -1939,57 +1627,8 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         } else {
             return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH);
         }
-    } else if (witversion == 1 && program.size() == WITNESS_V1_TAPROOT_SIZE && !is_p2sh) {
-        // BIP341 Taproot: 32-byte non-P2SH witness v1 program (which encodes a P2C-tweaked pubkey)
-        if (!(flags & SCRIPT_VERIFY_TAPROOT)) return set_success(serror);
-        if (stack.size() == 0) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
-        if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
-            // Drop annex (this is non-standard; see IsWitnessStandard)
-            const valtype& annex = SpanPopBack(stack);
-            execdata.m_annex_hash = (HashWriter{} << annex).GetSHA256();
-            execdata.m_annex_present = true;
-        } else {
-            execdata.m_annex_present = false;
-        }
-        execdata.m_annex_init = true;
-        if (stack.size() == 1) {
-            // Key path spending (stack size is 1 after removing optional annex)
-            if (!checker.CheckSchnorrSignature(stack.front(), program, SigVersion::TAPROOT, execdata, serror)) {
-                return false; // serror is set
-            }
-            return set_success(serror);
-        } else {
-            // Script path spending (stack size is >1 after removing optional annex)
-            const valtype& control = SpanPopBack(stack);
-            const valtype& script = SpanPopBack(stack);
-            if (control.size() < TAPROOT_CONTROL_BASE_SIZE || control.size() > TAPROOT_CONTROL_MAX_SIZE || ((control.size() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE) != 0) {
-                return set_error(serror, SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE);
-            }
-            execdata.m_tapleaf_hash = ComputeTapleafHash(control[0] & TAPROOT_LEAF_MASK, script);
-            if (!VerifyTaprootCommitment(control, program, execdata.m_tapleaf_hash)) {
-                return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
-            }
-            execdata.m_tapleaf_hash_init = true;
-            if ((control[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
-                // Tapscript (leaf version 0xc0)
-                exec_script = CScript(script.begin(), script.end());
-                execdata.m_validation_weight_left = ::GetSerializeSize(witness.stack) + VALIDATION_WEIGHT_OFFSET;
-                execdata.m_validation_weight_left_init = true;
-                return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::TAPSCRIPT, checker, execdata, serror);
-            }
-            if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) {
-                return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION);
-            }
-            return set_success(serror);
-        }
-    } else if (!is_p2sh && CScript::IsPayToAnchor(witversion, program)) {
-        return true;
     } else {
-        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
-            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
-        }
-        // Other version/size/p2sh combinations return true for future softfork compatibility
-        return true;
+        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
     }
     // There is intentionally no return statement here, to be able to use "control reaches end of non-void function" warnings to detect gaps in the logic above.
 }

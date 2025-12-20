@@ -24,13 +24,13 @@ using util::SplitString;
 // fuzzing the inputs is unlikely to construct useful test cases.
 //
 // Instead, it is primarily intended to be run on a test set that was generated
-// externally, for example using test/functional/feature_taproot.py's --dumptests mode.
+// externally, for example using a functional test's --dumptests mode.
 // The minimized set can then be concatenated together, surrounded by '[' and ']',
 // and used as the script_assets_test.json input to the script_assets_test unit test:
 //
 // (normal build)
 // $ mkdir dump
-// $ for N in $(seq 1 10); do TEST_DUMP_DIR=dump test/functional/feature_taproot.py --dumptests; done
+// $ for N in $(seq 1 10); do TEST_DUMP_DIR=dump test/functional/<test>.py --dumptests; done
 // $ ...
 //
 // (libFuzzer build)
@@ -97,14 +97,13 @@ const std::map<std::string, unsigned int> FLAG_NAMES = {
     {std::string("CHECKLOCKTIMEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY},
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
     {std::string("WITNESS"), (unsigned int)SCRIPT_VERIFY_WITNESS},
-    {std::string("TAPROOT"), (unsigned int)SCRIPT_VERIFY_TAPROOT},
 };
 
 std::vector<unsigned int> AllFlags()
 {
     std::vector<unsigned int> ret;
 
-    for (unsigned int i = 0; i < 128; ++i) {
+    for (unsigned int i = 0; i < 64; ++i) {
         unsigned int flag = 0;
         if (i & 1) flag |= SCRIPT_VERIFY_P2SH;
         if (i & 2) flag |= SCRIPT_VERIFY_DERSIG;
@@ -112,12 +111,9 @@ std::vector<unsigned int> AllFlags()
         if (i & 8) flag |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
         if (i & 16) flag |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
         if (i & 32) flag |= SCRIPT_VERIFY_WITNESS;
-        if (i & 64) flag |= SCRIPT_VERIFY_TAPROOT;
 
         // SCRIPT_VERIFY_WITNESS requires SCRIPT_VERIFY_P2SH
         if (flag & SCRIPT_VERIFY_WITNESS && !(flag & SCRIPT_VERIFY_P2SH)) continue;
-        // SCRIPT_VERIFY_TAPROOT requires SCRIPT_VERIFY_WITNESS
-        if (flag & SCRIPT_VERIFY_TAPROOT && !(flag & SCRIPT_VERIFY_WITNESS)) continue;
 
         ret.push_back(flag);
     }

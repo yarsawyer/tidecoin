@@ -49,7 +49,7 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
     // Sanity check on k
     if (fragment == Fragment::OLDER || fragment == Fragment::AFTER) {
         CHECK_NONFATAL(k >= 1 && k < 0x80000000UL);
-    } else if (fragment == Fragment::MULTI || fragment == Fragment::MULTI_A) {
+    } else if (fragment == Fragment::MULTI) {
         CHECK_NONFATAL(k >= 1 && k <= n_keys);
     } else if (fragment == Fragment::THRESH) {
         CHECK_NONFATAL(k >= 1 && k <= n_subs);
@@ -75,9 +75,6 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
     } else if (fragment == Fragment::MULTI) {
         CHECK_NONFATAL(n_keys >= 1 && n_keys <= MAX_PUBKEYS_PER_MULTISIG);
         CHECK_NONFATAL(!IsTapscript(ms_ctx));
-    } else if (fragment == Fragment::MULTI_A) {
-        CHECK_NONFATAL(n_keys >= 1 && n_keys <= MAX_PUBKEYS_PER_MULTI_A);
-        CHECK_NONFATAL(IsTapscript(ms_ctx));
     } else {
         CHECK_NONFATAL(n_keys == 0);
     }
@@ -223,9 +220,6 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
         case Fragment::MULTI: {
             return "Bnudemsk"_mst;
         }
-        case Fragment::MULTI_A: {
-            return "Budemsk"_mst;
-        }
         case Fragment::THRESH: {
             bool all_e = true;
             bool all_m = true;
@@ -275,7 +269,6 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
         case Fragment::HASH160:
         case Fragment::RIPEMD160: return 4 + 2 + 21;
         case Fragment::MULTI: return 1 + BuildScript(n_keys).size() + BuildScript(k).size() + 34 * n_keys;
-        case Fragment::MULTI_A: return (1 + 32 + 1) * n_keys + BuildScript(k).size() + 1;
         case Fragment::AND_V: return subsize;
         case Fragment::WRAP_V: return subsize + (sub0typ << "x"_mst);
         case Fragment::WRAP_S:

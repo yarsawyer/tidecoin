@@ -67,7 +67,7 @@ class ToolWalletTest(BitcoinTestFramework):
 
     def get_expected_info_output(self, name="", transactions=0, keypool=2, address=0, imported_privs=0):
         wallet_name = self.default_wallet_name if name == "" else name
-        output_types = 4  # p2pkh, p2sh, segwit, bech32m
+        output_types = 3  # p2pkh, p2sh, segwit
         return textwrap.dedent('''\
             Wallet info
             ===========

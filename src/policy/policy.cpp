@@ -47,10 +47,7 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     std::vector<unsigned char> witnessprogram;
 
     // Note this computation is for spending a Segwit v0 P2WPKH output (a 33 bytes
-    // public key + an ECDSA signature). For Segwit v1 Taproot outputs the minimum
-    // satisfaction is lower (a single BIP340 signature) but this computation was
-    // kept to not further reduce the dust level.
-    // See discussion in https://github.com/bitcoin/bitcoin/pull/22779 for details.
+    // public key + an ECDSA signature).
     if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         // sum the sizes of the parts of a transaction input
         // with 75% segwit discount applied to the script size.
@@ -225,11 +222,7 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
 
         std::vector<std::vector<unsigned char> > vSolutions;
         TxoutType whichType = Solver(prev.scriptPubKey, vSolutions);
-        if (whichType == TxoutType::NONSTANDARD || whichType == TxoutType::WITNESS_UNKNOWN) {
-            // WITNESS_UNKNOWN failures are typically also caught with a policy
-            // flag in the script interpreter, but it can be helpful to catch
-            // this type of NONSTANDARD transaction earlier in transaction
-            // validation.
+        if (whichType == TxoutType::NONSTANDARD) {
             return false;
         } else if (whichType == TxoutType::SCRIPTHASH) {
             std::vector<std::vector<unsigned char> > stack;
@@ -265,12 +258,6 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
         // get the scriptPubKey corresponding to this input:
         CScript prevScript = prev.scriptPubKey;
 
-        // witness stuffing detected
-        if (prevScript.IsPayToAnchor()) {
-            return false;
-        }
-
-        bool p2sh = false;
         if (prevScript.IsPayToScriptHash()) {
             std::vector <std::vector<unsigned char> > stack;
             // If the scriptPubKey is P2SH, we try to extract the redeemScript casually by converting the scriptSig
@@ -281,7 +268,6 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
             if (stack.empty())
                 return false;
             prevScript = CScript(stack.back().begin(), stack.back().end());
-            p2sh = true;
         }
 
         int witnessversion = 0;
@@ -290,6 +276,10 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
         // Non-witness program must not be associated with any witness
         if (!prevScript.IsWitnessProgram(witnessversion, witnessprogram))
             return false;
+
+        if (witnessversion != 0) {
+            return false;
+        }
 
         // Check P2WSH standard limits
         if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
@@ -304,35 +294,6 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
             }
         }
 
-        // Check policy limits for Taproot spends:
-        // - MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE limit for stack item size
-        // - No annexes
-        if (witnessversion == 1 && witnessprogram.size() == WITNESS_V1_TAPROOT_SIZE && !p2sh) {
-            // Taproot spend (non-P2SH-wrapped, version 1, witness program size 32; see BIP 341)
-            std::span stack{tx.vin[i].scriptWitness.stack};
-            if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
-                // Annexes are nonstandard as long as no semantics are defined for them.
-                return false;
-            }
-            if (stack.size() >= 2) {
-                // Script path spend (2 or more stack elements after removing optional annex)
-                const auto& control_block = SpanPopBack(stack);
-                SpanPopBack(stack); // Ignore script
-                if (control_block.empty()) return false; // Empty control block is invalid
-                if ((control_block[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
-                    // Leaf version 0xc0 (aka Tapscript, see BIP 342)
-                    for (const auto& item : stack) {
-                        if (item.size() > MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE) return false;
-                    }
-                }
-            } else if (stack.size() == 1) {
-                // Key path spend (1 stack element after removing optional annex)
-                // (no policy rules apply)
-            } else {
-                // 0 stack elements; this is already invalid by consensus rules
-                return false;
-            }
-        }
     }
     return true;
 }
@@ -348,12 +309,12 @@ bool SpendsNonAnchorWitnessProg(const CTransaction& tx, const CCoinsViewCache& p
     for (const auto& txin: tx.vin) {
         const auto& prev_spk{prevouts.AccessCoin(txin.prevout).out.scriptPubKey};
 
-        // Note this includes not-yet-defined witness programs.
-        if (prev_spk.IsWitnessProgram(version, program) && !prev_spk.IsPayToAnchor(version, program)) {
-            return true;
+        if (prev_spk.IsWitnessProgram(version, program)) {
+            if (version == 0) return true;
+            continue;
         }
 
-        // For P2SH extract the redeem script and check if it spends a non-Taproot witness program. Note
+        // For P2SH extract the redeem script and check if it spends a non-anchor witness program. Note
         // this is fine to call EvalScript (as done in AreInputsStandard/IsWitnessStandard) because this
         // function is only ever called after IsStandardTx, which checks the scriptsig is pushonly.
         if (prev_spk.IsPayToScriptHash()) {
@@ -365,7 +326,7 @@ bool SpendsNonAnchorWitnessProg(const CTransaction& tx, const CCoinsViewCache& p
             }
             const CScript redeem_script{stack.back().begin(), stack.back().end()};
             if (redeem_script.IsWitnessProgram(version, program)) {
-                return true;
+                if (version == 0) return true;
             }
         }
     }

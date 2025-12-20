@@ -15,9 +15,6 @@
 #include <cassert>
 #include <cstring>
 
-/// Maximum witness length for Bech32 addresses.
-static constexpr std::size_t BECH32_WITNESS_PROG_MAX_LEN = 40;
-
 namespace {
 class DestinationEncoder
 {
@@ -55,26 +52,6 @@ public:
         data.reserve(53);
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
         return bech32::Encode(bech32::Encoding::BECH32, m_params.Bech32HRP(), data);
-    }
-
-    std::string operator()(const WitnessV1Taproot& tap) const
-    {
-        std::vector<unsigned char> data = {1};
-        data.reserve(53);
-        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, tap.begin(), tap.end());
-        return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
-    }
-
-    std::string operator()(const WitnessUnknown& id) const
-    {
-        const std::vector<unsigned char>& program = id.GetWitnessProgram();
-        if (id.GetWitnessVersion() < 1 || id.GetWitnessVersion() > 16 || program.size() < 2 || program.size() > 40) {
-            return {};
-        }
-        std::vector<unsigned char> data = {(unsigned char)id.GetWitnessVersion()};
-        data.reserve(1 + (program.size() * 8 + 4) / 5);
-        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, program.begin(), program.end());
-        return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
     }
 
     std::string operator()(const CNoDestination& no) const { return {}; }
@@ -140,12 +117,16 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             return CNoDestination();
         }
         int version = dec.data[0]; // The first 5 bit symbol is the witness version (0-16)
-        if (version == 0 && dec.encoding != bech32::Encoding::BECH32) {
+        if (version > 16) {
+            error_str = "Invalid Bech32 address witness version";
+            return CNoDestination();
+        }
+        if (dec.encoding == bech32::Encoding::BECH32M && version == 0) {
             error_str = "Version 0 witness address must use Bech32 checksum";
             return CNoDestination();
         }
-        if (version != 0 && dec.encoding != bech32::Encoding::BECH32M) {
-            error_str = "Version 1+ witness address must use Bech32m checksum";
+        if (version != 0) {
+            error_str = "Unsupported Segwit witness version";
             return CNoDestination();
         }
         // The rest of the symbols are converted witness program bytes.
@@ -174,28 +155,6 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
                 return CNoDestination();
             }
 
-            if (version == 1 && data.size() == WITNESS_V1_TAPROOT_SIZE) {
-                static_assert(WITNESS_V1_TAPROOT_SIZE == WitnessV1Taproot::size());
-                WitnessV1Taproot tap;
-                std::copy(data.begin(), data.end(), tap.begin());
-                return tap;
-            }
-
-            if (CScript::IsPayToAnchor(version, data)) {
-                return PayToAnchor();
-            }
-
-            if (version > 16) {
-                error_str = "Invalid Bech32 address witness version";
-                return CNoDestination();
-            }
-
-            if (data.size() < 2 || data.size() > BECH32_WITNESS_PROG_MAX_LEN) {
-                error_str = strprintf("Invalid Bech32 address program size (%d %s)", data.size(), byte_str);
-                return CNoDestination();
-            }
-
-            return WitnessUnknown{version, data};
         } else {
             error_str = strprintf("Invalid padding in Bech32 data section");
             return CNoDestination();

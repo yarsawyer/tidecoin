@@ -13,17 +13,16 @@ from typing import (
 )
 from test_framework.address import (
     address_to_scriptpubkey,
-    create_deterministic_address_bcrt1_p2tr_op_true,
+    create_deterministic_address_bcrt1_p2wsh_op_true,
     key_to_p2pkh,
     key_to_p2sh_p2wpkh,
     key_to_p2wpkh,
-    output_key_to_p2tr,
+    script_to_p2wsh,
 )
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
 from test_framework.key import (
     ECKey,
-    compute_xonly_pubkey,
 )
 from test_framework.messages import (
     COIN,
@@ -36,11 +35,11 @@ from test_framework.messages import (
 )
 from test_framework.script import (
     CScript,
+    OP_DROP,
     OP_NOP,
     OP_RETURN,
     OP_TRUE,
     sign_input_legacy,
-    taproot_construct,
 )
 from test_framework.script_util import (
     bulk_vout,
@@ -62,7 +61,7 @@ class MiniWalletMode(Enum):
     """Determines the transaction type the MiniWallet is creating and spending.
 
     For most purposes, the default mode ADDRESS_OP_TRUE should be sufficient;
-    it simply uses a fixed bech32m P2TR address whose coins are spent with a
+    it simply uses a fixed bech32 P2WSH address whose coins are spent with a
     witness stack of OP_TRUE, i.e. following an anyone-can-spend policy.
     However, if the transactions need to be modified by the user (e.g. prepending
     scriptSig for testing opcodes that are activated by a soft-fork), or the txs
@@ -75,7 +74,7 @@ class MiniWalletMode(Enum):
                     |      output       |           |  tx is   | can modify |  needs
          mode       |    description    |  address  | standard | scriptSig  | signing
     ----------------+-------------------+-----------+----------+------------+----------
-    ADDRESS_OP_TRUE | anyone-can-spend  |  bech32m  |   yes    |    no      |   no
+    ADDRESS_OP_TRUE | anyone-can-spend  |  bech32   |   yes    |    no      |   no
     RAW_OP_TRUE     | anyone-can-spend  |  - (raw)  |   no     |    yes     |   no
     RAW_P2PK        | pay-to-public-key |  - (raw)  |   yes    |    yes     |   yes
     """
@@ -102,8 +101,12 @@ class MiniWallet:
             pub_key = self._priv_key.get_pubkey()
             self._scriptPubKey = key_to_p2pk_script(pub_key.get_bytes())
         elif mode == MiniWalletMode.ADDRESS_OP_TRUE:
-            internal_key = None if tag_name is None else compute_xonly_pubkey(hash256(tag_name.encode()))[0]
-            self._address, self._taproot_info = create_deterministic_address_bcrt1_p2tr_op_true(internal_key)
+            if tag_name is None:
+                self._address, self._witness_script = create_deterministic_address_bcrt1_p2wsh_op_true()
+            else:
+                tag_hash = hash256(tag_name.encode())
+                self._witness_script = CScript([tag_hash, OP_DROP, OP_TRUE])
+                self._address = script_to_p2wsh(self._witness_script)
             self._scriptPubKey = address_to_scriptpubkey(self._address)
 
         # When the pre-mined test framework chain is used, it contains coinbase
@@ -184,12 +187,7 @@ class MiniWallet:
         elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
             tx.wit.vtxinwit = [CTxInWitness()] * len(tx.vin)
             for i in tx.wit.vtxinwit:
-                assert_equal(len(self._taproot_info.leaves), 1)
-                leaf_info = list(self._taproot_info.leaves.values())[0]
-                i.scriptWitness.stack = [
-                    leaf_info.script,
-                    bytes([leaf_info.version | self._taproot_info.negflag]) + self._taproot_info.internal_pubkey,
-                ]
+                i.scriptWitness.stack = [bytes(self._witness_script)]
         else:
             assert False
 
@@ -419,10 +417,10 @@ class MiniWallet:
         return chain
 
 
-def getnewdestination(address_type='bech32m'):
+def getnewdestination(address_type='bech32'):
     """Generate a random destination of the specified type and return the
        corresponding public key, scriptPubKey and address. Supported types are
-       'legacy', 'p2sh-segwit', 'bech32' and 'bech32m'. Can be used when a random
+       'legacy', 'p2sh-segwit', and 'bech32'. Can be used when a random
        destination is needed, but no compiled wallet is available (e.g. as
        replacement to the getnewaddress/getaddressinfo RPCs)."""
     key, pubkey = generate_keypair()
@@ -435,11 +433,6 @@ def getnewdestination(address_type='bech32m'):
     elif address_type == 'bech32':
         scriptpubkey = key_to_p2wpkh_script(pubkey)
         address = key_to_p2wpkh(pubkey)
-    elif address_type == 'bech32m':
-        tap = taproot_construct(compute_xonly_pubkey(key.get_bytes())[0])
-        pubkey = tap.output_pubkey
-        scriptpubkey = tap.scriptPubKey
-        address = output_key_to_p2tr(pubkey)
     else:
         assert False
     return pubkey, scriptpubkey, address

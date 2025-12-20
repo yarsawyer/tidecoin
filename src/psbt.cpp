@@ -118,25 +118,6 @@ void PSBTInput::FillSignatureData(SignatureData& sigdata) const
     for (const auto& key_pair : hd_keypaths) {
         sigdata.misc_pubkeys.emplace(key_pair.first.GetID(), key_pair);
     }
-    if (!m_tap_key_sig.empty()) {
-        sigdata.taproot_key_path_sig = m_tap_key_sig;
-    }
-    for (const auto& [pubkey_leaf, sig] : m_tap_script_sigs) {
-        sigdata.taproot_script_sigs.emplace(pubkey_leaf, sig);
-    }
-    if (!m_tap_internal_key.IsNull()) {
-        sigdata.tr_spenddata.internal_key = m_tap_internal_key;
-    }
-    if (!m_tap_merkle_root.IsNull()) {
-        sigdata.tr_spenddata.merkle_root = m_tap_merkle_root;
-    }
-    for (const auto& [leaf_script, control_block] : m_tap_scripts) {
-        sigdata.tr_spenddata.scripts.emplace(leaf_script, control_block);
-    }
-    for (const auto& [pubkey, leaf_origin] : m_tap_bip32_paths) {
-        sigdata.taproot_misc_pubkeys.emplace(pubkey, leaf_origin);
-        sigdata.tap_pubkeys.emplace(Hash160(pubkey), pubkey);
-    }
     for (const auto& [hash, preimage] : ripemd160_preimages) {
         sigdata.ripemd160_preimages.emplace(std::vector<unsigned char>(hash.begin(), hash.end()), preimage);
     }
@@ -178,24 +159,6 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
     for (const auto& entry : sigdata.misc_pubkeys) {
         hd_keypaths.emplace(entry.second);
     }
-    if (!sigdata.taproot_key_path_sig.empty()) {
-        m_tap_key_sig = sigdata.taproot_key_path_sig;
-    }
-    for (const auto& [pubkey_leaf, sig] : sigdata.taproot_script_sigs) {
-        m_tap_script_sigs.emplace(pubkey_leaf, sig);
-    }
-    if (!sigdata.tr_spenddata.internal_key.IsNull()) {
-        m_tap_internal_key = sigdata.tr_spenddata.internal_key;
-    }
-    if (!sigdata.tr_spenddata.merkle_root.IsNull()) {
-        m_tap_merkle_root = sigdata.tr_spenddata.merkle_root;
-    }
-    for (const auto& [leaf_script, control_block] : sigdata.tr_spenddata.scripts) {
-        m_tap_scripts.emplace(leaf_script, control_block);
-    }
-    for (const auto& [pubkey, leaf_origin] : sigdata.taproot_misc_pubkeys) {
-        m_tap_bip32_paths.emplace(pubkey, leaf_origin);
-    }
 }
 
 void PSBTInput::Merge(const PSBTInput& input)
@@ -212,17 +175,11 @@ void PSBTInput::Merge(const PSBTInput& input)
     hash256_preimages.insert(input.hash256_preimages.begin(), input.hash256_preimages.end());
     hd_keypaths.insert(input.hd_keypaths.begin(), input.hd_keypaths.end());
     unknown.insert(input.unknown.begin(), input.unknown.end());
-    m_tap_script_sigs.insert(input.m_tap_script_sigs.begin(), input.m_tap_script_sigs.end());
-    m_tap_scripts.insert(input.m_tap_scripts.begin(), input.m_tap_scripts.end());
-    m_tap_bip32_paths.insert(input.m_tap_bip32_paths.begin(), input.m_tap_bip32_paths.end());
 
     if (redeem_script.empty() && !input.redeem_script.empty()) redeem_script = input.redeem_script;
     if (witness_script.empty() && !input.witness_script.empty()) witness_script = input.witness_script;
     if (final_script_sig.empty() && !input.final_script_sig.empty()) final_script_sig = input.final_script_sig;
     if (final_script_witness.IsNull() && !input.final_script_witness.IsNull()) final_script_witness = input.final_script_witness;
-    if (m_tap_key_sig.empty() && !input.m_tap_key_sig.empty()) m_tap_key_sig = input.m_tap_key_sig;
-    if (m_tap_internal_key.IsNull() && !input.m_tap_internal_key.IsNull()) m_tap_internal_key = input.m_tap_internal_key;
-    if (m_tap_merkle_root.IsNull() && !input.m_tap_merkle_root.IsNull()) m_tap_merkle_root = input.m_tap_merkle_root;
 }
 
 void PSBTOutput::FillSignatureData(SignatureData& sigdata) const
@@ -235,22 +192,6 @@ void PSBTOutput::FillSignatureData(SignatureData& sigdata) const
     }
     for (const auto& key_pair : hd_keypaths) {
         sigdata.misc_pubkeys.emplace(key_pair.first.GetID(), key_pair);
-    }
-    if (!m_tap_tree.empty() && m_tap_internal_key.IsFullyValid()) {
-        TaprootBuilder builder;
-        for (const auto& [depth, leaf_ver, script] : m_tap_tree) {
-            builder.Add((int)depth, script, (int)leaf_ver, /*track=*/true);
-        }
-        assert(builder.IsComplete());
-        builder.Finalize(m_tap_internal_key);
-        TaprootSpendData spenddata = builder.GetSpendData();
-
-        sigdata.tr_spenddata.internal_key = m_tap_internal_key;
-        sigdata.tr_spenddata.Merge(spenddata);
-    }
-    for (const auto& [pubkey, leaf_origin] : m_tap_bip32_paths) {
-        sigdata.taproot_misc_pubkeys.emplace(pubkey, leaf_origin);
-        sigdata.tap_pubkeys.emplace(Hash160(pubkey), pubkey);
     }
 }
 
@@ -265,15 +206,6 @@ void PSBTOutput::FromSignatureData(const SignatureData& sigdata)
     for (const auto& entry : sigdata.misc_pubkeys) {
         hd_keypaths.emplace(entry.second);
     }
-    if (!sigdata.tr_spenddata.internal_key.IsNull()) {
-        m_tap_internal_key = sigdata.tr_spenddata.internal_key;
-    }
-    if (sigdata.tr_builder.has_value() && sigdata.tr_builder->HasScripts()) {
-        m_tap_tree = sigdata.tr_builder->GetTreeTuples();
-    }
-    for (const auto& [pubkey, leaf_origin] : sigdata.taproot_misc_pubkeys) {
-        m_tap_bip32_paths.emplace(pubkey, leaf_origin);
-    }
 }
 
 bool PSBTOutput::IsNull() const
@@ -285,12 +217,9 @@ void PSBTOutput::Merge(const PSBTOutput& output)
 {
     hd_keypaths.insert(output.hd_keypaths.begin(), output.hd_keypaths.end());
     unknown.insert(output.unknown.begin(), output.unknown.end());
-    m_tap_bip32_paths.insert(output.m_tap_bip32_paths.begin(), output.m_tap_bip32_paths.end());
 
     if (redeem_script.empty() && !output.redeem_script.empty()) redeem_script = output.redeem_script;
     if (witness_script.empty() && !output.witness_script.empty()) witness_script = output.witness_script;
-    if (m_tap_internal_key.IsNull() && !output.m_tap_internal_key.IsNull()) m_tap_internal_key = output.m_tap_internal_key;
-    if (m_tap_tree.empty() && !output.m_tap_tree.empty()) m_tap_tree = output.m_tap_tree;
 }
 
 bool PSBTInputSigned(const PSBTInput& input)
@@ -415,38 +344,21 @@ PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransact
 
     // Get the sighash type
     // If both the field and the parameter are provided, they must match
-    // If only the parameter is provided, use it and add it to the PSBT if it is other than SIGHASH_DEFAULT
-    // for all input types, and not SIGHASH_ALL for non-taproot input types.
-    // If neither are provided, use SIGHASH_DEFAULT if it is taproot, and SIGHASH_ALL for everything else.
-    if (!sighash) sighash = utxo.scriptPubKey.IsPayToTaproot() ? SIGHASH_DEFAULT : SIGHASH_ALL;
+    // If only the parameter is provided, use it and add it to the PSBT if it is other than SIGHASH_ALL.
+    // If neither are provided, use SIGHASH_ALL.
+    if (!sighash) sighash = SIGHASH_ALL;
     Assert(sighash.has_value());
     // For user safety, the desired sighash must be provided if the PSBT wants something other than the default set in the previous line.
     if (input.sighash_type && input.sighash_type != sighash) {
         return PSBTError::SIGHASH_MISMATCH;
     }
-    // Set the PSBT sighash field when sighash is not DEFAULT or ALL
-    // DEFAULT is allowed for non-taproot inputs since DEFAULT may be passed for them (e.g. the psbt being signed also has taproot inputs)
-    // Note that signing already aliases DEFAULT to ALL for non-taproot inputs.
-    if (utxo.scriptPubKey.IsPayToTaproot() ? sighash != SIGHASH_DEFAULT :
-                                            (sighash != SIGHASH_DEFAULT && sighash != SIGHASH_ALL)) {
+    // Set the PSBT sighash field when sighash is not ALL.
+    if (sighash != SIGHASH_ALL) {
         input.sighash_type = sighash;
     }
 
     // Check all existing signatures use the sighash type
-    if (sighash == SIGHASH_DEFAULT) {
-        if (!input.m_tap_key_sig.empty() && input.m_tap_key_sig.size() != 64) {
-            return PSBTError::SIGHASH_MISMATCH;
-        }
-        for (const auto& [_, sig] : input.m_tap_script_sigs) {
-            if (sig.size() != 64) return PSBTError::SIGHASH_MISMATCH;
-        }
-    } else {
-        if (!input.m_tap_key_sig.empty() && (input.m_tap_key_sig.size() != 65 || input.m_tap_key_sig.back() != *sighash)) {
-            return PSBTError::SIGHASH_MISMATCH;
-        }
-        for (const auto& [_, sig] : input.m_tap_script_sigs) {
-            if (sig.size() != 65 || sig.back() != *sighash) return PSBTError::SIGHASH_MISMATCH;
-        }
+    if (sighash != SIGHASH_ALL) {
         for (const auto& [_, sig] : input.partial_sigs) {
             if (sig.second.back() != *sighash) return PSBTError::SIGHASH_MISMATCH;
         }
@@ -507,7 +419,7 @@ void RemoveUnnecessaryTransactions(PartiallySignedTransaction& psbtx)
         }
         // non_witness_utxos cannot be dropped if the sighash type includes SIGHASH_ANYONECANPAY
         // Since callers should have called SignPSBTInput which updates the sighash type in the PSBT, we only
-        // need to look at that field. If it is not present, then we can assume SIGHASH_DEFAULT or SIGHASH_ALL.
+        // need to look at that field. If it is not present, then we can assume SIGHASH_ALL.
         if (input.sighash_type != std::nullopt && (*input.sighash_type & 0x80) == SIGHASH_ANYONECANPAY) {
             to_drop.clear();
             break;

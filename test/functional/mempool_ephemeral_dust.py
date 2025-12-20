@@ -195,7 +195,7 @@ class EphemeralDustTest(BitcoinTestFramework):
         self.restart_node(1, extra_args=["-minrelaytxfee=0"])
         self.connect_nodes(0, 1)
 
-        # 330 is dust threshold for taproot outputs
+        # 330 is dust threshold for P2WSH outputs
         for value in [1, 329, 330]:
             assert_equal(self.nodes[0].getrawmempool(), [])
             dusty_tx, _ = self.create_ephemeral_dust_package(tx_version=3, dust_value=value)

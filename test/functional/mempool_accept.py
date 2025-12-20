@@ -42,7 +42,6 @@ from test_framework.script_util import (
     keys_to_multisig_script,
     MIN_PADDING,
     MIN_STANDARD_TX_NONWITNESS_SIZE,
-    PAY_TO_ANCHOR,
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
@@ -434,62 +433,6 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
             rawtxs=[tx.serialize().hex()],
             maxfeerate=0,
         )
-
-        self.log.info('OP_1 <0x4e73> is able to be created and spent')
-        anchor_value = 10000
-        create_anchor_tx = self.wallet.send_to(from_node=node, scriptPubKey=PAY_TO_ANCHOR, amount=anchor_value)
-        self.generate(node, 1)
-
-        # First spend has non-empty witness, will be rejected to prevent third party wtxid malleability
-        anchor_nonempty_wit_spend = CTransaction()
-        anchor_nonempty_wit_spend.vin.append(CTxIn(COutPoint(int(create_anchor_tx["txid"], 16), create_anchor_tx["sent_vout"]), b""))
-        anchor_nonempty_wit_spend.vout.append(CTxOut(anchor_value - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
-        anchor_nonempty_wit_spend.wit.vtxinwit.append(CTxInWitness())
-        anchor_nonempty_wit_spend.wit.vtxinwit[0].scriptWitness.stack.append(b"f")
-
-        self.check_mempool_result(
-            result_expected=[{'txid': anchor_nonempty_wit_spend.txid_hex, 'allowed': False, 'reject-reason': 'bad-witness-nonstandard'}],
-            rawtxs=[anchor_nonempty_wit_spend.serialize().hex()],
-            maxfeerate=0,
-        )
-
-        # but is consensus-legal
-        self.generateblock(node, self.wallet.get_address(), [anchor_nonempty_wit_spend.serialize().hex()])
-
-        # Without witness elements it is standard
-        create_anchor_tx = self.wallet.send_to(from_node=node, scriptPubKey=PAY_TO_ANCHOR, amount=anchor_value)
-        self.generate(node, 1)
-
-        anchor_spend = CTransaction()
-        anchor_spend.vin.append(CTxIn(COutPoint(int(create_anchor_tx["txid"], 16), create_anchor_tx["sent_vout"]), b""))
-        anchor_spend.vout.append(CTxOut(anchor_value - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
-        anchor_spend.wit.vtxinwit.append(CTxInWitness())
-        # It's "segwit" but txid == wtxid since there is no witness data
-        assert_equal(anchor_spend.txid_hex, anchor_spend.wtxid_hex)
-
-        self.check_mempool_result(
-            result_expected=[{'txid': anchor_spend.txid_hex, 'allowed': True, 'vsize': anchor_spend.get_vsize(), 'fees': { 'base': Decimal('0.00000700')}}],
-            rawtxs=[anchor_spend.serialize().hex()],
-            maxfeerate=0,
-        )
-
-        self.log.info('But cannot be spent if nested sh()')
-        nested_anchor_tx = self.wallet.create_self_transfer(sequence=SEQUENCE_FINAL)['tx']
-        nested_anchor_tx.vout[0].scriptPubKey = script_to_p2sh_script(PAY_TO_ANCHOR)
-        self.generateblock(node, self.wallet.get_address(), [nested_anchor_tx.serialize().hex()])
-
-        nested_anchor_spend = CTransaction()
-        nested_anchor_spend.vin.append(CTxIn(COutPoint(nested_anchor_tx.txid_int, 0), b""))
-        nested_anchor_spend.vin[0].scriptSig = CScript([bytes(PAY_TO_ANCHOR)])
-        nested_anchor_spend.vout.append(CTxOut(nested_anchor_tx.vout[0].nValue - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
-
-        self.check_mempool_result(
-            result_expected=[{'txid': nested_anchor_spend.txid_hex, 'allowed': False, 'reject-reason': 'mempool-script-verify-flag-failed (Witness version reserved for soft-fork upgrades)'}],
-            rawtxs=[nested_anchor_spend.serialize().hex()],
-            maxfeerate=0,
-        )
-        # but is consensus-legal
-        self.generateblock(node, self.wallet.get_address(), [nested_anchor_spend.serialize().hex()])
 
         self.log.info('Spending a confirmed bare multisig is okay')
         address = self.wallet.get_address()

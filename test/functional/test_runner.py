@@ -91,7 +91,6 @@ BASE_SCRIPTS = [
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 5m vv
     'feature_fee_estimation.py',
-    'feature_taproot.py',
     'feature_block.py',
     'mempool_ephemeral_dust.py',
     'wallet_conflicts.py',
@@ -126,7 +125,6 @@ BASE_SCRIPTS = [
     'wallet_groups.py',
     'p2p_blockfilters.py',
     'feature_assumevalid.py',
-    'wallet_taproot.py',
     'feature_bip68_sequence.py',
     'rpc_packages.py',
     'rpc_bind.py --ipv4',
@@ -151,7 +149,6 @@ BASE_SCRIPTS = [
     'rpc_orphans.py',
     'wallet_listreceivedby.py',
     'wallet_abandonconflict.py',
-    'wallet_anchor.py',
     'feature_reindex.py',
     'feature_reindex_readonly.py',
     'wallet_labels.py',

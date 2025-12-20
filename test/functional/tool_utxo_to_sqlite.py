@@ -22,12 +22,10 @@ from test_framework.script import (
     CScriptOp,
 )
 from test_framework.script_util import (
-    PAY_TO_ANCHOR,
     key_to_p2pk_script,
     key_to_p2pkh_script,
     key_to_p2wpkh_script,
     keys_to_multisig_script,
-    output_key_to_p2tr_script,
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
@@ -86,8 +84,6 @@ class UtxoToSqliteTest(BitcoinTestFramework):
                 keys_to_multisig_script([uncompressed_pubkey]*i),
                 key_to_p2wpkh_script(pubkey),
                 script_to_p2wsh_script(key_to_p2pkh_script(pubkey)),
-                output_key_to_p2tr_script(pubkey[1:]),
-                PAY_TO_ANCHOR,
                 CScript([CScriptOp.encode_op_n(i)]*(1000*i)),  # large script (up to 10000 bytes)
             )
 

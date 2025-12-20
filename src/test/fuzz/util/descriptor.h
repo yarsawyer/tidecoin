@@ -20,8 +20,8 @@
  */
 class MockedDescriptorConverter {
 private:
-    //! Types are raw (un)compressed pubkeys, raw xonly pubkeys, raw privkeys (WIF), xpubs, xprvs.
-    static constexpr uint8_t KEY_TYPES_COUNT{6};
+    //! Types are raw (un)compressed pubkeys, raw privkeys (WIF), xpubs, xprvs.
+    static constexpr uint8_t KEY_TYPES_COUNT{5};
     //! How many keys we'll generate in total.
     static constexpr size_t TOTAL_KEYS_GENERATED{std::numeric_limits<uint8_t>::max() + 1};
     //! 256 keys of various types.
@@ -31,10 +31,9 @@ public:
     // We derive the type of key to generate from the 1-byte id parsed from hex.
     bool IdIsCompPubKey(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 0; }
     bool IdIsUnCompPubKey(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 1; }
-    bool IdIsXOnlyPubKey(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 2; }
-    bool IdIsConstPrivKey(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 3; }
-    bool IdIsXpub(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 4; }
-    bool IdIsXprv(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 5; }
+    bool IdIsConstPrivKey(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 2; }
+    bool IdIsXpub(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 3; }
+    bool IdIsXprv(uint8_t idx) const { return idx % KEY_TYPES_COUNT == 4; }
 
     //! When initializing the target, populate the list of keys.
     void Init();

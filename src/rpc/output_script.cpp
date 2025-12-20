@@ -135,8 +135,6 @@ static RPCHelpMan createmultisig()
                 std::optional<OutputType> parsed = ParseOutputType(request.params[2].get_str());
                 if (!parsed) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[2].get_str()));
-                } else if (parsed.value() == OutputType::BECH32M) {
-                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "createmultisig cannot create bech32m multisig addresses");
                 }
                 output_type = parsed.value();
             }
@@ -269,7 +267,6 @@ static RPCHelpMan deriveaddresses()
          "    wpkh(<pubkey>)                                    Native segwit P2PKH outputs for the given pubkey\n"
          "    sh(multi(<n>,<pubkey>,<pubkey>,...))              P2SH-multisig outputs for the given threshold and pubkeys\n"
          "    raw(<hex script>)                                 Outputs whose output script equals the specified hex-encoded bytes\n"
-         "    tr(<pubkey>,multi_a(<n>,<pubkey>,<pubkey>,...))   P2TR-multisig outputs for the given threshold and pubkeys\n"
          "\nIn the above, <pubkey> either refers to a fixed public key in hexadecimal notation, or to an xpub/xprv optionally followed by one\n"
          "or more path elements separated by \"/\", where \"h\" represents a hardened child key.\n"
         "For more information on output descriptors, see the documentation in the doc/descriptors.md file.\n",

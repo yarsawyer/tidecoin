@@ -768,8 +768,7 @@ static RPCHelpMan createwalletdescriptor()
             },
         },
         RPCExamples{
-            HelpExampleCli("createwalletdescriptor", "bech32m")
-            + HelpExampleRpc("createwalletdescriptor", "bech32m")
+            HelpExampleCli("createwalletdescriptor", "\"bech32\"") + HelpExampleRpc("createwalletdescriptor", "\"bech32\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {

@@ -119,12 +119,6 @@ class AddressTypeTest(BitcoinTestFramework):
             assert_equal(info['witness_version'], 0)
             assert_equal(len(info['witness_program']), 40)
             assert 'pubkey' in info
-        elif not multisig and typ == "bech32m":
-            # P2TR single sig
-            assert info["isscript"]
-            assert info["iswitness"]
-            assert_equal(info["witness_version"], 1)
-            assert_equal(len(info["witness_program"]), 64)
         elif typ == 'legacy':
             # P2SH-multisig
             assert info['isscript']
@@ -358,9 +352,9 @@ class AddressTypeTest(BitcoinTestFramework):
         self.test_address(4, self.nodes[4].getrawchangeaddress(), multisig=False, typ='p2sh-segwit')
         self.test_address(4, self.nodes[4].getrawchangeaddress('bech32'), multisig=False, typ='bech32')
 
-        self.log.info("Descriptor wallets have bech32m addresses")
-        self.test_address(4, self.nodes[4].getnewaddress("", "bech32m"), multisig=False, typ="bech32m")
-        self.test_address(4, self.nodes[4].getrawchangeaddress("bech32m"), multisig=False, typ="bech32m")
+        self.log.info("Descriptor wallets have bech32 addresses")
+        self.test_address(4, self.nodes[4].getnewaddress("", "bech32"), multisig=False, typ="bech32")
+        self.test_address(4, self.nodes[4].getrawchangeaddress("bech32"), multisig=False, typ="bech32")
 
 if __name__ == '__main__':
     AddressTypeTest(__file__).main()

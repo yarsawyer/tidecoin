@@ -47,25 +47,12 @@ static constexpr uint8_t PSBT_IN_RIPEMD160 = 0x0A;
 static constexpr uint8_t PSBT_IN_SHA256 = 0x0B;
 static constexpr uint8_t PSBT_IN_HASH160 = 0x0C;
 static constexpr uint8_t PSBT_IN_HASH256 = 0x0D;
-static constexpr uint8_t PSBT_IN_TAP_KEY_SIG = 0x13;
-static constexpr uint8_t PSBT_IN_TAP_SCRIPT_SIG = 0x14;
-static constexpr uint8_t PSBT_IN_TAP_LEAF_SCRIPT = 0x15;
-static constexpr uint8_t PSBT_IN_TAP_BIP32_DERIVATION = 0x16;
-static constexpr uint8_t PSBT_IN_TAP_INTERNAL_KEY = 0x17;
-static constexpr uint8_t PSBT_IN_TAP_MERKLE_ROOT = 0x18;
-static constexpr uint8_t PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS = 0x1a;
-static constexpr uint8_t PSBT_IN_MUSIG2_PUB_NONCE = 0x1b;
-static constexpr uint8_t PSBT_IN_MUSIG2_PARTIAL_SIG = 0x1c;
 static constexpr uint8_t PSBT_IN_PROPRIETARY = 0xFC;
 
 // Output types
 static constexpr uint8_t PSBT_OUT_REDEEMSCRIPT = 0x00;
 static constexpr uint8_t PSBT_OUT_WITNESSSCRIPT = 0x01;
 static constexpr uint8_t PSBT_OUT_BIP32_DERIVATION = 0x02;
-static constexpr uint8_t PSBT_OUT_TAP_INTERNAL_KEY = 0x05;
-static constexpr uint8_t PSBT_OUT_TAP_TREE = 0x06;
-static constexpr uint8_t PSBT_OUT_TAP_BIP32_DERIVATION = 0x07;
-static constexpr uint8_t PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS = 0x08;
 static constexpr uint8_t PSBT_OUT_PROPRIETARY = 0xFC;
 
 // The separator is 0x00. Reading this in means that the unserializer can interpret it
@@ -200,49 +187,6 @@ void SerializeHDKeypaths(Stream& s, const std::map<CPubKey, KeyOriginInfo>& hd_k
     }
 }
 
-// Deserialize a PSBT_{IN/OUT}_MUSIG2_PARTICIPANT_PUBKEYS field
-template<typename Stream>
-void DeserializeMuSig2ParticipantPubkeys(Stream& s, SpanReader& skey, std::map<CPubKey, std::vector<CPubKey>>& out, std::string context)
-{
-    std::array<unsigned char, CPubKey::COMPRESSED_SIZE> agg_pubkey_bytes;
-    skey >> std::as_writable_bytes(std::span{agg_pubkey_bytes});
-    CPubKey agg_pubkey(agg_pubkey_bytes);
-
-    std::vector<CPubKey> participants;
-    std::vector<unsigned char> val;
-    s >> val;
-    SpanReader s_val{val};
-    while (s_val.size() >= CPubKey::COMPRESSED_SIZE) {
-        std::array<unsigned char, CPubKey::COMPRESSED_SIZE> part_pubkey_bytes;
-        s_val >> std::as_writable_bytes(std::span{part_pubkey_bytes});
-        participants.emplace_back(std::span{part_pubkey_bytes});
-    }
-    if (!s_val.empty()) {
-        throw std::ios_base::failure(context + " musig2 participants pubkeys value size is not a multiple of 33");
-    }
-
-    out.emplace(agg_pubkey, participants);
-}
-
-// Deserialize the MuSig2 participant identifiers from PSBT_MUSIG2_{PUBNONCE/PARTIAL_SIG} fields
-// Both fields contain the same data after the type byte - aggregate pubkey | participant pubkey | leaf script hash
-template<typename Stream>
-void DeserializeMuSig2ParticipantDataIdentifier(Stream& skey, CPubKey& agg_pub, CPubKey& part_pub, uint256& leaf_hash)
-{
-    leaf_hash.SetNull();
-
-    std::array<unsigned char, CPubKey::COMPRESSED_SIZE> part_pubkey_bytes;
-    std::array<unsigned char, CPubKey::COMPRESSED_SIZE> agg_pubkey_bytes;
-
-    skey >> std::as_writable_bytes(std::span{part_pubkey_bytes}) >> std::as_writable_bytes(std::span{agg_pubkey_bytes});
-    agg_pub.Set(agg_pubkey_bytes.begin(), agg_pubkey_bytes.end());
-    part_pub.Set(part_pubkey_bytes.begin(), part_pubkey_bytes.end());
-
-    if (!skey.empty()) {
-        skey >> leaf_hash;
-    }
-}
-
 /** A structure for PSBTs which contain per-input information */
 struct PSBTInput
 {
@@ -258,21 +202,6 @@ struct PSBTInput
     std::map<uint256, std::vector<unsigned char>> sha256_preimages;
     std::map<uint160, std::vector<unsigned char>> hash160_preimages;
     std::map<uint256, std::vector<unsigned char>> hash256_preimages;
-
-    // Taproot fields
-    std::vector<unsigned char> m_tap_key_sig;
-    std::map<std::pair<XOnlyPubKey, uint256>, std::vector<unsigned char>> m_tap_script_sigs;
-    std::map<std::pair<std::vector<unsigned char>, int>, std::set<std::vector<unsigned char>, ShortestVectorFirstComparator>> m_tap_scripts;
-    std::map<XOnlyPubKey, std::pair<std::set<uint256>, KeyOriginInfo>> m_tap_bip32_paths;
-    XOnlyPubKey m_tap_internal_key;
-    uint256 m_tap_merkle_root;
-
-    // MuSig2 fields
-    std::map<CPubKey, std::vector<CPubKey>> m_musig2_participants;
-    // Key is the aggregate pubkey and the script leaf hash, value is a map of participant pubkey to pubnonce
-    std::map<std::pair<CPubKey, uint256>, std::map<CPubKey, std::vector<uint8_t>>> m_musig2_pubnonces;
-    // Key is the aggregate pubkey and the script leaf hash, value is a map of participant pubkey to partial_sig
-    std::map<std::pair<CPubKey, uint256>, std::map<CPubKey, uint256>> m_musig2_partial_sigs;
 
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
     std::set<PSBTProprietary> m_proprietary;
@@ -346,90 +275,6 @@ struct PSBTInput
             for (const auto& [hash, preimage] : hash256_preimages) {
                 SerializeToVector(s, CompactSizeWriter(PSBT_IN_HASH256), std::span{hash});
                 s << preimage;
-            }
-
-            // Write taproot key sig
-            if (!m_tap_key_sig.empty()) {
-                SerializeToVector(s, PSBT_IN_TAP_KEY_SIG);
-                s << m_tap_key_sig;
-            }
-
-            // Write taproot script sigs
-            for (const auto& [pubkey_leaf, sig] : m_tap_script_sigs) {
-                const auto& [xonly, leaf_hash] = pubkey_leaf;
-                SerializeToVector(s, PSBT_IN_TAP_SCRIPT_SIG, xonly, leaf_hash);
-                s << sig;
-            }
-
-            // Write taproot leaf scripts
-            for (const auto& [leaf, control_blocks] : m_tap_scripts) {
-                const auto& [script, leaf_ver] = leaf;
-                for (const auto& control_block : control_blocks) {
-                    SerializeToVector(s, PSBT_IN_TAP_LEAF_SCRIPT, std::span{control_block});
-                    std::vector<unsigned char> value_v(script.begin(), script.end());
-                    value_v.push_back((uint8_t)leaf_ver);
-                    s << value_v;
-                }
-            }
-
-            // Write taproot bip32 keypaths
-            for (const auto& [xonly, leaf_origin] : m_tap_bip32_paths) {
-                const auto& [leaf_hashes, origin] = leaf_origin;
-                SerializeToVector(s, PSBT_IN_TAP_BIP32_DERIVATION, xonly);
-                std::vector<unsigned char> value;
-                VectorWriter s_value{value, 0};
-                s_value << leaf_hashes;
-                SerializeKeyOrigin(s_value, origin);
-                s << value;
-            }
-
-            // Write taproot internal key
-            if (!m_tap_internal_key.IsNull()) {
-                SerializeToVector(s, PSBT_IN_TAP_INTERNAL_KEY);
-                s << ToByteVector(m_tap_internal_key);
-            }
-
-            // Write taproot merkle root
-            if (!m_tap_merkle_root.IsNull()) {
-                SerializeToVector(s, PSBT_IN_TAP_MERKLE_ROOT);
-                SerializeToVector(s, m_tap_merkle_root);
-            }
-
-            // Write MuSig2 Participants
-            for (const auto& [agg_pubkey, part_pubs] : m_musig2_participants) {
-                SerializeToVector(s, CompactSizeWriter(PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS), std::span{agg_pubkey});
-                std::vector<unsigned char> value;
-                VectorWriter s_value{value, 0};
-                for (auto& pk : part_pubs) {
-                    s_value << std::span{pk};
-                }
-                s << value;
-            }
-
-            // Write MuSig2 pubnonces
-            for (const auto& [agg_pubkey_leaf_hash, pubnonces] : m_musig2_pubnonces) {
-                const auto& [agg_pubkey, leaf_hash] = agg_pubkey_leaf_hash;
-                for (const auto& [part_pubkey, pubnonce] : pubnonces) {
-                    if (leaf_hash.IsNull()) {
-                        SerializeToVector(s, CompactSizeWriter(PSBT_IN_MUSIG2_PUB_NONCE), std::span{part_pubkey}, std::span{agg_pubkey});
-                    } else {
-                        SerializeToVector(s, CompactSizeWriter(PSBT_IN_MUSIG2_PUB_NONCE), std::span{part_pubkey}, std::span{agg_pubkey}, leaf_hash);
-                    }
-                    s << pubnonce;
-                }
-            }
-
-            // Write MuSig2 partial signatures
-            for (const auto& [agg_pubkey_leaf_hash, psigs] : m_musig2_partial_sigs) {
-                const auto& [agg_pubkey, leaf_hash] = agg_pubkey_leaf_hash;
-                for (const auto& [pubkey, psig] : psigs) {
-                    if (leaf_hash.IsNull()) {
-                        SerializeToVector(s, CompactSizeWriter(PSBT_IN_MUSIG2_PARTIAL_SIG), std::span{pubkey}, std::span{agg_pubkey});
-                    } else {
-                        SerializeToVector(s, CompactSizeWriter(PSBT_IN_MUSIG2_PARTIAL_SIG), std::span{pubkey}, std::span{agg_pubkey}, leaf_hash);
-                    }
-                    SerializeToVector(s, psig);
-                }
             }
         }
 
@@ -671,153 +516,6 @@ struct PSBTInput
                     hash256_preimages.emplace(hash, std::move(preimage));
                     break;
                 }
-                case PSBT_IN_TAP_KEY_SIG:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input Taproot key signature already provided");
-                    } else if (key.size() != 1) {
-                        throw std::ios_base::failure("Input Taproot key signature key is more than one byte type");
-                    }
-                    s >> m_tap_key_sig;
-                    if (m_tap_key_sig.size() < 64) {
-                        throw std::ios_base::failure("Input Taproot key path signature is shorter than 64 bytes");
-                    } else if (m_tap_key_sig.size() > 65) {
-                        throw std::ios_base::failure("Input Taproot key path signature is longer than 65 bytes");
-                    }
-                    break;
-                }
-                case PSBT_IN_TAP_SCRIPT_SIG:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input Taproot script signature already provided");
-                    } else if (key.size() != 65) {
-                        throw std::ios_base::failure("Input Taproot script signature key is not 65 bytes");
-                    }
-                    SpanReader s_key{std::span{key}.subspan(1)};
-                    XOnlyPubKey xonly;
-                    uint256 hash;
-                    s_key >> xonly;
-                    s_key >> hash;
-                    std::vector<unsigned char> sig;
-                    s >> sig;
-                    if (sig.size() < 64) {
-                        throw std::ios_base::failure("Input Taproot script path signature is shorter than 64 bytes");
-                    } else if (sig.size() > 65) {
-                        throw std::ios_base::failure("Input Taproot script path signature is longer than 65 bytes");
-                    }
-                    m_tap_script_sigs.emplace(std::make_pair(xonly, hash), sig);
-                    break;
-                }
-                case PSBT_IN_TAP_LEAF_SCRIPT:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input Taproot leaf script already provided");
-                    } else if (key.size() < 34) {
-                        throw std::ios_base::failure("Taproot leaf script key is not at least 34 bytes");
-                    } else if ((key.size() - 2) % 32 != 0) {
-                        throw std::ios_base::failure("Input Taproot leaf script key's control block size is not valid");
-                    }
-                    std::vector<unsigned char> script_v;
-                    s >> script_v;
-                    if (script_v.empty()) {
-                        throw std::ios_base::failure("Input Taproot leaf script must be at least 1 byte");
-                    }
-                    uint8_t leaf_ver = script_v.back();
-                    script_v.pop_back();
-                    const auto leaf_script = std::make_pair(script_v, (int)leaf_ver);
-                    m_tap_scripts[leaf_script].insert(std::vector<unsigned char>(key.begin() + 1, key.end()));
-                    break;
-                }
-                case PSBT_IN_TAP_BIP32_DERIVATION:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input Taproot BIP32 keypath already provided");
-                    } else if (key.size() != 33) {
-                        throw std::ios_base::failure("Input Taproot BIP32 keypath key is not at 33 bytes");
-                    }
-                    SpanReader s_key{std::span{key}.subspan(1)};
-                    XOnlyPubKey xonly;
-                    s_key >> xonly;
-                    std::set<uint256> leaf_hashes;
-                    uint64_t value_len = ReadCompactSize(s);
-                    size_t before_hashes = s.size();
-                    s >> leaf_hashes;
-                    size_t after_hashes = s.size();
-                    size_t hashes_len = before_hashes - after_hashes;
-                    if (hashes_len > value_len) {
-                        throw std::ios_base::failure("Input Taproot BIP32 keypath has an invalid length");
-                    }
-                    size_t origin_len = value_len - hashes_len;
-                    m_tap_bip32_paths.emplace(xonly, std::make_pair(leaf_hashes, DeserializeKeyOrigin(s, origin_len)));
-                    break;
-                }
-                case PSBT_IN_TAP_INTERNAL_KEY:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input Taproot internal key already provided");
-                    } else if (key.size() != 1) {
-                        throw std::ios_base::failure("Input Taproot internal key key is more than one byte type");
-                    }
-                    UnserializeFromVector(s, m_tap_internal_key);
-                    break;
-                }
-                case PSBT_IN_TAP_MERKLE_ROOT:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input Taproot merkle root already provided");
-                    } else if (key.size() != 1) {
-                        throw std::ios_base::failure("Input Taproot merkle root key is more than one byte type");
-                    }
-                    UnserializeFromVector(s, m_tap_merkle_root);
-                    break;
-                }
-                case PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input participant pubkeys for an aggregate key already provided");
-                    } else if (key.size() != CPubKey::COMPRESSED_SIZE + 1) {
-                        throw std::ios_base::failure("Input musig2 participants pubkeys aggregate key is not 34 bytes");
-                    }
-                    DeserializeMuSig2ParticipantPubkeys(s, skey, m_musig2_participants, std::string{"Input"});
-                    break;
-                }
-                case PSBT_IN_MUSIG2_PUB_NONCE:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input musig2 pubnonce already provided");
-                    } else if (key.size() != 2 * CPubKey::COMPRESSED_SIZE + 1 && key.size() != 2 * CPubKey::COMPRESSED_SIZE + CSHA256::OUTPUT_SIZE + 1) {
-                        throw std::ios_base::failure("Input musig2 pubnonce key is not expected size of 67 or 99 bytes");
-                    }
-                    CPubKey agg_pub, part_pub;
-                    uint256 leaf_hash;
-                    DeserializeMuSig2ParticipantDataIdentifier(skey, agg_pub, part_pub, leaf_hash);
-
-                    std::vector<uint8_t> pubnonce;
-                    s >> pubnonce;
-                    if (pubnonce.size() != 66) {
-                        throw std::ios_base::failure("Input musig2 pubnonce value is not 66 bytes");
-                    }
-
-                    m_musig2_pubnonces[std::make_pair(agg_pub, leaf_hash)].emplace(part_pub, pubnonce);
-                    break;
-                }
-                case PSBT_IN_MUSIG2_PARTIAL_SIG:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, input musig2 partial sig already provided");
-                    } else if (key.size() != 2 * CPubKey::COMPRESSED_SIZE + 1 && key.size() != 2 * CPubKey::COMPRESSED_SIZE + CSHA256::OUTPUT_SIZE + 1) {
-                        throw std::ios_base::failure("Input musig2 partial sig key is not expected size of 67 or 99 bytes");
-                    }
-                    CPubKey agg_pub, part_pub;
-                    uint256 leaf_hash;
-                    DeserializeMuSig2ParticipantDataIdentifier(skey, agg_pub, part_pub, leaf_hash);
-
-                    uint256 partial_sig;
-                    UnserializeFromVector(s, partial_sig);
-
-                    m_musig2_partial_sigs[std::make_pair(agg_pub, leaf_hash)].emplace(part_pub, partial_sig);
-                    break;
-                }
                 case PSBT_IN_PROPRIETARY:
                 {
                     PSBTProprietary this_prop;
@@ -862,10 +560,6 @@ struct PSBTOutput
     CScript redeem_script;
     CScript witness_script;
     std::map<CPubKey, KeyOriginInfo> hd_keypaths;
-    XOnlyPubKey m_tap_internal_key;
-    std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> m_tap_tree;
-    std::map<XOnlyPubKey, std::pair<std::set<uint256>, KeyOriginInfo>> m_tap_bip32_paths;
-    std::map<CPubKey, std::vector<CPubKey>> m_musig2_participants;
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
     std::set<PSBTProprietary> m_proprietary;
 
@@ -896,47 +590,6 @@ struct PSBTOutput
         for (const auto& entry : m_proprietary) {
             s << entry.key;
             s << entry.value;
-        }
-
-        // Write taproot internal key
-        if (!m_tap_internal_key.IsNull()) {
-            SerializeToVector(s, PSBT_OUT_TAP_INTERNAL_KEY);
-            s << ToByteVector(m_tap_internal_key);
-        }
-
-        // Write taproot tree
-        if (!m_tap_tree.empty()) {
-            SerializeToVector(s, PSBT_OUT_TAP_TREE);
-            std::vector<unsigned char> value;
-            VectorWriter s_value{value, 0};
-            for (const auto& [depth, leaf_ver, script] : m_tap_tree) {
-                s_value << depth;
-                s_value << leaf_ver;
-                s_value << script;
-            }
-            s << value;
-        }
-
-        // Write taproot bip32 keypaths
-        for (const auto& [xonly, leaf] : m_tap_bip32_paths) {
-            const auto& [leaf_hashes, origin] = leaf;
-            SerializeToVector(s, PSBT_OUT_TAP_BIP32_DERIVATION, xonly);
-            std::vector<unsigned char> value;
-            VectorWriter s_value{value, 0};
-            s_value << leaf_hashes;
-            SerializeKeyOrigin(s_value, origin);
-            s << value;
-        }
-
-        // Write MuSig2 Participants
-        for (const auto& [agg_pubkey, part_pubs] : m_musig2_participants) {
-            SerializeToVector(s, CompactSizeWriter(PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS), std::span{agg_pubkey});
-            std::vector<unsigned char> value;
-            VectorWriter s_value{value, 0};
-            for (auto& pk : part_pubs) {
-                s_value << std::span{pk};
-            }
-            s << value;
         }
 
         // Write unknown things
@@ -997,82 +650,6 @@ struct PSBTOutput
                 case PSBT_OUT_BIP32_DERIVATION:
                 {
                     DeserializeHDKeypaths(s, key, hd_keypaths);
-                    break;
-                }
-                case PSBT_OUT_TAP_INTERNAL_KEY:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, output Taproot internal key already provided");
-                    } else if (key.size() != 1) {
-                        throw std::ios_base::failure("Output Taproot internal key key is more than one byte type");
-                    }
-                    UnserializeFromVector(s, m_tap_internal_key);
-                    break;
-                }
-                case PSBT_OUT_TAP_TREE:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, output Taproot tree already provided");
-                    } else if (key.size() != 1) {
-                        throw std::ios_base::failure("Output Taproot tree key is more than one byte type");
-                    }
-                    std::vector<unsigned char> tree_v;
-                    s >> tree_v;
-                    SpanReader s_tree{tree_v};
-                    if (s_tree.empty()) {
-                        throw std::ios_base::failure("Output Taproot tree must not be empty");
-                    }
-                    TaprootBuilder builder;
-                    while (!s_tree.empty()) {
-                        uint8_t depth;
-                        uint8_t leaf_ver;
-                        std::vector<unsigned char> script;
-                        s_tree >> depth;
-                        s_tree >> leaf_ver;
-                        s_tree >> script;
-                        if (depth > TAPROOT_CONTROL_MAX_NODE_COUNT) {
-                            throw std::ios_base::failure("Output Taproot tree has as leaf greater than Taproot maximum depth");
-                        }
-                        if ((leaf_ver & ~TAPROOT_LEAF_MASK) != 0) {
-                            throw std::ios_base::failure("Output Taproot tree has a leaf with an invalid leaf version");
-                        }
-                        m_tap_tree.emplace_back(depth, leaf_ver, script);
-                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/true);
-                    }
-                    if (!builder.IsComplete()) {
-                        throw std::ios_base::failure("Output Taproot tree is malformed");
-                    }
-                    break;
-                }
-                case PSBT_OUT_TAP_BIP32_DERIVATION:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, output Taproot BIP32 keypath already provided");
-                    } else if (key.size() != 33) {
-                        throw std::ios_base::failure("Output Taproot BIP32 keypath key is not at 33 bytes");
-                    }
-                    XOnlyPubKey xonly(uint256(std::span<uint8_t>(key).last(32)));
-                    std::set<uint256> leaf_hashes;
-                    uint64_t value_len = ReadCompactSize(s);
-                    size_t before_hashes = s.size();
-                    s >> leaf_hashes;
-                    size_t after_hashes = s.size();
-                    size_t hashes_len = before_hashes - after_hashes;
-                    if (hashes_len > value_len) {
-                        throw std::ios_base::failure("Output Taproot BIP32 keypath has an invalid length");
-                    }
-                    size_t origin_len = value_len - hashes_len;
-                    m_tap_bip32_paths.emplace(xonly, std::make_pair(leaf_hashes, DeserializeKeyOrigin(s, origin_len)));
-                    break;
-                }
-                case PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS:
-                {
-                    if (!key_lookup.emplace(key).second) {
-                        throw std::ios_base::failure("Duplicate Key, output participant pubkeys for an aggregate key already provided");
-                    } else if (key.size() != CPubKey::COMPRESSED_SIZE + 1) {
-                        throw std::ios_base::failure("Output musig2 participants pubkeys aggregate key is not 34 bytes");
-                    }
-                    DeserializeMuSig2ParticipantPubkeys(s, skey, m_musig2_participants, std::string{"Output"});
                     break;
                 }
                 case PSBT_OUT_PROPRIETARY:
@@ -1406,7 +983,7 @@ bool PSBTInputSignedAndVerified(const PartiallySignedTransaction psbt, unsigned 
  **/
 [[nodiscard]] PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, const PrecomputedTransactionData* txdata, std::optional<int> sighash = std::nullopt, SignatureData* out_sigdata = nullptr, bool finalize = true);
 
-/**  Reduces the size of the PSBT by dropping unnecessary `non_witness_utxos` (i.e. complete previous transactions) from a psbt when all inputs are segwit v1. */
+/**  Reduces the size of the PSBT by dropping unnecessary `non_witness_utxos` (i.e. complete previous transactions) from a psbt when all inputs are segwit v1+. */
 void RemoveUnnecessaryTransactions(PartiallySignedTransaction& psbtx);
 
 /** Counts the unsigned inputs of a PSBT. */

@@ -65,9 +65,6 @@ assert MIN_PADDING == 5
 DUMMY_MIN_OP_RETURN_SCRIPT = CScript([OP_RETURN] + ([OP_0] * (MIN_PADDING - 1)))
 assert len(DUMMY_MIN_OP_RETURN_SCRIPT) == MIN_PADDING
 
-PAY_TO_ANCHOR = CScript([OP_1, bytes.fromhex("4e73")])
-ANCHOR_ADDRESS = "bcrt1pfeesnyr2tx"
-
 def key_to_p2pk_script(key):
     key = check_key(key)
     return CScript([key, OP_CHECKSIG])
@@ -111,9 +108,8 @@ def key_to_p2sh_p2wpkh_script(key):
 def program_to_witness_script(version, program):
     if isinstance(program, str):
         program = bytes.fromhex(program)
-    assert 0 <= version <= 16
-    assert 2 <= len(program) <= 40
-    assert version > 0 or len(program) in [20, 32]
+    assert version == 0
+    assert len(program) in [20, 32]
     return CScript([version, program])
 
 
@@ -142,10 +138,6 @@ def bulk_vout(tx, target_vsize):
     dummy_vbytes -= len(ser_compact_size(dummy_vbytes)) - 1
     tx.vout[-1].scriptPubKey = CScript([OP_RETURN] + [OP_1] * dummy_vbytes)
     assert_equal(tx.get_vsize(), target_vsize)
-
-def output_key_to_p2tr_script(key):
-    assert len(key) == 32
-    return program_to_witness_script(1, key)
 
 
 def check_key(key):

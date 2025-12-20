@@ -33,9 +33,6 @@ static const int MAX_OPS_PER_SCRIPT = 201;
 // Maximum number of public keys per multisig
 static const int MAX_PUBKEYS_PER_MULTISIG = 20;
 
-/** The limit of keys in OP_CHECKSIGADD-based scripts. It is due to the stack limit in BIP342. */
-static constexpr unsigned int MAX_PUBKEYS_PER_MULTI_A = 999;
-
 // Maximum script length in bytes
 static const int MAX_SCRIPT_SIZE = 10000;
 
@@ -51,17 +48,6 @@ static const unsigned int LOCKTIME_THRESHOLD = 500000000; // Tue Nov  5 00:53:20
 // checking is disabled (by setting all input sequence numbers to
 // SEQUENCE_FINAL).
 static const uint32_t LOCKTIME_MAX = 0xFFFFFFFFU;
-
-// Tag for input annex. If there are at least two witness elements for a transaction input,
-// and the first byte of the last element is 0x50, this last element is called annex, and
-// has meanings independent of the script
-static constexpr unsigned int ANNEX_TAG = 0x50;
-
-// Validation weight per passing signature (Tapscript only, see BIP 342).
-static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
-
-// How much weight budget is added to the witness size (Tapscript only, see BIP 342).
-static constexpr int64_t VALIDATION_WEIGHT_OFFSET{50};
 
 template <typename T>
 std::vector<unsigned char> ToByteVector(const T& in)
@@ -206,7 +192,7 @@ enum opcodetype
     OP_NOP9 = 0xb8,
     OP_NOP10 = 0xb9,
 
-    // Opcode added by BIP 342 (Tapscript)
+    // Reserved/disabled opcode (unused in this codebase).
     OP_CHECKSIGADD = 0xba,
 
     OP_INVALIDOPCODE = 0xff,
@@ -542,19 +528,10 @@ public:
      */
     unsigned int GetSigOpCount(const CScript& scriptSig) const;
 
-    /*
-     * OP_1 <0x4e73>
-     */
-    bool IsPayToAnchor() const;
-    /** Checks if output of IsWitnessProgram comes from a P2A output script
-     */
-    static bool IsPayToAnchor(int version, const std::vector<unsigned char>& program);
-
     bool IsPayToScriptHash() const;
     bool IsPayToWitnessScriptHash() const;
     bool IsWitnessProgram(int& version, std::vector<unsigned char>& program) const;
 
-    bool IsPayToTaproot() const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */
     bool IsPushOnly(const_iterator pc) const;
@@ -606,7 +583,7 @@ public:
     explicit CScriptID(const uint160& in) : BaseHash(in) {}
 };
 
-/** Test for OP_SUCCESSx opcodes as defined by BIP342. */
+/** Test for OP_SUCCESSx opcodes. */
 bool IsOpSuccess(const opcodetype& opcode);
 
 bool CheckMinimalPush(const std::vector<unsigned char>& data, opcodetype opcode);

@@ -160,14 +160,13 @@ class WalletLabelsTest(BitcoinTestFramework):
 
         self.invalid_label_name_test()
 
-        # This is a descriptor wallet test because of segwit v1+ addresses
         self.log.info('Check watchonly labels')
         node.createwallet(wallet_name='watch_only', disable_private_keys=True)
         wallet_watch_only = node.get_wallet_rpc('watch_only')
         BECH32_VALID = {
-            '✔️_VER15_PROG40': 'bcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxkg7fn',
-            '✔️_VER16_PROG03': 'bcrt1sqqqqq8uhdgr',
-            '✔️_VER16_PROB02': 'bcrt1sqqqq4wstyw',
+            '✔️_V0_PROG20_1': node.getnewaddress(address_type="bech32"),
+            '✔️_V0_PROG20_2': node.getnewaddress(address_type="bech32"),
+            '✔️_V0_PROG20_3': node.getnewaddress(address_type="bech32"),
         }
         BECH32_INVALID = {
             '❌_VER15_PROG41': 'bcrt1sqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqajlxj8',

@@ -135,7 +135,6 @@ set_target_properties(test_bitcoin PROPERTIES OUTPUT_NAME test_tidecoin)
 include(TargetDataSources)
 target_json_data_sources(test_bitcoin
   data/base58_encode_decode.json
-  data/bip341_wallet_vectors.json
   data/blockfilters.json
   data/key_io_invalid.json
   data/key_io_valid.json

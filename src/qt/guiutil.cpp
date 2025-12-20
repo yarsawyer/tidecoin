@@ -105,18 +105,18 @@ QFont fixedPitchFont(bool use_embedded_font)
     return QFontDatabase::systemFont(QFontDatabase::FixedFont);
 }
 
-// Return a pre-generated dummy bech32m address (P2TR) with invalid checksum.
+// Return a pre-generated dummy bech32 address.
 static std::string DummyAddress(const CChainParams &params)
 {
     std::string addr;
     switch (params.GetChainType()) {
     case ChainType::MAIN:
-        addr = "bc1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tq2jku9f";
+        addr = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
         break;
     case ChainType::SIGNET:
     case ChainType::TESTNET:
     case ChainType::TESTNET4:
-        addr = "tb1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqa6qnlg";
+        addr = "tb1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
         break;
     case ChainType::REGTEST:
         addr = "bcrt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqsr2427";
