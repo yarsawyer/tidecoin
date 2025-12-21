@@ -129,6 +129,7 @@ add_executable(test_bitcoin
   validation_tests.cpp
   validationinterface_tests.cpp
   versionbits_tests.cpp
+  yespower_tests.cpp
 )
 set_target_properties(test_bitcoin PROPERTIES OUTPUT_NAME test_tidecoin)
 

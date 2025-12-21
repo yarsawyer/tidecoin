@@ -6,14 +6,17 @@ post-quantum signature support and merged mining, while removing taproot and
 preserving Tidecoin network compatibility.
 
 ## Inputs and References
-- Primary repo: this `tidecoin` tree.
-- Reference repos: old Tidecoin (Falcon-512) and Bellscoin (merged mining).
+- Primary repo: `/home/yaroslav/dev/tidecoin/tidecoin`.
+- Reference repos:
+  - Old Tidecoin (Falcon-512): `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin`
+  - Unfinished Tidecoin-to-Bitcoin upgrade: `/home/yaroslav/dev/tidecoin/newtidecoin`
 - Network parameters will be sourced from the old Tidecoin repo.
 - Signature libraries will be upgraded; exact repos will be provided later.
+- Merged mining reference repo is deferred for now (not using Bellscoin yet).
 
 ## Guiding Constraints
 - Maintain sync and consensus with existing Tidecoin network.
-- Gate new signature schemes behind future activation heights.
+- Gate new signature schemes (Falcon-1024, Dilithium 3,5) behind future activation heights.
 - Taproot must be removed (not post-quantum secure).
 - Add extensive tests for consensus and merged mining behavior.
 
@@ -21,10 +24,11 @@ preserving Tidecoin network compatibility.
 
 ### Phase 0: Baseline and Repository Mapping
 - Inventory current codebase (consensus, script, wallet, validation).
-- Identify Taproot usage points (script, policy, wallet, tests).
+- DONE Identify Taproot usage points (script, policy, wallet, tests).
 - Locate Falcon-512 implementation in old Tidecoin repo for reference.
-- Locate AuxPoW/merged mining implementation in Bellscoin repo for reference.
+- Defer AuxPoW/merged mining repo selection until after Tidecoin compatibility.
 - Document key deltas from Bitcoin 0.30 that affect consensus (difficulty quirks).
+- DONE Document current vs Tidecoin deltas for chainparams, ports, policy, PoW, and related settings in `ai-docs/phase0-tidecoin-diff.md`.
 
 ### Phase 1: Falcon-512 Integration (Tidecoin Sync)
 Objective: Make this node validate and sync with Tidecoin network using Falcon-512.
@@ -37,91 +41,12 @@ Deliverable: node can sync with Tidecoin network using Falcon-512.
 
 ### Phase 2: Remove Taproot
 Objective: Eliminate taproot code paths and related policies.
-- Remove taproot script version handling and policy acceptance.
-- Update wallet and descriptor handling as needed.
-- Remove or adjust tests that assume taproot.
-Deliverable: taproot disabled and removed from consensus and policy paths.
+- DONE Remove taproot from consensus, policy, wallet, RPC, PSBT, tests, and docs.
+- DONE Remove segwit v1+ paths (keep only segwit v0).
+- DONE Remove MuSig2 and x-only pubkey helpers.
+Deliverable: taproot fully removed from consensus and policy paths.
 
-#### Taproot Removal Checklist (Detailed)
-Scope: remove BIP340/341/342 taproot and tapscript support from consensus, policy,
-wallet, RPC, PSBT, tests, and docs. Keep non-taproot Schnorr support only if
-explicitly needed later; otherwise remove it together with taproot.
-
-1) Consensus and deployments
-- Remove taproot deployment constants and activation settings.
-  - Files: `src/consensus/params.h`, `src/kernel/chainparams.cpp`
-- Remove any taproot-related softfork reporting.
-  - Files: `src/rpc/blockchain.cpp`
-- Confirm no chainparams/activation logic still references DEPLOYMENT_TAPROOT.
-
-2) Script and consensus validation
-- Remove tapscript script version handling and taproot spending rules.
-  - Files: `src/script/interpreter.cpp`, `src/script/interpreter.h`,
-    `src/script/script_error.cpp`
-- Remove taproot output type and script solver mappings.
-  - Files: `src/script/solver.cpp`, `src/script/solver.h`
-- Remove taproot sighash caching paths and taproot-specific signature checks.
-  - Files: `src/script/sigcache.cpp`, `src/script/sign.cpp`
-- Remove taproot tree builder and control block logic.
-  - Files: `src/script/interpreter.h`, `src/script/signingprovider.*`
-
-3) Addressing, output types, and key handling
-- Remove P2TR output type handling and any Bech32m taproot path.
-  - Files: `src/outputtype.cpp`, `src/key_io.cpp`
-- Remove x-only pubkey taproot helper paths if unused after taproot removal.
-  - Files: `src/key.h`
-
-4) PSBT and transaction signing
-- Remove PSBT taproot fields and parsing/serialization support.
-  - Files: `src/psbt.h`, `src/psbt.cpp`
-- Remove taproot-specific signing logic and flags.
-  - Files: `src/script/sign.h`, `src/script/sign.cpp`
-
-5) Wallet and UI
-- Remove taproot-enabled wallet checks and descriptors.
-  - Files: `src/interfaces/wallet.h`, `src/wallet/interfaces.cpp`,
-    `src/qt/receivecoinsdialog.cpp`
-- Remove tr() descriptor support if present.
-  - Files: `src/rpc/blockchain.cpp`, `doc/descriptors.md`
-
-6) RPC and CLI surface area
-- Remove taproot fields from RPC results and help text.
-  - Files: `src/rpc/rawtransaction.cpp`
-- Remove taproot softfork from getblockchaininfo softfork listing.
-  - Files: `src/rpc/blockchain.cpp`
-
-7) Tests, test framework, and data
-- Remove taproot functional tests.
-  - Files: `test/functional/feature_taproot.py`, `test/functional/wallet_taproot.py`,
-    `test/functional/rpc_psbt.py`, `test/functional/rpc_decodescript.py`,
-    `test/functional/wallet_migration.py`, `test/functional/wallet_backwards_compatibility.py`,
-    `test/functional/wallet_miniscript.py`, `test/functional/test_runner.py`
-- Remove taproot helpers from test framework utilities.
-  - Files: `test/functional/test_framework/address.py`,
-    `test/functional/test_framework/script.py`,
-    `test/functional/test_framework/wallet.py`
-- Remove taproot unit tests and test vectors.
-  - Files: `src/test/script_tests.cpp`, `src/test/script_standard_tests.cpp`,
-    `src/test/miniscript_tests.cpp`, `src/test/data/script_tests.json`
-
-8) Benchmarks
-- Remove taproot-related benchmarks.
-  - Files: `src/bench/sign_transaction.cpp`, `src/bench/connectblock.cpp`
-
-9) secp256k1 schnorr module (optional, decide explicitly)
-- If no schnorr use remains, remove schnorr module and tests.
-  - Files: `src/secp256k1/src/modules/schnorrsig/*`, `src/secp256k1/src/tests.c`
-- If kept, ensure no taproot-only call sites remain.
-
-10) Documentation and release notes
-- Remove or update taproot references in docs.
-  - Files: `doc/descriptors.md`, `doc/bips.md`, `doc/release-notes/*`
-
-11) Build and config verification
-- Ensure no leftover include or linker references to removed taproot code.
-- Run unit + functional tests relevant to script, wallet, and RPC after removal.
-
-Progress tracking lives in `ai-docs/taproot-removal.md`.
+Progress tracking and detailed checklist live in `ai-docs/taproot-removal.md`.
 
 ### Phase 3: HD Wallet Capabilities
 Objective: Add HD wallet support aligned with Tidecoin needs.

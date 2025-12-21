@@ -19,6 +19,9 @@ add_library(bitcoin_crypto STATIC EXCLUDE_FROM_ALL
   sha3.cpp
   sha512.cpp
   siphash.cpp
+  yespower/sha256.c
+  yespower/yespower-opt.c
+  yespower/tidecoin_pow.cpp
   ../support/cleanse.cpp
 )
 
