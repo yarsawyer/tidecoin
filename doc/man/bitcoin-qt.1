@@ -33,12 +33,8 @@ If this block is in the chain assume that it and its ancestors are valid
 and potentially skip their script verification (0 to verify all,
 default:
 00000000000000000000611fd22f2df7c8fbd0688745c3a6c3bb5109cc2a12cb,
-testnet3:
+testnet:
 0000000000000065c6c38258e201971a3fdfcc2ceee0dd6e85a6c022d45dee34,
-testnet4:
-000000000000000180a58e7fa3b0db84b5ea76377524894f53660d93ac839d9b,
-signet:
-000000128586e26813922680309f04e1de713c7542fee86ed908f56368aefe2e)
 .HP
 \fB\-blockfilterindex=\fR<type>
 .IP
@@ -236,8 +232,7 @@ Default duration (in seconds) of manually configured bans (default:
 Bind to given address and always listen on it (default: 0.0.0.0). Use
 [host]:port notation for IPv6. Append =onion to tag any incoming
 connections to that address and port as incoming Tor connections
-(default: 127.0.0.1:8334=onion, testnet3: 127.0.0.1:18334=onion,
-testnet4: 127.0.0.1:48334=onion, signet: 127.0.0.1:38334=onion,
+(default: 127.0.0.1:8334=onion, testnet: 127.0.0.1:18334=onion,
 regtest: 127.0.0.1:18445=onion)
 .HP
 \fB\-cjdnsreachable\fR
@@ -356,8 +351,8 @@ Support filtering of blocks and transaction with bloom filters (default:
 .HP
 \fB\-port=\fR<port>
 .IP
-Listen for connections on <port> (default: 8333, testnet3: 18333,
-testnet4: 48333, signet: 38333, regtest: 18444). Not relevant for
+Listen for connections on <port> (default: 8333, testnet: 18333,
+regtest: 18444). Not relevant for
 I2P (see doc/i2p.md). If set to a value x, the default onion
 listening port will be set to x+1.
 .HP
@@ -656,35 +651,13 @@ Chain selection options:
 \fB\-chain=\fR<chain>
 .IP
 Use the chain <chain> (default: main). Allowed values: main, test,
-testnet4, signet, regtest
-.HP
-\fB\-signet\fR
-.IP
-Use the signet chain. Equivalent to \fB\-chain\fR=\fI\,signet\/\fR. Note that the network
-is defined by the \fB\-signetchallenge\fR parameter
-.HP
-\fB\-signetchallenge\fR
-.IP
-Blocks must satisfy the given script to be considered valid (only for
-signet networks; defaults to the global default signet test
-network challenge)
-.HP
-\fB\-signetseednode\fR
-.IP
-Specify a seed node for the signet network, in the hostname[:port]
-format, e.g. sig.net:1234 (may be used multiple times to specify
-multiple seed nodes; defaults to the global default signet test
-network seed node(s))
+testnet, regtest
 .HP
 \fB\-testnet\fR
 .IP
-Use the testnet3 chain. Equivalent to \fB\-chain\fR=\fI\,test\/\fR. Support for testnet3
+Use the testnet chain. Equivalent to \fB\-chain\fR=\fI\,test\/\fR. Support for testnet
 is deprecated and will be removed in an upcoming release.
-Consider moving to testnet4 now by using \fB\-testnet4\fR.
-.HP
-\fB\-testnet4\fR
-.IP
-Use the testnet4 chain. Equivalent to \fB\-chain\fR=\fI\,testnet4\/\fR.
+
 .PP
 Node relay options:
 .HP
@@ -785,8 +758,8 @@ Password for JSON\-RPC connections
 .HP
 \fB\-rpcport=\fR<port>
 .IP
-Listen for JSON\-RPC connections on <port> (default: 8332, testnet3:
-18332, testnet4: 48332, signet: 38332, regtest: 18443)
+Listen for JSON\-RPC connections on <port> (default: 8332, testnet:
+18332, regtest: 18443)
 .HP
 \fB\-rpcthreads=\fR<n>
 .IP

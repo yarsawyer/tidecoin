@@ -124,8 +124,6 @@ public:
      * @param[out] reason     failure reason (BIP22)
      * @param[out] debug      more detailed rejection reason
      * @returns               whether the block is valid
-     *
-     * For signets the challenge verification is skipped when check_pow is false.
      */
     virtual bool checkBlock(const CBlock& block, const node::BlockCheckOptions& options, std::string& reason, std::string& debug) = 0;
 

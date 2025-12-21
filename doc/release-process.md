@@ -30,7 +30,7 @@ Release Process
 
 * Update translations see [translation_process.md](/doc/translation_process.md#synchronising-translations).
 * Update hardcoded [seeds](/contrib/seeds/README.md), see [this pull request](https://github.com/bitcoin/bitcoin/pull/27488) for an example.
-* Update the following variables in [`src/kernel/chainparams.cpp`](/src/kernel/chainparams.cpp) for mainnet, testnet, and signet:
+* Update the following variables in [`src/kernel/chainparams.cpp`](/src/kernel/chainparams.cpp) for mainnet and testnet:
   - `m_assumed_blockchain_size` and `m_assumed_chain_state_size` with the current size plus some overhead (see
     [this](#how-to-calculate-assumed-blockchain-and-chain-state-size) for information on how to calculate them).
   - The following updates should be reviewed with `reindex-chainstate` and `assumevalid=0` to catch any defect
@@ -313,16 +313,12 @@ Both variables are used as a guideline for how much space the user needs on thei
 Note that all values should be taken from a **fully synced** node and have an overhead of 5-10% added on top of its base value.
 
 To calculate `m_assumed_blockchain_size`, take the size in GiB of these directories:
-- For `mainnet` -> the data directory, excluding the `/testnet3`, `/testnet4`, `/signet`, and `/regtest` directories and any overly large files, e.g. a huge `debug.log`
-- For `testnet` -> `/testnet3`
-- For `testnet4` -> `/testnet4`
-- For `signet` -> `/signet`
+- For `mainnet` -> the data directory, excluding the `/testnet` and `/regtest` directories and any overly large files, e.g. a huge `debug.log`
+- For `testnet` -> `/testnet`
 
 To calculate `m_assumed_chain_state_size`, take the size in GiB of these directories:
 - For `mainnet` -> `/chainstate`
-- For `testnet` -> `/testnet3/chainstate`
-- For `testnet4` -> `/testnet4/chainstate`
-- For `signet` -> `/signet/chainstate`
+- For `testnet` -> `/testnet/chainstate`
 
 Notes:
 - When taking the size for `m_assumed_blockchain_size`, there's no need to exclude the `/chainstate` directory since it's a guideline value and an overhead will be added anyway.

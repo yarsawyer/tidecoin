@@ -110,7 +110,7 @@ struct Params {
     uint256 powLimit;
     bool fPowAllowMinDifficultyBlocks;
     /**
-      * Enforce BIP94 timewarp attack mitigation. On testnet4 this also enforces
+     * Enforce BIP94 timewarp attack mitigation. This also enforces
       * the block storm mitigation.
       */
     bool enforce_BIP94;
@@ -126,13 +126,6 @@ struct Params {
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */
     uint256 defaultAssumeValid;
-
-    /**
-     * If true, witness commitments contain a payload equal to a Bitcoin Script solution
-     * to the signet challenge. See BIP325.
-     */
-    bool signet_blocks{false};
-    std::vector<uint8_t> signet_challenge;
 
     int DeploymentHeight(BuriedDeployment dep) const
     {

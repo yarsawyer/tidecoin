@@ -1444,8 +1444,8 @@ class WalletMigrationTest(BitcoinTestFramework):
     def test_loading_failure_after_migration(self):
         self.log.info("Test that a failed loading of the wallet at the end of migration restores the backup")
         self.stop_node(self.old_node.index)
-        self.old_node.chain = "signet"
-        self.old_node.replace_in_config([("regtest=", "signet="), ("[regtest]", "[signet]")])
+        self.old_node.chain = "testnet"
+        self.old_node.replace_in_config([("regtest=", "testnet="), ("[regtest]", "[test]")])
         # Disable network sync and prevent disk space warning on small (tmp)fs
         self.start_node(self.old_node.index, extra_args=self.old_node.extra_args + ["-maxconnections=0", "-prune=550"])
 
@@ -1458,7 +1458,7 @@ class WalletMigrationTest(BitcoinTestFramework):
 
         self.stop_node(self.old_node.index)
         self.old_node.chain = "regtest"
-        self.old_node.replace_in_config([("signet=", "regtest="), ("[signet]", "[regtest]")])
+        self.old_node.replace_in_config([("testnet=", "regtest="), ("[test]", "[regtest]")])
         self.start_node(self.old_node.index)
         self.connect_nodes(1, 0)
 

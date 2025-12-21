@@ -177,18 +177,18 @@ function takes longer than the threshold, information about the block, is
 printed. For more details, see the header comment in the script.
 
 The following command can be used to benchmark, for example, `ConnectBlock()`
-between height 20000 and 38000 on SigNet while logging all blocks that take
+between height 20000 and 38000 on testnet while logging all blocks that take
 longer than 25ms to connect.
 
 ```
 $ bpftrace contrib/tracing/connectblock_benchmark.bt 20000 38000 25
 ```
 
-In a different terminal, starting Bitcoin Core in SigNet mode and with
+In a different terminal, starting Bitcoin Core in testnet mode and with
 re-indexing enabled.
 
 ```
-$ ./build/bin/bitcoind -signet -reindex
+$ ./build/bin/bitcoind -testnet -reindex
 ```
 
 This produces the following output.

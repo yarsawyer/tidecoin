@@ -43,7 +43,6 @@
 #include <random.h>
 #include <script/script.h>
 #include <script/sigcache.h>
-#include <signet.h>
 #include <tinyformat.h>
 #include <txdb.h>
 #include <txmempool.h>
@@ -2524,9 +2523,9 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // edge case when manipulating the UTXO and it would be simpler not to have
     // another edge case to deal with.
 
-    // testnet3 has no blocks before the BIP34 height with indicated heights
+    // testnet has no blocks before the BIP34 height with indicated heights
     // post BIP34 before approximately height 486,000,000. After block
-    // 1,983,702 testnet3 starts doing unnecessary BIP30 checking again.
+    // 1,983,702 testnet starts doing unnecessary BIP30 checking again.
     assert(pindex->pprev);
     CBlockIndex* pindexBIP34height = pindex->pprev->GetAncestor(params.GetConsensus().BIP34Height);
     //Only continue to enforce if we're below BIP34 activation height or the block hash at that height doesn't correspond.
@@ -4020,11 +4019,6 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
     if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW))
         return false;
 
-    // Signet only: check block solution
-    if (consensusParams.signet_blocks && fCheckPOW && !CheckSignetBlockSolution(block, consensusParams)) {
-        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-signet-blksig", "signet block signature validation failure");
-    }
-
     // Check the merkle root.
     if (fCheckMerkleRoot && !CheckMerkleRoot(block, state)) {
         return false;
@@ -4575,7 +4569,6 @@ BlockValidationState TestBlockValidity(
         return state;
     }
 
-    // For signets CheckBlock() verifies the challenge iff fCheckPow is set.
     if (!CheckBlock(block, state, chainstate.m_chainman.GetConsensus(), /*fCheckPow=*/check_pow, /*fCheckMerkleRoot=*/check_merkle_root)) {
         // This should never happen, but belt-and-suspenders don't approve the
         // block if it does.

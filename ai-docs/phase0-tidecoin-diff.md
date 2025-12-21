@@ -64,9 +64,9 @@ Current repo chainparams are in `/home/yaroslav/dev/tidecoin/tidecoin/src/kernel
 - Old Tidecoin base RPC ports are defined in `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin/src/chainparamsbase.cpp`:
   - main 7585, test 17585, regtest 17595.
 - New Tidecoin base RPC ports are defined in `/home/yaroslav/dev/tidecoin/newtidecoin/src/chainparamsbase.cpp`:
-  - main 8755, test 18755, signet 38757, regtest 18443.
+  - main 8755, test 18755, regtest 18443.
 - Current repo base RPC ports are in `/home/yaroslav/dev/tidecoin/tidecoin/src/chainparamsbase.cpp`:
-  - main 8332, testnet3 18332, testnet4 48332, signet 38332, regtest 18443.
+  - main 8332, testnet 18332, regtest 18443.
 
 ## PoW Hashing and Difficulty
 Source: `oldtidecoin` PoW hash is in `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin/src/primitives/block.cpp`
@@ -83,7 +83,7 @@ Difficulty retarget differences:
   case and handles a one-bit overflow in intermediate target calculation.
   - File: `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin/src/pow.cpp`
 - Current repo uses ancestor-based retargeting and includes `PermittedDifficultyTransition()`
-  and BIP94 testnet4 rules.
+  and BIP94 rules.
   - File: `/home/yaroslav/dev/tidecoin/tidecoin/src/pow.cpp`
 
 ## Policy Defaults

@@ -105,8 +105,7 @@ class AssumeutxoTest(BitcoinTestFramework):
         invalid_magics = [
             # magic, name, real
             [MAGIC_BYTES["mainnet"], "main", True],
-            [MAGIC_BYTES["testnet4"], "testnet4", True],
-            [MAGIC_BYTES["signet"], "signet", True],
+            [MAGIC_BYTES["testnet"], "testnet", True],
             [0x00000000.to_bytes(4, 'big'), "", False],
             [0xffffffff.to_bytes(4, 'big'), "", False],
         ]
@@ -116,7 +115,7 @@ class AssumeutxoTest(BitcoinTestFramework):
             if real:
                 assert_raises_rpc_error(parsing_error_code, f"Unable to parse metadata: The network of the snapshot ({name}) does not match the network of this node (regtest).", node.loadtxoutset, bad_snapshot_path)
             else:
-                assert_raises_rpc_error(parsing_error_code, "Unable to parse metadata: This snapshot has been created for an unrecognized network. This could be a custom signet, a new testnet or possibly caused by data corruption.", node.loadtxoutset, bad_snapshot_path)
+                assert_raises_rpc_error(parsing_error_code, "Unable to parse metadata: This snapshot has been created for an unrecognized network. This could be a custom network, a new testnet or possibly caused by data corruption.", node.loadtxoutset, bad_snapshot_path)
 
         self.log.info("  - snapshot file referring to a block that is not in the assumeutxo parameters")
         prev_block_hash = self.nodes[0].getblockhash(SNAPSHOT_BASE_HEIGHT - 1)

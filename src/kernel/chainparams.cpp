@@ -83,8 +83,6 @@ class CMainParams : public CChainParams {
 public:
     CMainParams() {
         m_chain_type = ChainType::MAIN;
-        consensus.signet_blocks = false;
-        consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
         consensus.script_flag_exceptions.emplace( // BIP16 exception
             uint256{"00000000000002dc756eebf4f49723ed8d30cc28a5f108eb94b1ba88ac4f9c22"}, SCRIPT_VERIFY_NONE);
@@ -190,14 +188,12 @@ public:
 };
 
 /**
- * Testnet (v3): public test network which is reset from time to time.
+ * Testnet: public test network which is reset from time to time.
  */
 class CTestNetParams : public CChainParams {
 public:
     CTestNetParams() {
         m_chain_type = ChainType::TESTNET;
-        consensus.signet_blocks = false;
-        consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
         consensus.script_flag_exceptions.emplace( // BIP16 exception
             uint256{"00000000dd30457c001f4095d208cc1296b0eed002427aa599874af7a432b105"}, SCRIPT_VERIFY_NONE);
@@ -280,206 +276,6 @@ public:
 };
 
 /**
- * Testnet (v4): public test network which is reset from time to time.
- */
-class CTestNet4Params : public CChainParams {
-public:
-    CTestNet4Params() {
-        m_chain_type = ChainType::TESTNET4;
-        consensus.signet_blocks = false;
-        consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 210000;
-        consensus.BIP34Height = 1;
-        consensus.BIP34Hash = uint256{};
-        consensus.BIP65Height = 1;
-        consensus.BIP66Height = 1;
-        consensus.CSVHeight = 1;
-        consensus.SegwitHeight = 1;
-        consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
-        consensus.fPowAllowMinDifficultyBlocks = true;
-        consensus.enforce_BIP94 = true;
-        consensus.fPowNoRetargeting = false;
-
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].threshold = 1512; // 75%
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 2016;
-
-
-        consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000000000034a4690fe592dc49c7c"};
-        consensus.defaultAssumeValid = uint256{"000000000000000180a58e7fa3b0db84b5ea76377524894f53660d93ac839d9b"}; // 91000
-
-        pchMessageStart[0] = 0x1c;
-        pchMessageStart[1] = 0x16;
-        pchMessageStart[2] = 0x3f;
-        pchMessageStart[3] = 0x28;
-        nDefaultPort = 48333;
-        nPruneAfterHeight = 1000;
-        m_assumed_blockchain_size = 22;
-        m_assumed_chain_state_size = 2;
-
-        const char* testnet4_genesis_msg = "03/May/2024 000000000000000000001ebd58c244970b3aa9d783bb001011fbe8ea8e98e00e";
-        const CScript testnet4_genesis_script = CScript() << "000000000000000000000000000000000000000000000000000000000000000000"_hex << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(testnet4_genesis_msg,
-                testnet4_genesis_script,
-                1714777860,
-                393743547,
-                0x1d00ffff,
-                1,
-                50 * COIN);
-        consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043"});
-        assert(genesis.hashMerkleRoot == uint256{"7aa0a7ae1e223414cb807e40cd57e667b718e42aaf9306db9102fe28912b7b4e"});
-
-        vFixedSeeds.clear();
-        vSeeds.clear();
-        // nodes with support for servicebits filtering should be at the top
-        vSeeds.emplace_back("seed.testnet4.bitcoin.sprovoost.nl."); // Sjors Provoost
-        vSeeds.emplace_back("seed.testnet4.wiz.biz."); // Jason Maurice
-
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
-        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
-
-        bech32_hrp = "tb";
-
-        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_testnet4), std::end(chainparams_seed_testnet4));
-
-        fDefaultConsistencyChecks = false;
-        m_is_mockable_chain = false;
-
-        m_assumeutxo_data = {
-            {
-                .height = 90'000,
-                .hash_serialized = AssumeutxoHash{uint256{"784fb5e98241de66fdd429f4392155c9e7db5c017148e66e8fdbc95746f8b9b5"}},
-                .m_chain_tx_count = 11347043,
-                .blockhash = consteval_ctor(uint256{"0000000002ebe8bcda020e0dd6ccfbdfac531d2f6a81457191b99fc2df2dbe3b"}),
-            }
-        };
-
-        chainTxData = ChainTxData{
-            // Data from RPC: getchaintxstats 4096 000000000000000180a58e7fa3b0db84b5ea76377524894f53660d93ac839d9b
-            .nTime    = 1752470331,
-            .tx_count = 11414302,
-            .dTxRate  = 0.2842619757327476,
-        };
-    }
-};
-
-/**
- * Signet: test network with an additional consensus parameter (see BIP325).
- */
-class SigNetParams : public CChainParams {
-public:
-    explicit SigNetParams(const SigNetOptions& options)
-    {
-        std::vector<uint8_t> bin;
-        vFixedSeeds.clear();
-        vSeeds.clear();
-
-        if (!options.challenge) {
-            bin = "512103ad5e0edad18cb1f0fc0d28a3d4f1f3e445640337489abb10404f2d1e086be430210359ef5021964fe22d6f8e05b2463c9540ce96883fe3b278760f048f5189f2e6c452ae"_hex_v_u8;
-            vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_signet), std::end(chainparams_seed_signet));
-            vSeeds.emplace_back("seed.signet.bitcoin.sprovoost.nl.");
-            vSeeds.emplace_back("seed.signet.achownodes.xyz."); // Ava Chow, only supports x1, x5, x9, x49, x809, x849, xd, x400, x404, x408, x448, xc08, xc48, x40c
-
-            consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000000000000067d328e681a"};
-            consensus.defaultAssumeValid = uint256{"000000128586e26813922680309f04e1de713c7542fee86ed908f56368aefe2e"}; // 267665
-            m_assumed_blockchain_size = 20;
-            m_assumed_chain_state_size = 4;
-            chainTxData = ChainTxData{
-                // Data from RPC: getchaintxstats 4096 000000128586e26813922680309f04e1de713c7542fee86ed908f56368aefe2e
-                .nTime    = 1756723017,
-                .tx_count = 26185472,
-                .dTxRate  = 0.7452721495389969,
-            };
-        } else {
-            bin = *options.challenge;
-            consensus.nMinimumChainWork = uint256{};
-            consensus.defaultAssumeValid = uint256{};
-            m_assumed_blockchain_size = 0;
-            m_assumed_chain_state_size = 0;
-            chainTxData = ChainTxData{
-                0,
-                0,
-                0,
-            };
-            LogInfo("Signet with challenge %s", HexStr(bin));
-        }
-
-        if (options.seeds) {
-            vSeeds = *options.seeds;
-        }
-
-        m_chain_type = ChainType::SIGNET;
-        consensus.signet_blocks = true;
-        consensus.signet_challenge.assign(bin.begin(), bin.end());
-        consensus.nSubsidyHalvingInterval = 210000;
-        consensus.BIP34Height = 1;
-        consensus.BIP34Hash = uint256{};
-        consensus.BIP65Height = 1;
-        consensus.BIP66Height = 1;
-        consensus.CSVHeight = 1;
-        consensus.SegwitHeight = 1;
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
-        consensus.fPowAllowMinDifficultyBlocks = false;
-        consensus.enforce_BIP94 = false;
-        consensus.fPowNoRetargeting = false;
-        consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"00000377ae000000000000000000000000000000000000000000000000000000"};
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].threshold = 1815; // 90%
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 2016;
-
-
-        // message start is defined as the first 4 bytes of the sha256d of the block script
-        HashWriter h{};
-        h << consensus.signet_challenge;
-        uint256 hash = h.GetHash();
-        std::copy_n(hash.begin(), 4, pchMessageStart.begin());
-
-        nDefaultPort = 38333;
-        nPruneAfterHeight = 1000;
-
-        genesis = CreateGenesisBlock(1598918400, 52613770, 0x1e0377ae, 1, 50 * COIN);
-        consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6"});
-        assert(genesis.hashMerkleRoot == uint256{"4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"});
-
-        m_assumeutxo_data = {
-            {
-                .height = 160'000,
-                .hash_serialized = AssumeutxoHash{uint256{"fe0a44309b74d6b5883d246cb419c6221bcccf0b308c9b59b7d70783dbdf928a"}},
-                .m_chain_tx_count = 2289496,
-                .blockhash = consteval_ctor(uint256{"0000003ca3c99aff040f2563c2ad8f8ec88bd0fd6b8f0895cfaf1ef90353a62c"}),
-            }
-        };
-
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
-        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
-
-        bech32_hrp = "tb";
-
-        fDefaultConsistencyChecks = false;
-        m_is_mockable_chain = false;
-    }
-};
-
-/**
  * Regression test: intended for private networks only. Has minimal difficulty to ensure that
  * blocks can be found instantly.
  */
@@ -489,8 +285,6 @@ public:
     explicit CRegTestParams(const RegTestOptions& opts)
     {
         m_chain_type = ChainType::REGTEST;
-        consensus.signet_blocks = false;
-        consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 150;
         consensus.BIP34Height = 1; // Always active unless overridden
         consensus.BIP34Hash = uint256();
@@ -603,11 +397,6 @@ public:
     }
 };
 
-std::unique_ptr<const CChainParams> CChainParams::SigNet(const SigNetOptions& options)
-{
-    return std::make_unique<const SigNetParams>(options);
-}
-
 std::unique_ptr<const CChainParams> CChainParams::RegTest(const RegTestOptions& options)
 {
     return std::make_unique<const CRegTestParams>(options);
@@ -621,11 +410,6 @@ std::unique_ptr<const CChainParams> CChainParams::Main()
 std::unique_ptr<const CChainParams> CChainParams::TestNet()
 {
     return std::make_unique<const CTestNetParams>();
-}
-
-std::unique_ptr<const CChainParams> CChainParams::TestNet4()
-{
-    return std::make_unique<const CTestNet4Params>();
 }
 
 std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
@@ -643,20 +427,14 @@ std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
 {
     const auto mainnet_msg = CChainParams::Main()->MessageStart();
     const auto testnet_msg = CChainParams::TestNet()->MessageStart();
-    const auto testnet4_msg = CChainParams::TestNet4()->MessageStart();
     const auto regtest_msg = CChainParams::RegTest({})->MessageStart();
-    const auto signet_msg = CChainParams::SigNet({})->MessageStart();
 
     if (std::ranges::equal(message, mainnet_msg)) {
         return ChainType::MAIN;
     } else if (std::ranges::equal(message, testnet_msg)) {
         return ChainType::TESTNET;
-    } else if (std::ranges::equal(message, testnet4_msg)) {
-        return ChainType::TESTNET4;
     } else if (std::ranges::equal(message, regtest_msg)) {
         return ChainType::REGTEST;
-    } else if (std::ranges::equal(message, signet_msg)) {
-        return ChainType::SIGNET;
     }
     return std::nullopt;
 }

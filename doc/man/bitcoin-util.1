@@ -29,35 +29,13 @@ Chain selection options:
 \fB\-chain=\fR<chain>
 .IP
 Use the chain <chain> (default: main). Allowed values: main, test,
-testnet4, signet, regtest
-.HP
-\fB\-signet\fR
-.IP
-Use the signet chain. Equivalent to \fB\-chain\fR=\fI\,signet\/\fR. Note that the network
-is defined by the \fB\-signetchallenge\fR parameter
-.HP
-\fB\-signetchallenge\fR
-.IP
-Blocks must satisfy the given script to be considered valid (only for
-signet networks; defaults to the global default signet test
-network challenge)
-.HP
-\fB\-signetseednode\fR
-.IP
-Specify a seed node for the signet network, in the hostname[:port]
-format, e.g. sig.net:1234 (may be used multiple times to specify
-multiple seed nodes; defaults to the global default signet test
-network seed node(s))
+testnet, regtest
 .HP
 \fB\-testnet\fR
 .IP
-Use the testnet3 chain. Equivalent to \fB\-chain\fR=\fI\,test\/\fR. Support for testnet3
+Use the testnet chain. Equivalent to \fB\-chain\fR=\fI\,test\/\fR. Support for testnet
 is deprecated and will be removed in an upcoming release.
-Consider moving to testnet4 now by using \fB\-testnet4\fR.
-.HP
-\fB\-testnet4\fR
-.IP
-Use the testnet4 chain. Equivalent to \fB\-chain\fR=\fI\,testnet4\/\fR.
+
 .PP
 Commands:
 .IP
