@@ -33,7 +33,7 @@ public:
 
     std::string operator()(const ScriptHash& id) const
     {
-        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::SCRIPT_ADDRESS);
+        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::SCRIPT_ADDRESS2);
         data.insert(data.end(), id.begin(), id.end());
         return EncodeBase58Check(data);
     }
@@ -76,17 +76,24 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             std::copy(data.begin() + pubkey_prefix.size(), data.end(), hash.begin());
             return PKHash(hash);
         }
-        // Script-hash-addresses have version 5 (or 196 testnet).
+        // Script-hash-addresses.
         // The data vector contains RIPEMD160(SHA256(cscript)), where cscript is the serialized redemption script.
         const std::vector<unsigned char>& script_prefix = params.Base58Prefix(CChainParams::SCRIPT_ADDRESS);
         if (data.size() == hash.size() + script_prefix.size() && std::equal(script_prefix.begin(), script_prefix.end(), data.begin())) {
             std::copy(data.begin() + script_prefix.size(), data.end(), hash.begin());
             return ScriptHash(hash);
         }
+        const std::vector<unsigned char>& script_prefix2 = params.Base58Prefix(CChainParams::SCRIPT_ADDRESS2);
+        if (data.size() == hash.size() + script_prefix2.size() && std::equal(script_prefix2.begin(), script_prefix2.end(), data.begin())) {
+            std::copy(data.begin() + script_prefix2.size(), data.end(), hash.begin());
+            return ScriptHash(hash);
+        }
 
         // If the prefix of data matches either the script or pubkey prefix, the length must have been wrong
         if ((data.size() >= script_prefix.size() &&
                 std::equal(script_prefix.begin(), script_prefix.end(), data.begin())) ||
+            (data.size() >= script_prefix2.size() &&
+                std::equal(script_prefix2.begin(), script_prefix2.end(), data.begin())) ||
             (data.size() >= pubkey_prefix.size() &&
                 std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin()))) {
             error_str = "Invalid length for Base58 address (P2PKH or P2SH)";

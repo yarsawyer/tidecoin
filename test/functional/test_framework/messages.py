@@ -84,9 +84,9 @@ TX_MIN_STANDARD_VERSION = 1
 TX_MAX_STANDARD_VERSION = 3
 
 MAGIC_BYTES = {
-    "mainnet": b"\xf9\xbe\xb4\xd9",
-    "testnet": b"\x0b\x11\x09\x07",
-    "regtest": b"\xfa\xbf\xb5\xda",
+    "mainnet": b"\xec\xfa\xce\xa5",
+    "testnet": b"\xba\xce\x3f\xda",
+    "regtest": b"\xba\xce\x3f\xda",
 }
 
 def sha256(s):
