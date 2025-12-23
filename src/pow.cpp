@@ -11,6 +11,22 @@
 #include <uint256.h>
 #include <util/check.h>
 
+namespace {
+arith_uint256 ScaleTarget(arith_uint256 target, int64_t actual_timespan, int64_t target_timespan, const arith_uint256& pow_limit)
+{
+    const bool shift = target.bits() > pow_limit.bits() - 1;
+    if (shift) {
+        target >>= 1;
+    }
+    target *= actual_timespan;
+    target /= target_timespan;
+    if (shift) {
+        target <<= 1;
+    }
+    return target;
+}
+} // namespace
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
@@ -38,8 +54,13 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         return pindexLast->nBits;
     }
 
-    // Go back by what we want to be 14 days worth of blocks
-    int nHeightFirst = pindexLast->nHeight - (params.DifficultyAdjustmentInterval()-1);
+    // Tidecoin: go back the full period unless this is the first retarget after genesis.
+    int blockstogoback = params.DifficultyAdjustmentInterval() - 1;
+    if ((pindexLast->nHeight + 1) != params.DifficultyAdjustmentInterval()) {
+        blockstogoback = params.DifficultyAdjustmentInterval();
+    }
+
+    int nHeightFirst = pindexLast->nHeight - blockstogoback;
     assert(nHeightFirst >= 0);
     const CBlockIndex* pindexFirst = pindexLast->GetAncestor(nHeightFirst);
     assert(pindexFirst);
@@ -62,21 +83,8 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
     // Retarget
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
     arith_uint256 bnNew;
-
-    // Special difficulty rule for Testnet4
-    if (params.enforce_BIP94) {
-        // Here we use the first block of the difficulty period. This way
-        // the real difficulty is always preserved in the first block as
-        // it is not allowed to use the min-difficulty exception.
-        int nHeightFirst = pindexLast->nHeight - (params.DifficultyAdjustmentInterval()-1);
-        const CBlockIndex* pindexFirst = pindexLast->GetAncestor(nHeightFirst);
-        bnNew.SetCompact(pindexFirst->nBits);
-    } else {
-        bnNew.SetCompact(pindexLast->nBits);
-    }
-
-    bnNew *= nActualTimespan;
-    bnNew /= params.nPowTargetTimespan;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew = ScaleTarget(bnNew, nActualTimespan, params.nPowTargetTimespan, bnPowLimit);
 
     if (bnNew > bnPowLimit)
         bnNew = bnPowLimit;
@@ -101,8 +109,7 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
         // Calculate the largest difficulty value possible:
         arith_uint256 largest_difficulty_target;
         largest_difficulty_target.SetCompact(old_nbits);
-        largest_difficulty_target *= largest_timespan;
-        largest_difficulty_target /= params.nPowTargetTimespan;
+        largest_difficulty_target = ScaleTarget(largest_difficulty_target, largest_timespan, params.nPowTargetTimespan, pow_limit);
 
         if (largest_difficulty_target > pow_limit) {
             largest_difficulty_target = pow_limit;
@@ -117,8 +124,7 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
         // Calculate the smallest difficulty value possible:
         arith_uint256 smallest_difficulty_target;
         smallest_difficulty_target.SetCompact(old_nbits);
-        smallest_difficulty_target *= smallest_timespan;
-        smallest_difficulty_target /= params.nPowTargetTimespan;
+        smallest_difficulty_target = ScaleTarget(smallest_difficulty_target, smallest_timespan, params.nPowTargetTimespan, pow_limit);
 
         if (smallest_difficulty_target > pow_limit) {
             smallest_difficulty_target = pow_limit;

@@ -5,12 +5,25 @@
 
 #include <primitives/block.h>
 
+#include <crypto/yespower/tidecoin_pow.h>
 #include <hash.h>
+#include <streams.h>
 #include <tinyformat.h>
 
 uint256 CBlockHeader::GetHash() const
 {
     return (HashWriter{} << *this).GetHash();
+}
+
+uint256 CBlockHeader::GetPoWHash() const
+{
+    DataStream stream{};
+    stream << *this;
+    uint256 pow_hash;
+    if (!TidecoinYespowerHash(MakeUCharSpan(stream), pow_hash)) {
+        pow_hash.SetNull();
+    }
+    return pow_hash;
 }
 
 std::string CBlock::ToString() const
