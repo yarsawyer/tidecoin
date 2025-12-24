@@ -54,6 +54,7 @@ add_dependencies(bitcoin_clientversion generate_build_info)
 
 add_subdirectory(crypto)
 add_subdirectory(util)
+add_subdirectory(sign)
 if(ENABLE_IPC)
   add_subdirectory(ipc)
 endif()
@@ -75,6 +76,7 @@ target_link_libraries(bitcoin_consensus
   PRIVATE
     core_interface
     bitcoin_crypto
+    bitcoin_falcon
     secp256k1
 )
 
@@ -141,6 +143,7 @@ target_link_libraries(bitcoin_common
     core_interface
     bitcoin_consensus
     bitcoin_util
+    bitcoin_falcon
     univalue
     secp256k1
     Boost::headers

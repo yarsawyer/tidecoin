@@ -80,7 +80,10 @@ and `newtidecoin` in `/home/yaroslav/dev/tidecoin/newtidecoin/src/primitives/blo
 
 Difficulty retarget differences:
 - Tidecoin `GetNextWorkRequired()` adjusts the lookback to avoid a 51% attack edge
-  case and handles a one-bit overflow in intermediate target calculation.
+  case: it uses a full-period lookback except for the very first retarget
+  after genesis, where it uses `interval - 1` (Art Forz rule).
+- Tidecoin `CalculateNextWorkRequired()` applies a one-bit overflow guard:
+  shift right before scaling if the target would overflow, then shift back.
   - File: `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin/src/pow.cpp`
 - Current repo uses ancestor-based retargeting and includes `PermittedDifficultyTransition()`
   and BIP94 rules.

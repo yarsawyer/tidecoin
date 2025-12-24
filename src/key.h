@@ -9,6 +9,7 @@
 
 #include <pubkey.h>
 #include <serialize.h>
+#include <sign/falcon-512/api.h>
 #include <support/allocators/secure.h>
 #include <uint256.h>
 
@@ -32,40 +33,46 @@ using ECDHSecret = std::array<std::byte, ECDH_SECRET_SIZE>;
 class CKey
 {
 public:
-    /**
-     * secp256k1:
-     */
-    static const unsigned int SIZE            = 279;
-    static const unsigned int COMPRESSED_SIZE = 214;
+    static constexpr unsigned int PRIVATE_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_SECRETKEYBYTES;
+    static constexpr unsigned int COMPRESSED_PRIVATE_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_SECRETKEYBYTES;
+    static constexpr unsigned int PUB_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES;
+    static constexpr unsigned int SIGN_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
+    static constexpr unsigned int SIZE = PRIVATE_KEY_SIZE;
+    static constexpr unsigned int COMPRESSED_SIZE = COMPRESSED_PRIVATE_KEY_SIZE;
     /**
      * see www.keylength.com
      * script supports up to 75 for single byte push
      */
     static_assert(
-        SIZE >= COMPRESSED_SIZE,
-        "COMPRESSED_SIZE is larger than SIZE");
+        PRIVATE_KEY_SIZE >= COMPRESSED_PRIVATE_KEY_SIZE,
+        "COMPRESSED_PRIVATE_KEY_SIZE is larger than PRIVATE_KEY_SIZE");
 
 private:
     /** Internal data container for private key material. */
-    using KeyType = std::array<unsigned char, 32>;
+    using KeyTypeSk = std::array<unsigned char, PRIVATE_KEY_SIZE>;
+    using KeyTypePk = std::array<unsigned char, PUB_KEY_SIZE>;
 
     //! Whether the public key corresponding to this private key is (to be) compressed.
     bool fCompressed{false};
 
     //! The actual byte data. nullptr for invalid keys.
-    secure_unique_ptr<KeyType> keydata;
+    secure_unique_ptr<KeyTypeSk> keydata;
+    secure_unique_ptr<KeyTypePk> pubkeydata;
 
     //! Check whether the 32-byte array pointed to by vch is valid keydata.
     bool static Check(const unsigned char* vch);
+    bool SetPubKeyFromSecret();
 
     void MakeKeyData()
     {
-        if (!keydata) keydata = make_secure_unique<KeyType>();
+        if (!keydata) keydata = make_secure_unique<KeyTypeSk>();
+        if (!pubkeydata) pubkeydata = make_secure_unique<KeyTypePk>();
     }
 
     void ClearKeyData()
     {
         keydata.reset();
+        pubkeydata.reset();
     }
 
 public:
@@ -76,9 +83,10 @@ public:
     CKey& operator=(const CKey& other)
     {
         if (this != &other) {
-            if (other.keydata) {
+            if (other.keydata && other.pubkeydata) {
                 MakeKeyData();
                 *keydata = *other.keydata;
+                *pubkeydata = *other.pubkeydata;
             } else {
                 ClearKeyData();
             }
@@ -100,11 +108,30 @@ public:
     template <typename T>
     void Set(const T pbegin, const T pend, bool fCompressedIn)
     {
-        if (size_t(pend - pbegin) != std::tuple_size_v<KeyType>) {
+        if (size_t(pend - pbegin) != std::tuple_size_v<KeyTypeSk>) {
             ClearKeyData();
         } else if (Check(UCharCast(&pbegin[0]))) {
             MakeKeyData();
             memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
+            fCompressed = fCompressedIn;
+            if (!SetPubKeyFromSecret()) {
+                ClearKeyData();
+            }
+        } else {
+            ClearKeyData();
+        }
+    }
+
+    template <typename T>
+    void Set(const T pbegin, const T pend, const CPubKey& pubkey, bool fCompressedIn)
+    {
+        if (size_t(pend - pbegin) != std::tuple_size_v<KeyTypeSk> ||
+            pubkey.size() != PUB_KEY_SIZE + 1) {
+            ClearKeyData();
+        } else if (Check(UCharCast(&pbegin[0]))) {
+            MakeKeyData();
+            memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
+            memcpy(pubkeydata->data(), pubkey.data() + 1, pubkeydata->size());
             fCompressed = fCompressedIn;
         } else {
             ClearKeyData();
@@ -116,6 +143,9 @@ public:
     const std::byte* data() const { return keydata ? reinterpret_cast<const std::byte*>(keydata->data()) : nullptr; }
     const std::byte* begin() const { return data(); }
     const std::byte* end() const { return data() + size(); }
+    unsigned int pksize() const { return pubkeydata ? pubkeydata->size() : 0; }
+    const unsigned char* pkbegin() const { return pubkeydata ? pubkeydata->data() : nullptr; }
+    const unsigned char* pkend() const { return pubkeydata ? pubkeydata->data() + pubkeydata->size() : nullptr; }
 
     //! Check whether this private key is valid.
     bool IsValid() const { return !!keydata; }

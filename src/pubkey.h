@@ -9,6 +9,7 @@
 
 #include <hash.h>
 #include <serialize.h>
+#include <sign/falcon-512/api.h>
 #include <span.h>
 #include <uint256.h>
 
@@ -32,13 +33,10 @@ typedef uint256 ChainCode;
 class CPubKey
 {
 public:
-    /**
-     * secp256k1:
-     */
-    static constexpr unsigned int SIZE                   = 65;
-    static constexpr unsigned int COMPRESSED_SIZE        = 33;
-    static constexpr unsigned int SIGNATURE_SIZE         = 72;
-    static constexpr unsigned int COMPACT_SIGNATURE_SIZE = 65;
+    static constexpr unsigned int SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES + 1;
+    static constexpr unsigned int COMPRESSED_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES + 1;
+    static constexpr unsigned int SIGNATURE_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
+    static constexpr unsigned int COMPACT_SIGNATURE_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
     /**
      * see www.keylength.com
      * script supports up to 75 for single byte push
@@ -58,10 +56,9 @@ private:
     //! Compute the length of a pubkey with a given first byte.
     unsigned int static GetLen(unsigned char chHeader)
     {
-        if (chHeader == 2 || chHeader == 3)
-            return COMPRESSED_SIZE;
-        if (chHeader == 4 || chHeader == 6 || chHeader == 7)
+        if (chHeader == 7) {
             return SIZE;
+        }
         return 0;
     }
 
@@ -193,7 +190,7 @@ public:
     /** Check if a public key is a syntactically valid compressed or uncompressed key. */
     bool IsValidNonHybrid() const noexcept
     {
-        return size() > 0 && (vch[0] == 0x02 || vch[0] == 0x03 || vch[0] == 0x04);
+        return size() > 0 && vch[0] == 0x07;
     }
 
     //! fully validate whether this is a valid public key (more expensive than IsValid())

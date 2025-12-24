@@ -9,12 +9,58 @@
 #include <crypto/hmac_sha512.h>
 #include <hash.h>
 #include <random.h>
+#include <sign/falcon-512/api.h>
+
+extern "C" {
+#include <sign/falcon-512/inner.h>
+}
 
 #include <secp256k1.h>
 #include <secp256k1_ellswift.h>
 #include <secp256k1_recovery.h>
 
 static secp256k1_context* secp256k1_context_sign = nullptr;
+
+namespace {
+bool ComputeFalconPublicKey(const unsigned char* sk, size_t sk_len, std::array<unsigned char, CKey::PUB_KEY_SIZE>& pk_out)
+{
+    if (sk_len != CKey::PRIVATE_KEY_SIZE) {
+        return false;
+    }
+    if (sk[0] != 0x50 + 9) {
+        return false;
+    }
+
+    int8_t f[512];
+    int8_t g[512];
+    uint16_t h[512];
+    alignas(16) uint8_t tmp[2 * 512 * sizeof(uint16_t)];
+
+    size_t u = 1;
+    size_t v = PQCLEAN_FALCON512_CLEAN_trim_i8_decode(
+        f, 9, PQCLEAN_FALCON512_CLEAN_max_fg_bits[9],
+        sk + u, sk_len - u);
+    if (v == 0) {
+        return false;
+    }
+    u += v;
+    v = PQCLEAN_FALCON512_CLEAN_trim_i8_decode(
+        g, 9, PQCLEAN_FALCON512_CLEAN_max_fg_bits[9],
+        sk + u, sk_len - u);
+    if (v == 0) {
+        return false;
+    }
+
+    if (!PQCLEAN_FALCON512_CLEAN_compute_public(h, f, g, 9, tmp)) {
+        return false;
+    }
+
+    pk_out[0] = 0x00 + 9;
+    v = PQCLEAN_FALCON512_CLEAN_modq_encode(
+        pk_out.data() + 1, pk_out.size() - 1, h, 9);
+    return v == pk_out.size() - 1;
+}
+} // namespace
 
 /** These functions are taken from the libsecp256k1 distribution and are very ugly. */
 
@@ -153,40 +199,43 @@ int ec_seckey_export_der(const secp256k1_context *ctx, unsigned char *seckey, si
 }
 
 bool CKey::Check(const unsigned char *vch) {
-    return secp256k1_ec_seckey_verify(secp256k1_context_sign, vch);
+    return vch != nullptr && vch[0] == 0x50 + 9;
+}
+
+bool CKey::SetPubKeyFromSecret()
+{
+    if (!keydata || !pubkeydata) {
+        return false;
+    }
+    return ComputeFalconPublicKey(keydata->data(), keydata->size(), *pubkeydata);
 }
 
 void CKey::MakeNewKey(bool fCompressedIn) {
+    unsigned char sk[PRIVATE_KEY_SIZE];
+    unsigned char pk[PUB_KEY_SIZE];
+    const int status = PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk, sk);
+    assert(status == 0);
     MakeKeyData();
-    do {
-        GetStrongRandBytes(*keydata);
-    } while (!Check(keydata->data()));
-    fCompressed = fCompressedIn;
+    memcpy(keydata->data(), sk, PRIVATE_KEY_SIZE);
+    memcpy(pubkeydata->data(), pk, PUB_KEY_SIZE);
+    fCompressed = true;
 }
 
 CPrivKey CKey::GetPrivKey() const {
     assert(keydata);
     CPrivKey seckey;
-    int ret;
-    size_t seckeylen;
-    seckey.resize(SIZE);
-    seckeylen = SIZE;
-    ret = ec_seckey_export_der(secp256k1_context_sign, seckey.data(), &seckeylen, UCharCast(begin()), fCompressed);
-    assert(ret);
-    seckey.resize(seckeylen);
+    seckey.resize(PRIVATE_KEY_SIZE);
+    memcpy(seckey.data(), keydata->data(), keydata->size());
     return seckey;
 }
 
 CPubKey CKey::GetPubKey() const {
     assert(keydata);
-    secp256k1_pubkey pubkey;
-    size_t clen = CPubKey::SIZE;
+    assert(pubkeydata);
     CPubKey result;
-    int ret = secp256k1_ec_pubkey_create(secp256k1_context_sign, &pubkey, UCharCast(begin()));
-    assert(ret);
-    secp256k1_ec_pubkey_serialize(secp256k1_context_sign, (unsigned char*)result.begin(), &clen, &pubkey, fCompressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED);
-    assert(result.size() == clen);
-    assert(result.IsValid());
+    unsigned char* pch = const_cast<unsigned char*>(result.begin());
+    memcpy(pch + 1, pubkeydata->data(), pubkeydata->size());
+    pch[0] = 7;
     return result;
 }
 
@@ -204,37 +253,24 @@ bool SigHasLowR(const secp256k1_ecdsa_signature* sig)
 }
 
 bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool grind, uint32_t test_case) const {
-    if (!keydata)
+    (void)grind;
+    (void)test_case;
+    if (!keydata) {
         return false;
-    vchSig.resize(CPubKey::SIGNATURE_SIZE);
-    size_t nSigLen = CPubKey::SIGNATURE_SIZE;
-    unsigned char extra_entropy[32] = {0};
-    WriteLE32(extra_entropy, test_case);
-    secp256k1_ecdsa_signature sig;
-    uint32_t counter = 0;
-    int ret = secp256k1_ecdsa_sign(secp256k1_context_sign, &sig, hash.begin(), UCharCast(begin()), secp256k1_nonce_function_rfc6979, (!grind && test_case) ? extra_entropy : nullptr);
-
-    // Grind for low R
-    while (ret && !SigHasLowR(&sig) && grind) {
-        WriteLE32(extra_entropy, ++counter);
-        ret = secp256k1_ecdsa_sign(secp256k1_context_sign, &sig, hash.begin(), UCharCast(begin()), secp256k1_nonce_function_rfc6979, extra_entropy);
     }
-    assert(ret);
-    secp256k1_ecdsa_signature_serialize_der(secp256k1_context_sign, vchSig.data(), &nSigLen, &sig);
-    vchSig.resize(nSigLen);
-    // Additional verification step to prevent using a potentially corrupted signature
-    secp256k1_pubkey pk;
-    ret = secp256k1_ec_pubkey_create(secp256k1_context_sign, &pk, UCharCast(begin()));
-    assert(ret);
-    ret = secp256k1_ecdsa_verify(secp256k1_context_static, &sig, hash.begin(), &pk);
-    assert(ret);
+
+    size_t sig_len = 0;
+    vchSig.resize(PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES);
+    const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
+        vchSig.data(), &sig_len, hash.begin(), 32, keydata->data());
+    if (r != 0) {
+        return false;
+    }
+    vchSig.resize(sig_len);
     return true;
 }
 
 bool CKey::VerifyPubKey(const CPubKey& pubkey) const {
-    if (pubkey.IsCompressed() != fCompressed) {
-        return false;
-    }
     unsigned char rnd[8];
     std::string str = "Bitcoin key verification\n";
     GetRandBytes(rnd);
@@ -245,39 +281,34 @@ bool CKey::VerifyPubKey(const CPubKey& pubkey) const {
 }
 
 bool CKey::SignCompact(const uint256 &hash, std::vector<unsigned char>& vchSig) const {
-    if (!keydata)
+    if (!keydata || !pubkeydata) {
         return false;
-    vchSig.resize(CPubKey::COMPACT_SIGNATURE_SIZE);
-    int rec = -1;
-    secp256k1_ecdsa_recoverable_signature rsig;
-    int ret = secp256k1_ecdsa_sign_recoverable(secp256k1_context_sign, &rsig, hash.begin(), UCharCast(begin()), secp256k1_nonce_function_rfc6979, nullptr);
-    assert(ret);
-    ret = secp256k1_ecdsa_recoverable_signature_serialize_compact(secp256k1_context_sign, &vchSig[1], &rec, &rsig);
-    assert(ret);
-    assert(rec != -1);
-    vchSig[0] = 27 + rec + (fCompressed ? 4 : 0);
-    // Additional verification step to prevent using a potentially corrupted signature
-    secp256k1_pubkey epk, rpk;
-    ret = secp256k1_ec_pubkey_create(secp256k1_context_sign, &epk, UCharCast(begin()));
-    assert(ret);
-    ret = secp256k1_ecdsa_recover(secp256k1_context_static, &rpk, &rsig, hash.begin());
-    assert(ret);
-    ret = secp256k1_ec_pubkey_cmp(secp256k1_context_static, &epk, &rpk);
-    assert(ret == 0);
+    }
+
+    size_t sig_len = 0;
+    vchSig.resize(PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES + pubkeydata->size());
+    const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
+        vchSig.data(), &sig_len, hash.begin(), 32, keydata->data());
+    if (r != 0) {
+        return false;
+    }
+    vchSig.resize(sig_len + pubkeydata->size());
+    memcpy(vchSig.data() + sig_len, pubkeydata->data(), pubkeydata->size());
     return true;
 }
 
 bool CKey::Load(const CPrivKey &seckey, const CPubKey &vchPubKey, bool fSkipCheck=false) {
-    MakeKeyData();
-    if (!ec_seckey_import_der(secp256k1_context_sign, (unsigned char*)begin(), seckey.data(), seckey.size())) {
+    if (seckey.size() != PRIVATE_KEY_SIZE) {
         ClearKeyData();
         return false;
     }
-    fCompressed = vchPubKey.IsCompressed();
-
-    if (fSkipCheck)
+    Set(seckey.begin(), seckey.end(), vchPubKey, /*fCompressedIn=*/true);
+    if (!keydata || !pubkeydata) {
+        return false;
+    }
+    if (fSkipCheck) {
         return true;
-
+    }
     return VerifyPubKey(vchPubKey);
 }
 

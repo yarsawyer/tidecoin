@@ -27,11 +27,12 @@ preserving Tidecoin network compatibility.
 - DONE Identify Taproot usage points (script, policy, wallet, tests).
 - Locate Falcon-512 implementation in old Tidecoin repo for reference.
 - Defer AuxPoW/merged mining repo selection until after Tidecoin compatibility.
-- Document key deltas from Bitcoin 0.30 that affect consensus (difficulty quirks).
+- DONE Document key deltas from Bitcoin 0.30 that affect consensus (difficulty quirks).
 - DONE Document current vs Tidecoin deltas for chainparams, ports, policy, PoW, and related settings in `ai-docs/phase0-tidecoin-diff.md`.
 
 ### Phase 1: Falcon-512 Integration (Tidecoin Sync)
 Objective: Make this node validate and sync with Tidecoin network using Falcon-512.
+- DONE Wire yespower PoW hashing/validation and Tidecoin difficulty retarget quirks (first retarget rule + overflow guard).
 - Integrate Falcon-512 keys/signatures in consensus-critical paths.
 - Update script and address/key handling to support Falcon-512.
 - Add or port tests to validate Falcon-512 signature verification.
