@@ -52,7 +52,7 @@ void TestBIP324PacketVector(
 
     // Load keys
     CKey key;
-    key.Set(in_priv_ours.begin(), in_priv_ours.end(), true);
+    key.Set(in_priv_ours.begin(), in_priv_ours.end());
     EllSwiftPubKey ellswift_ours(in_ellswift_ours);
     EllSwiftPubKey ellswift_theirs(in_ellswift_theirs);
 

@@ -12,6 +12,10 @@
 
 #define PQCLEAN_FALCONPADDED512_CLEAN_CRYPTO_BYTES      666 // used in signature verification
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Generate a new key pair. Public key goes into pk[], private key in sk[].
  * Key sizes are exact (in bytes):
@@ -81,5 +85,9 @@ int PQCLEAN_FALCON512_CLEAN_crypto_sign(
 int PQCLEAN_FALCON512_CLEAN_crypto_sign_open(
     uint8_t *m, size_t *mlen,
     const uint8_t *sm, size_t smlen, const uint8_t *pk);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif

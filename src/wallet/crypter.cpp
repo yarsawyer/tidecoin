@@ -140,7 +140,7 @@ bool DecryptKey(const CKeyingMaterial& master_key, const std::span<const unsigne
         return false;
     }
 
-    key.Set(secret.begin(), secret.end(), pub_key.IsCompressed());
+    key.Set(secret.begin(), secret.end());
     return key.VerifyPubKey(pub_key);
 }
 } // namespace wallet

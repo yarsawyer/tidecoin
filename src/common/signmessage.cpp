@@ -43,7 +43,7 @@ MessageVerificationResult MessageVerify(
     }
 
     CPubKey pubkey;
-    if (!pubkey.RecoverCompact(MessageHash(message), *signature_bytes)) {
+    if (!pubkey.Recover(MessageHash(message), *signature_bytes)) {
         return MessageVerificationResult::ERR_PUBKEY_NOT_RECOVERED;
     }
 
@@ -61,7 +61,7 @@ bool MessageSign(
 {
     std::vector<unsigned char> signature_bytes;
 
-    if (!privkey.SignCompact(MessageHash(message), signature_bytes)) {
+    if (!privkey.Sign(MessageHash(message), signature_bytes)) {
         return false;
     }
 

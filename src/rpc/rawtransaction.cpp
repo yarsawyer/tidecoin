@@ -575,7 +575,7 @@ static RPCHelpMan decodescript()
             // Uncompressed pubkeys cannot be used with segwit checksigs.
             // If the script contains an uncompressed pubkey, skip encoding of a segwit program.
                 for (const auto& solution : solutions_data) {
-                    if ((solution.size() != 1) && !CPubKey(solution).IsCompressed()) {
+                    if (solution.size() != 1) {
                         return false;
                     }
                 }

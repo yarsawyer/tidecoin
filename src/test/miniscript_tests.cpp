@@ -58,7 +58,7 @@ struct TestData {
 
             // Compute CPubkey and CKeyID
             CKey key;
-            key.Set(keydata, keydata + 32, true);
+            key.Set(keydata, keydata + 32);
             CPubKey pubkey = key.GetPubKey();
             CKeyID keyid = pubkey.GetID();
             pubkeys.push_back(pubkey);

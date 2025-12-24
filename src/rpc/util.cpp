@@ -251,12 +251,12 @@ CTxDestination AddAndGetMultisigDestination(const int required, const std::vecto
     script_out = GetScriptForMultisig(required, pubkeys);
 
     // Check if any keys are uncompressed. If so, the type is legacy
-    for (const CPubKey& pk : pubkeys) {
-        if (!pk.IsCompressed()) {
-            type = OutputType::LEGACY;
-            break;
-        }
-    }
+    // for (const CPubKey& pk : pubkeys) {
+    //     if (!pk.IsCompressed()) {
+    //         type = OutputType::LEGACY;
+    //         break;
+    //     }
+    // }
 
     if (type == OutputType::LEGACY && script_out.size() > MAX_SCRIPT_ELEMENT_SIZE) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, (strprintf("redeemScript exceeds size limit: %d > %d", script_out.size(), MAX_SCRIPT_ELEMENT_SIZE)));

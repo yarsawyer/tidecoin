@@ -42,10 +42,6 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
     if (!provider.GetKey(address, key))
         return false;
 
-    // Signing with uncompressed keys is disabled in witness scripts
-    if (sigversion == SigVersion::WITNESS_V0 && !key.IsCompressed())
-        return false;
-
     // Signing without known amount does not work in witness scripts.
     if (sigversion == SigVersion::WITNESS_V0 && !MoneyRange(amount)) return false;
 

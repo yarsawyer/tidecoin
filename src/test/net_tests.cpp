@@ -999,7 +999,7 @@ CKey GenerateRandomTestKey(FastRandomContext& rng) noexcept
 {
     CKey key;
     uint256 key_data = rng.rand256();
-    key.Set(key_data.begin(), key_data.end(), true);
+    key.Set(key_data.begin(), key_data.end());
     return key;
 }
 

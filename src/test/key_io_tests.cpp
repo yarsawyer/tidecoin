@@ -42,11 +42,9 @@ BOOST_AUTO_TEST_CASE(key_io_valid_parse)
         SelectParams(ChainTypeFromString(metadata.find_value("chain").get_str()).value());
         bool try_case_flip = metadata.find_value("tryCaseFlip").isNull() ? false : metadata.find_value("tryCaseFlip").get_bool();
         if (isPrivkey) {
-            bool isCompressed = metadata.find_value("isCompressed").get_bool();
             // Must be valid private key
             privkey = DecodeSecret(exp_base58string);
             BOOST_CHECK_MESSAGE(privkey.IsValid(), "!IsValid:" + strTest);
-            BOOST_CHECK_MESSAGE(privkey.IsCompressed() == isCompressed, "compressed mismatch:" + strTest);
             BOOST_CHECK_MESSAGE(std::ranges::equal(privkey, exp_payload), "key mismatch:" + strTest);
 
             // Private key must be invalid public key
@@ -100,9 +98,8 @@ BOOST_AUTO_TEST_CASE(key_io_valid_gen)
         bool isPrivkey = metadata.find_value("isPrivkey").get_bool();
         SelectParams(ChainTypeFromString(metadata.find_value("chain").get_str()).value());
         if (isPrivkey) {
-            bool isCompressed = metadata.find_value("isCompressed").get_bool();
             CKey key;
-            key.Set(exp_payload.begin(), exp_payload.end(), isCompressed);
+            key.Set(exp_payload.begin(), exp_payload.end());
             assert(key.IsValid());
             BOOST_CHECK_MESSAGE(EncodeSecret(key) == exp_base58string, "result mismatch: " + strTest);
         } else {

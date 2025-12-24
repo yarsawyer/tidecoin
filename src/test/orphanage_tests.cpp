@@ -25,7 +25,7 @@ static void MakeNewKeyWithFastRandomContext(CKey& key, FastRandomContext& rand_c
 {
     std::vector<unsigned char> keydata;
     keydata = rand_ctx.randbytes(32);
-    key.Set(keydata.data(), keydata.data() + keydata.size(), /*fCompressedIn=*/true);
+    key.Set(keydata.data(), keydata.data() + keydata.size());
     assert(key.IsValid());
 }
 

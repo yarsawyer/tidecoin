@@ -34,16 +34,8 @@ class CPubKey
 {
 public:
     static constexpr unsigned int SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES + 1;
-    static constexpr unsigned int COMPRESSED_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES + 1;
     static constexpr unsigned int SIGNATURE_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
     static constexpr unsigned int COMPACT_SIGNATURE_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
-    /**
-     * see www.keylength.com
-     * script supports up to 75 for single byte push
-     */
-    static_assert(
-        SIZE >= COMPRESSED_SIZE,
-        "COMPRESSED_SIZE is larger than SIZE");
 
 private:
 
@@ -196,28 +188,16 @@ public:
     //! fully validate whether this is a valid public key (more expensive than IsValid())
     bool IsFullyValid() const;
 
-    //! Check whether this is a compressed public key.
-    bool IsCompressed() const
-    {
-        return size() == COMPRESSED_SIZE;
-    }
 
     /**
-     * Verify a DER signature (~72 bytes).
+     * Verify a signature
      * If this public key is not fully valid, the return value will be false.
      */
     bool Verify(const uint256& hash, const std::vector<unsigned char>& vchSig) const;
 
-    /**
-     * Check whether a signature is normalized (lower-S).
-     */
-    static bool CheckLowS(const std::vector<unsigned char>& vchSig);
 
-    //! Recover a public key from a compact signature.
-    bool RecoverCompact(const uint256& hash, const std::vector<unsigned char>& vchSig);
-
-    //! Turn this public key into an uncompressed public key.
-    bool Decompress();
+    //! Recover a public key from a signature.
+    bool Recover(const uint256& hash, const std::vector<unsigned char>& vchSig);
 
     //! Derive BIP32 child pubkey.
     [[nodiscard]] bool Derive(CPubKey& pubkeyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;

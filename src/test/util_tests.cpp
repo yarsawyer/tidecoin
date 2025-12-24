@@ -1469,7 +1469,7 @@ BOOST_AUTO_TEST_CASE(message_sign)
     BOOST_CHECK_MESSAGE(!MessageSign(privkey, message, generated_signature),
         "Sign with an invalid private key");
 
-    privkey.Set(privkey_bytes.begin(), privkey_bytes.end(), true);
+    privkey.Set(privkey_bytes.begin(), privkey_bytes.end());
 
     BOOST_REQUIRE_MESSAGE(privkey.IsValid(),
         "Confirm the private key is valid");

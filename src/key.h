@@ -38,22 +38,11 @@ public:
     static constexpr unsigned int PUB_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES;
     static constexpr unsigned int SIGN_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
     static constexpr unsigned int SIZE = PRIVATE_KEY_SIZE;
-    static constexpr unsigned int COMPRESSED_SIZE = COMPRESSED_PRIVATE_KEY_SIZE;
-    /**
-     * see www.keylength.com
-     * script supports up to 75 for single byte push
-     */
-    static_assert(
-        PRIVATE_KEY_SIZE >= COMPRESSED_PRIVATE_KEY_SIZE,
-        "COMPRESSED_PRIVATE_KEY_SIZE is larger than PRIVATE_KEY_SIZE");
 
 private:
     /** Internal data container for private key material. */
     using KeyTypeSk = std::array<unsigned char, PRIVATE_KEY_SIZE>;
     using KeyTypePk = std::array<unsigned char, PUB_KEY_SIZE>;
-
-    //! Whether the public key corresponding to this private key is (to be) compressed.
-    bool fCompressed{false};
 
     //! The actual byte data. nullptr for invalid keys.
     secure_unique_ptr<KeyTypeSk> keydata;
@@ -90,7 +79,6 @@ public:
             } else {
                 ClearKeyData();
             }
-            fCompressed = other.fCompressed;
         }
         return *this;
     }
@@ -99,21 +87,19 @@ public:
 
     friend bool operator==(const CKey& a, const CKey& b)
     {
-        return a.fCompressed == b.fCompressed &&
-            a.size() == b.size() &&
+        return a.size() == b.size() &&
             memcmp(a.data(), b.data(), a.size()) == 0;
     }
 
     //! Initialize using begin and end iterators to byte data.
     template <typename T>
-    void Set(const T pbegin, const T pend, bool fCompressedIn)
+    void Set(const T pbegin, const T pend)
     {
         if (size_t(pend - pbegin) != std::tuple_size_v<KeyTypeSk>) {
             ClearKeyData();
         } else if (Check(UCharCast(&pbegin[0]))) {
             MakeKeyData();
             memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
-            fCompressed = fCompressedIn;
             if (!SetPubKeyFromSecret()) {
                 ClearKeyData();
             }
@@ -123,7 +109,7 @@ public:
     }
 
     template <typename T>
-    void Set(const T pbegin, const T pend, const CPubKey& pubkey, bool fCompressedIn)
+    void Set(const T pbegin, const T pend, const CPubKey& pubkey)
     {
         if (size_t(pend - pbegin) != std::tuple_size_v<KeyTypeSk> ||
             pubkey.size() != PUB_KEY_SIZE + 1) {
@@ -132,7 +118,6 @@ public:
             MakeKeyData();
             memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
             memcpy(pubkeydata->data(), pubkey.data() + 1, pubkeydata->size());
-            fCompressed = fCompressedIn;
         } else {
             ClearKeyData();
         }
@@ -149,9 +134,6 @@ public:
 
     //! Check whether this private key is valid.
     bool IsValid() const { return !!keydata; }
-
-    //! Check whether the public key corresponding to this private key is (to be) compressed.
-    bool IsCompressed() const { return fCompressed; }
 
     //! Generate a new private key using a cryptographic PRNG.
     void MakeNewKey(bool fCompressed);
@@ -173,15 +155,6 @@ public:
      * The test_case parameter tweaks the deterministic nonce.
      */
     bool Sign(const uint256& hash, std::vector<unsigned char>& vchSig, bool grind = true, uint32_t test_case = 0) const;
-
-    /**
-     * Create a compact signature (65 bytes), which allows reconstructing the used public key.
-     * The format is one header byte, followed by two times 32 bytes for the serialized r and s values.
-     * The header byte: 0x1B = first key with even y, 0x1C = first key with odd y,
-     *                  0x1D = second key with even y, 0x1E = second key with odd y,
-     *                  add 0x04 for compressed keys.
-     */
-    bool SignCompact(const uint256& hash, std::vector<unsigned char>& vchSig) const;
 
     //! Derive BIP32 child key.
     [[nodiscard]] bool Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;

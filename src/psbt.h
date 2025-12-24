@@ -137,7 +137,7 @@ template<typename Stream>
 void DeserializeHDKeypaths(Stream& s, const std::vector<unsigned char>& key, std::map<CPubKey, KeyOriginInfo>& hd_keypaths)
 {
     // Make sure that the key is the size of pubkey + 1
-    if (key.size() != CPubKey::SIZE + 1 && key.size() != CPubKey::COMPRESSED_SIZE + 1) {
+    if (key.size() != CPubKey::SIZE + 1 && key.size() != CPubKey::SIZE + 1) {
         throw std::ios_base::failure("Size of key was not the expected size for the type BIP32 keypath");
     }
     // Read in the pubkey from key
@@ -352,7 +352,7 @@ struct PSBTInput
                 case PSBT_IN_PARTIAL_SIG:
                 {
                     // Make sure that the key is the size of pubkey + 1
-                    if (key.size() != CPubKey::SIZE + 1 && key.size() != CPubKey::COMPRESSED_SIZE + 1) {
+                    if (key.size() != CPubKey::SIZE + 1 && key.size() != CPubKey::SIZE + 1) {
                         throw std::ios_base::failure("Size of key was not the expected size for the type partial signature pubkey");
                     }
                     // Read in the pubkey from key

@@ -950,12 +950,10 @@ protected:
         CKeyID id = keys[0].GetID();
         ret.emplace_back(GetScriptForRawPubKey(keys[0])); // P2PK
         ret.emplace_back(GetScriptForDestination(PKHash(id))); // P2PKH
-        if (keys[0].IsCompressed()) {
-            CScript p2wpkh = GetScriptForDestination(WitnessV0KeyHash(id));
-            out.scripts.emplace(CScriptID(p2wpkh), p2wpkh);
-            ret.emplace_back(p2wpkh);
-            ret.emplace_back(GetScriptForDestination(ScriptHash(p2wpkh))); // P2SH-P2WPKH
-        }
+        CScript p2wpkh = GetScriptForDestination(WitnessV0KeyHash(id));
+        out.scripts.emplace(CScriptID(p2wpkh), p2wpkh);
+        ret.emplace_back(p2wpkh);
+        ret.emplace_back(GetScriptForDestination(ScriptHash(p2wpkh))); // P2SH-P2WPKH
         return ret;
     }
 public:
@@ -1350,7 +1348,6 @@ static DeriveType ParseDeriveType(std::vector<std::span<const char>>& split, boo
 std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_index, const std::span<const char>& sp, ParseScriptContext ctx, FlatSigningProvider& out, bool& apostrophe, std::string& error)
 {
     std::vector<std::unique_ptr<PubkeyProvider>> ret;
-    bool permit_uncompressed = ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH;
     auto split = Split(sp, '/');
     std::string str(split[0].begin(), split[0].end());
     if (str.size() == 0) {
@@ -1370,28 +1367,18 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
                 return {};
             }
             if (pubkey.IsFullyValid()) {
-                if (permit_uncompressed || pubkey.IsCompressed()) {
-                    ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey));
-                    return ret;
-                } else {
-                    error = "Uncompressed keys are not allowed";
-                    return {};
-                }
+                ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey));
+                return ret;
             }
             error = strprintf("Pubkey '%s' is invalid", str);
             return {};
         }
         CKey key = DecodeSecret(str);
         if (key.IsValid()) {
-            if (permit_uncompressed || key.IsCompressed()) {
-                CPubKey pubkey = key.GetPubKey();
-                out.keys.emplace(pubkey.GetID(), key);
-                ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey));
-                return ret;
-            } else {
-                error = "Uncompressed keys are not allowed";
-                return {};
-            }
+            CPubKey pubkey = key.GetPubKey();
+            out.keys.emplace(pubkey.GetID(), key);
+            ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey));
+            return ret;
         }
     }
     CExtKey extkey = DecodeExtKey(str);
@@ -1467,10 +1454,6 @@ std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptCo
 {
     // Key cannot be hybrid
     if (!pubkey.IsValidNonHybrid()) {
-        return nullptr;
-    }
-    // Uncompressed is only allowed in TOP and P2SH contexts
-    if (ctx != ParseScriptContext::TOP && ctx != ParseScriptContext::P2SH && !pubkey.IsCompressed()) {
         return nullptr;
     }
     std::unique_ptr<PubkeyProvider> key_provider = std::make_unique<ConstPubkeyProvider>(0, pubkey);

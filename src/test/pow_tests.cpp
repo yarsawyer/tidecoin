@@ -104,7 +104,9 @@ BOOST_AUTO_TEST_CASE(get_next_work_lower_limit_actual)
     BOOST_CHECK_EQUAL(CalculateNextWorkRequired(&pindexLast, nLastRetargetTime, consensus), expected_nbits);
     BOOST_CHECK(PermittedDifficultyTransition(consensus, pindexLast.nHeight + 1, pindexLast.nBits, expected_nbits));
     // Test that reducing nbits further would not be a PermittedDifficultyTransition.
-    unsigned int invalid_nbits = (expected_target >> 1).GetCompact();
+    arith_uint256 invalid_target = expected_target;
+    invalid_target >>= 1;
+    unsigned int invalid_nbits = invalid_target.GetCompact();
     BOOST_CHECK(!PermittedDifficultyTransition(consensus, pindexLast.nHeight + 1, pindexLast.nBits, invalid_nbits));
 }
 
@@ -126,7 +128,9 @@ BOOST_AUTO_TEST_CASE(get_next_work_upper_limit_actual)
     BOOST_CHECK_EQUAL(CalculateNextWorkRequired(&pindexLast, nLastRetargetTime, consensus), expected_nbits);
     BOOST_CHECK(PermittedDifficultyTransition(consensus, pindexLast.nHeight + 1, pindexLast.nBits, expected_nbits));
     // Test that increasing nbits further would not be a PermittedDifficultyTransition.
-    unsigned int invalid_nbits = (expected_target << 1).GetCompact();
+    arith_uint256 invalid_target = expected_target;
+    invalid_target <<= 1;
+    unsigned int invalid_nbits = invalid_target.GetCompact();
     BOOST_CHECK(!PermittedDifficultyTransition(consensus, pindexLast.nHeight + 1, pindexLast.nBits, invalid_nbits));
 }
 

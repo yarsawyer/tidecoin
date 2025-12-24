@@ -184,8 +184,7 @@ CKey DecodeSecret(const std::string& str)
         const std::vector<unsigned char>& privkey_prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
         if ((data.size() == 32 + privkey_prefix.size() || (data.size() == 33 + privkey_prefix.size() && data.back() == 1)) &&
             std::equal(privkey_prefix.begin(), privkey_prefix.end(), data.begin())) {
-            bool compressed = data.size() == 33 + privkey_prefix.size();
-            key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + 32, compressed);
+            key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + 32);
         }
     }
     if (!data.empty()) {
@@ -199,9 +198,7 @@ std::string EncodeSecret(const CKey& key)
     assert(key.IsValid());
     std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
     data.insert(data.end(), UCharCast(key.begin()), UCharCast(key.end()));
-    if (key.IsCompressed()) {
-        data.push_back(1);
-    }
+    data.push_back(1);
     std::string ret = EncodeBase58Check(data);
     memory_cleanse(data.data(), data.size());
     return ret;

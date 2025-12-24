@@ -121,7 +121,7 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
         keyID = CKeyID(uint160(vSolutions[0]));
         if (!PermitsUncompressed(sigversion)) {
             CPubKey pubkey;
-            if (keystore.GetPubKey(keyID, pubkey) && !pubkey.IsCompressed()) {
+            if (keystore.GetPubKey(keyID, pubkey)) {
                 return IsMineResult::INVALID;
             }
         }
