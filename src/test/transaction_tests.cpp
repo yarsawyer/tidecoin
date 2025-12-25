@@ -51,9 +51,9 @@ static bool g_bare_multi{DEFAULT_PERMIT_BAREMULTISIG};
 
 static std::map<std::string, unsigned int> mapFlagNames = {
     {std::string("P2SH"), (unsigned int)SCRIPT_VERIFY_P2SH},
-    {std::string("STRICTENC"), (unsigned int)SCRIPT_VERIFY_STRICTENC},
-    {std::string("DERSIG"), (unsigned int)SCRIPT_VERIFY_DERSIG},
-    {std::string("LOW_S"), (unsigned int)SCRIPT_VERIFY_LOW_S},
+    {std::string("STRICTENC"), (unsigned int)0},
+    {std::string("DERSIG"), (unsigned int)0},
+    {std::string("LOW_S"), (unsigned int)0},
     {std::string("SIGPUSHONLY"), (unsigned int)SCRIPT_VERIFY_SIGPUSHONLY},
     {std::string("MINIMALDATA"), (unsigned int)SCRIPT_VERIFY_MINIMALDATA},
     {std::string("NULLDUMMY"), (unsigned int)SCRIPT_VERIFY_NULLDUMMY},
@@ -65,7 +65,7 @@ static std::map<std::string, unsigned int> mapFlagNames = {
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
     {std::string("WITNESS"), (unsigned int)SCRIPT_VERIFY_WITNESS},
     {std::string("DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM"), (unsigned int)SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM},
-    {std::string("WITNESS_PUBKEYTYPE"), (unsigned int)SCRIPT_VERIFY_WITNESS_PUBKEYTYPE},
+    {std::string("WITNESS_PUBKEYTYPE"), (unsigned int)0},
     {std::string("CONST_SCRIPTCODE"), (unsigned int)SCRIPT_VERIFY_CONST_SCRIPTCODE},
 };
 
@@ -512,7 +512,7 @@ static CScript PushAll(const std::vector<valtype>& values)
 static void ReplaceRedeemScript(CScript& script, const CScript& redeemScript)
 {
     std::vector<valtype> stack;
-    EvalScript(stack, script, SCRIPT_VERIFY_STRICTENC, BaseSignatureChecker(), SigVersion::BASE);
+    EvalScript(stack, script, 0, BaseSignatureChecker(), SigVersion::BASE);
     assert(stack.size() > 0);
     stack.back() = std::vector<unsigned char>(redeemScript.begin(), redeemScript.end());
     script = PushAll(stack);

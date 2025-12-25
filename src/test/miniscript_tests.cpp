@@ -64,7 +64,7 @@ struct TestData {
             pubkeys.push_back(pubkey);
             pkhashes.emplace(pubkey, keyid);
             pkmap.emplace(keyid, pubkey);
-            // Compute ECDSA signatures on MESSAGE_HASH with the private keys.
+            // Compute Post Quantum signatures on MESSAGE_HASH with the private keys.
             std::vector<unsigned char> sig;
             BOOST_CHECK(key.Sign(MESSAGE_HASH, sig));
             sig.push_back(1); // sighash byte
@@ -229,7 +229,7 @@ class TestSignatureChecker : public BaseSignatureChecker {
 public:
     TestSignatureChecker(const Satisfier& in_ctx LIFETIMEBOUND) : ctx(in_ctx) {}
 
-    bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& scriptcode, SigVersion sigversion) const override {
+    bool CheckPostQuantumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& scriptcode, SigVersion sigversion) const override {
         CPubKey pk(pubkey);
         if (!pk.IsValid()) return false;
         // Instead of actually running signature validation, check if the signature matches the precomputed one for this key.

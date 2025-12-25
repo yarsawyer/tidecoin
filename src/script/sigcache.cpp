@@ -51,13 +51,13 @@ void SignatureCache::Set(const uint256& entry)
     setValid.insert(entry);
 }
 
-bool CachingTransactionSignatureChecker::VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
+bool CachingTransactionSignatureChecker::VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
 {
     uint256 entry;
     m_signature_cache.ComputeEntryECDSA(entry, sighash, vchSig, pubkey);
     if (m_signature_cache.Get(entry, !store))
         return true;
-    if (!TransactionSignatureChecker::VerifyECDSASignature(vchSig, pubkey, sighash))
+    if (!TransactionSignatureChecker::VerifyPostQuantumSignature(vchSig, pubkey, sighash))
         return false;
     if (store)
         m_signature_cache.Set(entry);

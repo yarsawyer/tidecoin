@@ -2124,7 +2124,7 @@ ValidationCache::ValidationCache(const size_t script_execution_cache_bytes, cons
 /**
  * Check whether all of this transaction's input scripts succeed.
  *
- * This involves ECDSA signature checks so can be computationally intensive. This function should
+ * This involves Post Quantum signature checks so can be computationally intensive. This function should
  * only be called after the cheap sanity checks in CheckTxInputs passed.
  *
  * If pvChecks is not nullptr, script checks are pushed onto it instead of being performed inline. Any

@@ -208,7 +208,7 @@ struct WshSatisfier: Satisfier<CPubKey> {
         return Satisfier::CPubFromPKHBytes(first, last);
     }
 
-    //! Satisfy an ECDSA signature check.
+    //! Satisfy an Post Quantum signature check.
     miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
         if (CreateSig(m_creator, m_sig_data, m_provider, sig, key, m_witness_script, SigVersion::WITNESS_V0)) {
             return miniscript::Availability::YES;
@@ -392,9 +392,9 @@ private:
 public:
     SignatureExtractorChecker(SignatureData& sigdata, BaseSignatureChecker& checker) : DeferringSignatureChecker(checker), sigdata(sigdata) {}
 
-    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
+    bool CheckPostQuantumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
     {
-        if (m_checker.CheckECDSASignature(scriptSig, vchPubKey, scriptCode, sigversion)) {
+        if (m_checker.CheckPostQuantumSignature(scriptSig, vchPubKey, scriptCode, sigversion)) {
             CPubKey pubkey(vchPubKey);
             sigdata.signatures.emplace(pubkey.GetID(), SigPair(pubkey, scriptSig));
             return true;
@@ -411,7 +411,7 @@ struct Stacks
     Stacks() = delete;
     Stacks(const Stacks&) = delete;
     explicit Stacks(const SignatureData& data) : witness(data.scriptWitness.stack) {
-        EvalScript(script, data.scriptSig, SCRIPT_VERIFY_STRICTENC, BaseSignatureChecker(), SigVersion::BASE);
+        EvalScript(script, data.scriptSig, 0, BaseSignatureChecker(), SigVersion::BASE);
     }
 };
 }
@@ -471,7 +471,7 @@ SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nI
             for (unsigned int i = last_success_key; i < num_pubkeys; ++i) {
                 const valtype& pubkey = solutions[i+1];
                 // We either have a signature for this pubkey, or we have found a signature and it is valid
-                if (data.signatures.count(CPubKey(pubkey).GetID()) || extractor_checker.CheckECDSASignature(sig, pubkey, next_script, sigversion)) {
+                if (data.signatures.count(CPubKey(pubkey).GetID()) || extractor_checker.CheckPostQuantumSignature(sig, pubkey, next_script, sigversion)) {
                     last_success_key = i + 1;
                     break;
                 }
@@ -510,7 +510,7 @@ class DummySignatureChecker final : public BaseSignatureChecker
 {
 public:
     DummySignatureChecker() = default;
-    bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return sig.size() != 0; }
+    bool CheckPostQuantumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return sig.size() != 0; }
     bool CheckLockTime(const CScriptNum& nLockTime) const override { return true; }
     bool CheckSequence(const CScriptNum& nSequence) const override { return true; }
 };

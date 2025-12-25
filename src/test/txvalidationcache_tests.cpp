@@ -216,20 +216,20 @@ BOOST_FIXTURE_TEST_CASE(checkinputs_test, Dersig100Setup)
         TxValidationState state;
         PrecomputedTransactionData ptd_spend_tx;
 
-        BOOST_CHECK(!CheckInputScripts(CTransaction(spend_tx), state, &m_node.chainman->ActiveChainstate().CoinsTip(), SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_DERSIG, true, true, ptd_spend_tx, m_node.chainman->m_validation_cache, nullptr));
+        BOOST_CHECK(!CheckInputScripts(CTransaction(spend_tx), state, &m_node.chainman->ActiveChainstate().CoinsTip(), SCRIPT_VERIFY_P2SH | 0, true, true, ptd_spend_tx, m_node.chainman->m_validation_cache, nullptr));
 
         // If we call again asking for scriptchecks (as happens in
         // ConnectBlock), we should add a script check object for this -- we're
         // not caching invalidity (if that changes, delete this test case).
         std::vector<CScriptCheck> scriptchecks;
-        BOOST_CHECK(CheckInputScripts(CTransaction(spend_tx), state, &m_node.chainman->ActiveChainstate().CoinsTip(), SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_DERSIG, true, true, ptd_spend_tx, m_node.chainman->m_validation_cache, &scriptchecks));
+        BOOST_CHECK(CheckInputScripts(CTransaction(spend_tx), state, &m_node.chainman->ActiveChainstate().CoinsTip(), SCRIPT_VERIFY_P2SH | 0, true, true, ptd_spend_tx, m_node.chainman->m_validation_cache, &scriptchecks));
         BOOST_CHECK_EQUAL(scriptchecks.size(), 1U);
 
         // Test that CheckInputScripts returns true iff DERSIG-enforcing flags are
         // not present.  Don't add these checks to the cache, so that we can
         // test later that block validation works fine in the absence of cached
         // successes.
-        ValidateCheckInputsForAllFlags(CTransaction(spend_tx), SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC, false, m_node.chainman->ActiveChainstate().CoinsTip(), m_node.chainman->m_validation_cache);
+        ValidateCheckInputsForAllFlags(CTransaction(spend_tx), 0 | 0 | 0, false, m_node.chainman->ActiveChainstate().CoinsTip(), m_node.chainman->m_validation_cache);
     }
 
     // And if we produce a block with this tx, it should be valid (DERSIG not

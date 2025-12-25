@@ -1336,7 +1336,7 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             std::vector<CPubKey> pubkeys;
             pubkeys.reserve(input.hd_keypaths.size() + 2);
 
-            // ECDSA Pubkeys
+            // Post Quantum Pubkeys
             for (const auto& [pk, _] : input.hd_keypaths) {
                 pubkeys.push_back(pk);
             }

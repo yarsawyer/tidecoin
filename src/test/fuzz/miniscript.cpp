@@ -249,7 +249,7 @@ struct SatisfierContext : ParserContext {
 //! Context to check a satisfaction against the pre-computed data.
 const struct CheckerContext: BaseSignatureChecker {
     // Signature checker methods. Checks the right dummy signature is used.
-    bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey,
+    bool CheckPostQuantumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey,
                              const CScript& scriptCode, SigVersion sigversion) const override
     {
         const CPubKey key{vchPubKey};

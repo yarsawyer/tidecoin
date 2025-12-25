@@ -177,7 +177,7 @@ static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPu
             return set_error(serror, SCRIPT_ERR_SIG_FINDANDDELETE);
     }
 
-    fSuccess = checker.CheckECDSASignature(vchSig, vchPubKey, scriptCode, sigversion);
+    fSuccess = checker.CheckPostQuantumSignature(vchSig, vchPubKey, scriptCode, sigversion);
 
     if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
         return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
@@ -923,7 +923,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         valtype& vchPubKey = stacktop(-ikey);
 
                         // Check signature
-                        bool fOk = checker.CheckECDSASignature(vchSig, vchPubKey, scriptCode, sigversion);
+                        bool fOk = checker.CheckPostQuantumSignature(vchSig, vchPubKey, scriptCode, sigversion);
 
                         if (fOk) {
                             isig++;
@@ -1293,17 +1293,17 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
 }
 
 template <class T>
-bool GenericTransactionSignatureChecker<T>::VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
+bool GenericTransactionSignatureChecker<T>::VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
 {
     return pubkey.Verify(sighash, vchSig);
 }
 
 template <class T>
-bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
+bool GenericTransactionSignatureChecker<T>::CheckPostQuantumSignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
 {
     CPubKey pubkey(vchPubKey);
     if (!pubkey.IsValid()) {
-        LogPrintf("CheckECDSASignature: invalid pubkey size=%u prefix=%s sigsize=%u sigprefix=%s\n",
+        LogPrintf("CheckPostQuantumSignature: invalid pubkey size=%u prefix=%s sigsize=%u sigprefix=%s\n",
                  vchPubKey.size(), HexPrefix(vchPubKey, 4), vchSigIn.size(), HexPrefix(vchSigIn, 4));
         return false;
     }
@@ -1311,7 +1311,7 @@ bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vecto
     // Hash type is one byte tacked on to the end of the signature
     std::vector<unsigned char> vchSig(vchSigIn);
     if (vchSig.empty()) {
-        LogPrintf("CheckECDSASignature: empty signature pubkeysize=%u prefix=%s\n",
+        LogPrintf("CheckPostQuantumSignature: empty signature pubkeysize=%u prefix=%s\n",
                  vchPubKey.size(), HexPrefix(vchPubKey, 4));
         return false;
     }
@@ -1323,8 +1323,8 @@ bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vecto
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata, &m_sighash_cache);
 
-    if (!VerifyECDSASignature(vchSig, pubkey, sighash)) {
-        LogPrintf("CheckECDSASignature: verify failed sighash=%s hashtype=%02x sigversion=%d sigsize=%u sigprefix=%s pubkeysize=%u pubprefix=%s scriptcodesize=%u\n",
+    if (!VerifyPostQuantumSignature(vchSig, pubkey, sighash)) {
+        LogPrintf("CheckPostQuantumSignature: verify failed sighash=%s hashtype=%02x sigversion=%d sigsize=%u sigprefix=%s pubkeysize=%u pubprefix=%s scriptcodesize=%u\n",
                  sighash.ToString(), nHashType, static_cast<int>(sigversion), vchSig.size(), HexPrefix(vchSig, 4),
                  vchPubKey.size(), HexPrefix(vchPubKey, 4), scriptCode.size());
         return false;

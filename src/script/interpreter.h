@@ -45,29 +45,17 @@ enum : uint32_t {
     // Evaluate P2SH subscripts (BIP16).
     SCRIPT_VERIFY_P2SH      = (1U << 0),
 
-    // Passing a non-strict-DER signature or one with undefined hashtype to a checksig operation causes script failure.
-    // Evaluating a pubkey that is not (0x04 + 64 bytes) or (0x02 or 0x03 + 32 bytes) by checksig causes script failure.
-    // (not used or intended as a consensus rule).
-    SCRIPT_VERIFY_STRICTENC = (1U << 1),
-
-    // Passing a non-strict-DER signature to a checksig operation causes script failure (BIP62 rule 1)
-    SCRIPT_VERIFY_DERSIG    = (1U << 2),
-
-    // Passing a non-strict-DER signature or one with S > order/2 to a checksig operation causes script failure
-    // (BIP62 rule 5).
-    SCRIPT_VERIFY_LOW_S     = (1U << 3),
-
     // verify dummy stack item consumed by CHECKMULTISIG is of zero-length (BIP62 rule 7).
-    SCRIPT_VERIFY_NULLDUMMY = (1U << 4),
+    SCRIPT_VERIFY_NULLDUMMY = (1U << 1),
 
     // Using a non-push operator in the scriptSig causes script failure (BIP62 rule 2).
-    SCRIPT_VERIFY_SIGPUSHONLY = (1U << 5),
+    SCRIPT_VERIFY_SIGPUSHONLY = (1U << 2),
 
     // Require minimal encodings for all push operations (OP_0... OP_16, OP_1NEGATE where possible, direct
     // pushes up to 75 bytes, OP_PUSHDATA up to 255 bytes, OP_PUSHDATA2 for anything larger). Evaluating
     // any other push causes the script to fail (BIP62 rule 3).
     // In addition, whenever a stack element is interpreted as a number, it must be of minimal length (BIP62 rule 4).
-    SCRIPT_VERIFY_MINIMALDATA = (1U << 6),
+    SCRIPT_VERIFY_MINIMALDATA = (1U << 3),
 
     // Discourage use of NOPs reserved for upgrades (NOP1-10)
     //
@@ -79,7 +67,7 @@ enum : uint32_t {
     // executed, e.g.  within an unexecuted IF ENDIF block, are *not* rejected.
     // NOPs that have associated forks to give them new meaning (CLTV, CSV)
     // are not subject to this rule.
-    SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS  = (1U << 7),
+    SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS  = (1U << 4),
 
     // Require that only a single stack element remains after evaluation. This changes the success criterion from
     // "At least one stack element must remain, and when interpreted as a boolean, it must be true" to
@@ -88,43 +76,39 @@ enum : uint32_t {
     // Note: CLEANSTACK should never be used without P2SH or WITNESS.
     // Note: WITNESS_V0 script execution has behavior similar to CLEANSTACK as part of its
     //       consensus rules. It is automatic there and does not need this flag.
-    SCRIPT_VERIFY_CLEANSTACK = (1U << 8),
+    SCRIPT_VERIFY_CLEANSTACK = (1U << 5),
 
     // Verify CHECKLOCKTIMEVERIFY
     //
     // See BIP65 for details.
-    SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY = (1U << 9),
+    SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY = (1U << 6),
 
     // support CHECKSEQUENCEVERIFY opcode
     //
     // See BIP112 for details
-    SCRIPT_VERIFY_CHECKSEQUENCEVERIFY = (1U << 10),
+    SCRIPT_VERIFY_CHECKSEQUENCEVERIFY = (1U << 7),
 
     // Support segregated witness
     //
-    SCRIPT_VERIFY_WITNESS = (1U << 11),
+    SCRIPT_VERIFY_WITNESS = (1U << 8),
 
     // Reject non-v0 witness programs (segwit v1+ disabled).
     //
-    SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM = (1U << 12),
+    SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM = (1U << 9),
 
     // Segwit script only: Require the argument of OP_IF/NOTIF to be exactly 0x01 or empty vector
     //
     // Note: WITNESS_V0 script execution has behavior similar to MINIMALIF as part of its policy
     //       rules. It is automatic there and does not depend on this flag.
-    SCRIPT_VERIFY_MINIMALIF = (1U << 13),
+    SCRIPT_VERIFY_MINIMALIF = (1U << 10),
 
     // Signature(s) must be empty vector if a CHECK(MULTI)SIG operation failed
     //
-    SCRIPT_VERIFY_NULLFAIL = (1U << 14),
-
-    // Public keys in segregated witness scripts must be compressed
-    //
-    SCRIPT_VERIFY_WITNESS_PUBKEYTYPE = (1U << 15),
+    SCRIPT_VERIFY_NULLFAIL = (1U << 11),
 
     // Making OP_CODESEPARATOR and FindAndDelete fail any non-segwit scripts
     //
-    SCRIPT_VERIFY_CONST_SCRIPTCODE = (1U << 16),
+    SCRIPT_VERIFY_CONST_SCRIPTCODE = (1U << 12),
 
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
@@ -177,7 +161,7 @@ struct ScriptExecutionData
 static constexpr size_t WITNESS_V0_SCRIPTHASH_SIZE = 32;
 static constexpr size_t WITNESS_V0_KEYHASH_SIZE = 20;
 
-/** Data structure to cache SHA256 midstates for the ECDSA sighash calculations
+/** Data structure to cache SHA256 midstates for the Post Quantum sighash calculations
  *  (bare, P2SH, P2WPKH, P2WSH). */
 class SigHashCache
 {
@@ -202,7 +186,7 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
 class BaseSignatureChecker
 {
 public:
-    virtual bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
+    virtual bool CheckPostQuantumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
     {
         return false;
     }
@@ -241,12 +225,12 @@ private:
     mutable SigHashCache m_sighash_cache;
 
 protected:
-    virtual bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
+    virtual bool VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
 
 public:
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(nullptr) {}
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
-    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
+    bool CheckPostQuantumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
 };
@@ -262,9 +246,9 @@ protected:
 public:
     DeferringSignatureChecker(const BaseSignatureChecker& checker) : m_checker(checker) {}
 
-    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
+    bool CheckPostQuantumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
     {
-        return m_checker.CheckECDSASignature(scriptSig, vchPubKey, scriptCode, sigversion);
+        return m_checker.CheckPostQuantumSignature(scriptSig, vchPubKey, scriptCode, sigversion);
     }
 
     bool CheckLockTime(const CScriptNum& nLockTime) const override

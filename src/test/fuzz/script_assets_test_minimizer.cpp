@@ -92,7 +92,7 @@ CScriptWitness ScriptWitnessFromJSON(const UniValue& univalue)
 
 const std::map<std::string, unsigned int> FLAG_NAMES = {
     {std::string("P2SH"), (unsigned int)SCRIPT_VERIFY_P2SH},
-    {std::string("DERSIG"), (unsigned int)SCRIPT_VERIFY_DERSIG},
+    {std::string("DERSIG"), (unsigned int)0},
     {std::string("NULLDUMMY"), (unsigned int)SCRIPT_VERIFY_NULLDUMMY},
     {std::string("CHECKLOCKTIMEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY},
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
@@ -106,7 +106,7 @@ std::vector<unsigned int> AllFlags()
     for (unsigned int i = 0; i < 64; ++i) {
         unsigned int flag = 0;
         if (i & 1) flag |= SCRIPT_VERIFY_P2SH;
-        if (i & 2) flag |= SCRIPT_VERIFY_DERSIG;
+        if (i & 2) flag |= 0;
         if (i & 4) flag |= SCRIPT_VERIFY_NULLDUMMY;
         if (i & 8) flag |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
         if (i & 16) flag |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;

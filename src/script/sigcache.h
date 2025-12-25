@@ -30,7 +30,7 @@ static constexpr size_t DEFAULT_SCRIPT_EXECUTION_CACHE_BYTES{DEFAULT_VALIDATION_
 static_assert(DEFAULT_VALIDATION_CACHE_BYTES == DEFAULT_SIGNATURE_CACHE_BYTES + DEFAULT_SCRIPT_EXECUTION_CACHE_BYTES);
 
 /**
- * Valid signature cache, to avoid doing expensive ECDSA signature checking
+ * Valid signature cache, to avoid doing expensive Post Quantum signature checking
  * twice for every transaction (once when accepted into memory pool, and
  * again when accepted into the block chain)
  */
@@ -65,7 +65,7 @@ private:
 public:
     CachingTransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, bool storeIn, SignatureCache& signature_cache, PrecomputedTransactionData& txdataIn) : TransactionSignatureChecker(txToIn, nInIn, amountIn, txdataIn, MissingDataBehavior::ASSERT_FAIL), store(storeIn), m_signature_cache(signature_cache)  {}
 
-    bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const override;
+    bool VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const override;
 };
 
 #endif // BITCOIN_SCRIPT_SIGCACHE_H
