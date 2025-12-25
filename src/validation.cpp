@@ -2344,11 +2344,6 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags = it->second;
     }
 
-    // Enforce the DERSIG (BIP66) rule
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DERSIG)) {
-        flags |= SCRIPT_VERIFY_DERSIG;
-    }
-
     // Enforce CHECKLOCKTIMEVERIFY (BIP65)
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_CLTV)) {
         flags |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
@@ -3418,6 +3413,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
     // us in the middle of ProcessNewBlock - do not assume pblock is set
     // sanely for performance or correctness!
     AssertLockNotHeld(::cs_main);
+    LogPrintf("ActivateBestChain: start\n");
 
     // ABC maintains a fair degree of expensive-to-calculate internal state
     // because this function periodically releases cs_main so that it does not lock up other threads for too long
@@ -3575,6 +3571,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
         return false;
     }
 
+    LogPrintf("ActivateBestChain: done\n");
     return true;
 }
 
@@ -4634,12 +4631,14 @@ void PruneBlockFilesManual(Chainstate& active_chainstate, int nManualPruneHeight
 
 bool Chainstate::LoadChainTip()
 {
+    LogPrintf("LoadChainTip: start\n");
     AssertLockHeld(cs_main);
     const CCoinsViewCache& coins_cache = CoinsTip();
     assert(!coins_cache.GetBestBlock().IsNull()); // Never called when the coins view is empty
     const CBlockIndex* tip = m_chain.Tip();
 
     if (tip && tip->GetBlockHash() == coins_cache.GetBestBlock()) {
+        LogPrintf("LoadChainTip: already at tip=%s height=%d\n", tip->GetBlockHash().ToString(), tip->nHeight);
         return true;
     }
 
@@ -4945,9 +4944,11 @@ void Chainstate::ClearBlockIndexCandidates()
 bool ChainstateManager::LoadBlockIndex()
 {
     AssertLockHeld(cs_main);
+    LogPrintf("LoadBlockIndex: start\n");
     // Load block index from databases
     if (m_blockman.m_blockfiles_indexed) {
         bool ret{m_blockman.LoadBlockIndexDB(SnapshotBlockhash())};
+        LogPrintf("LoadBlockIndex: LoadBlockIndexDB=%s\n", ret ? "success" : "failed");
         if (!ret) return false;
 
         m_blockman.ScanAndUnlinkAlreadyPrunedFiles();
@@ -4978,6 +4979,7 @@ bool ChainstateManager::LoadBlockIndex()
                 m_best_header = pindex;
         }
     }
+    LogPrintf("LoadBlockIndex: done\n");
     return true;
 }
 

@@ -131,8 +131,6 @@ enum : uint32_t {
     SCRIPT_VERIFY_END_MARKER
 };
 
-bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror);
-
 struct PrecomputedTransactionData
 {
     // Single-SHA256 precomputed data shared by witness v0 sighash.

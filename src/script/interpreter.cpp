@@ -11,6 +11,8 @@
 #include <pubkey.h>
 #include <script/script.h>
 #include <uint256.h>
+#include <util/strencodings.h>
+#include <logging.h>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -28,6 +30,15 @@ inline bool set_error(ScriptError* ret, const ScriptError serror)
     if (ret)
         *ret = serror;
     return false;
+}
+
+std::string HexPrefix(const std::vector<unsigned char>& data, size_t max_len)
+{
+    if (data.empty()) {
+        return "";
+    }
+    const size_t len = std::min(max_len, data.size());
+    return HexStr(std::span<const unsigned char>(data.data(), len));
 }
 
 } // namespace
@@ -58,154 +69,6 @@ static inline void popstack(std::vector<valtype>& stack)
     if (stack.empty())
         throw std::runtime_error("popstack(): stack empty");
     stack.pop_back();
-}
-
-bool static IsCompressedOrUncompressedPubKey(const valtype &vchPubKey) {
-    if (vchPubKey.size() < CPubKey::SIZE) {
-        //  Non-canonical public key: too short
-        return false;
-    }
-    if (vchPubKey[0] == 0x04) {
-        if (vchPubKey.size() != CPubKey::SIZE) {
-            //  Non-canonical public key: invalid length for uncompressed key
-            return false;
-        }
-    } else if (vchPubKey[0] == 0x02 || vchPubKey[0] == 0x03) {
-        if (vchPubKey.size() != CPubKey::SIZE) {
-            //  Non-canonical public key: invalid length for compressed key
-            return false;
-        }
-    } else {
-        //  Non-canonical public key: neither compressed nor uncompressed
-        return false;
-    }
-    return true;
-}
-
-bool static IsCompressedPubKey(const valtype &vchPubKey) {
-    if (vchPubKey.size() != CPubKey::SIZE) {
-        //  Non-canonical public key: invalid length for compressed key
-        return false;
-    }
-    if (vchPubKey[0] != 0x02 && vchPubKey[0] != 0x03) {
-        //  Non-canonical public key: invalid prefix for compressed key
-        return false;
-    }
-    return true;
-}
-
-/**
- * A canonical signature exists of: <30> <total len> <02> <len R> <R> <02> <len S> <S> <hashtype>
- * Where R and S are not negative (their first byte has its highest bit not set), and not
- * excessively padded (do not start with a 0 byte, unless an otherwise negative number follows,
- * in which case a single 0 byte is necessary and even required).
- *
- * See https://bitcointalk.org/index.php?topic=8392.msg127623#msg127623
- *
- * This function is consensus-critical since BIP66.
- */
-bool static IsValidSignatureEncoding(const std::vector<unsigned char> &sig) {
-    // Format: 0x30 [total-length] 0x02 [R-length] [R] 0x02 [S-length] [S] [sighash]
-    // * total-length: 1-byte length descriptor of everything that follows,
-    //   excluding the sighash byte.
-    // * R-length: 1-byte length descriptor of the R value that follows.
-    // * R: arbitrary-length big-endian encoded R value. It must use the shortest
-    //   possible encoding for a positive integer (which means no null bytes at
-    //   the start, except a single one when the next byte has its highest bit set).
-    // * S-length: 1-byte length descriptor of the S value that follows.
-    // * S: arbitrary-length big-endian encoded S value. The same rules apply.
-    // * sighash: 1-byte value indicating what data is hashed (not part of the DER
-    //   signature)
-
-    // Minimum and maximum size constraints.
-    if (sig.size() < 9) return false;
-    if (sig.size() > 73) return false;
-
-    // A signature is of type 0x30 (compound).
-    if (sig[0] != 0x30) return false;
-
-    // Make sure the length covers the entire signature.
-    if (sig[1] != sig.size() - 3) return false;
-
-    // Extract the length of the R element.
-    unsigned int lenR = sig[3];
-
-    // Make sure the length of the S element is still inside the signature.
-    if (5 + lenR >= sig.size()) return false;
-
-    // Extract the length of the S element.
-    unsigned int lenS = sig[5 + lenR];
-
-    // Verify that the length of the signature matches the sum of the length
-    // of the elements.
-    if ((size_t)(lenR + lenS + 7) != sig.size()) return false;
-
-    // Check whether the R element is an integer.
-    if (sig[2] != 0x02) return false;
-
-    // Zero-length integers are not allowed for R.
-    if (lenR == 0) return false;
-
-    // Negative numbers are not allowed for R.
-    if (sig[4] & 0x80) return false;
-
-    // Null bytes at the start of R are not allowed, unless R would
-    // otherwise be interpreted as a negative number.
-    if (lenR > 1 && (sig[4] == 0x00) && !(sig[5] & 0x80)) return false;
-
-    // Check whether the S element is an integer.
-    if (sig[lenR + 4] != 0x02) return false;
-
-    // Zero-length integers are not allowed for S.
-    if (lenS == 0) return false;
-
-    // Negative numbers are not allowed for S.
-    if (sig[lenR + 6] & 0x80) return false;
-
-    // Null bytes at the start of S are not allowed, unless S would otherwise be
-    // interpreted as a negative number.
-    if (lenS > 1 && (sig[lenR + 6] == 0x00) && !(sig[lenR + 7] & 0x80)) return false;
-
-    return true;
-}
-
-bool static IsDefinedHashtypeSignature(const valtype &vchSig) {
-    if (vchSig.size() == 0) {
-        return false;
-    }
-    unsigned char nHashType = vchSig[vchSig.size() - 1] & (~(SIGHASH_ANYONECANPAY));
-    if (nHashType < SIGHASH_ALL || nHashType > SIGHASH_SINGLE)
-        return false;
-
-    return true;
-}
-
-bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror) {
-    // Empty signature. Not strictly DER encoded, but allowed to provide a
-    // compact way to provide an invalid signature for use with CHECK(MULTI)SIG
-    if (vchSig.size() == 0) {
-        return true;
-    }
-    if ((flags & (SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC)) != 0 && !IsValidSignatureEncoding(vchSig)) {
-        return set_error(serror, SCRIPT_ERR_SIG_DER);
-    } else if ((flags & SCRIPT_VERIFY_LOW_S) != 0) {
-        // serror is set
-        return false;
-    } else if ((flags & SCRIPT_VERIFY_STRICTENC) != 0 && !IsDefinedHashtypeSignature(vchSig)) {
-        return set_error(serror, SCRIPT_ERR_SIG_HASHTYPE);
-    }
-    return true;
-}
-
-bool static CheckPubKeyEncoding(const valtype &vchPubKey, unsigned int flags, const SigVersion &sigversion, ScriptError* serror) {
-    if ((flags & SCRIPT_VERIFY_STRICTENC) != 0 && !IsCompressedOrUncompressedPubKey(vchPubKey)) {
-        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
-    }
-    // Only compressed keys are accepted in segwit
-    if ((flags & SCRIPT_VERIFY_WITNESS_PUBKEYTYPE) != 0 && sigversion == SigVersion::WITNESS_V0 && !IsCompressedPubKey(vchPubKey)) {
-        return set_error(serror, SCRIPT_ERR_WITNESS_PUBKEYTYPE);
-    }
-    return true;
 }
 
 int FindAndDelete(CScript& script, const CScript& b)
@@ -314,10 +177,6 @@ static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPu
             return set_error(serror, SCRIPT_ERR_SIG_FINDANDDELETE);
     }
 
-    if (!CheckSignatureEncoding(vchSig, flags, serror) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
-        //serror is set
-        return false;
-    }
     fSuccess = checker.CheckECDSASignature(vchSig, vchPubKey, scriptCode, sigversion);
 
     if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
@@ -1063,14 +922,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         valtype& vchSig    = stacktop(-isig);
                         valtype& vchPubKey = stacktop(-ikey);
 
-                        // Note how this makes the exact order of pubkey/signature evaluation
-                        // distinguishable by CHECKMULTISIG NOT if the STRICTENC flag is set.
-                        // See the script_(in)valid tests for details.
-                        if (!CheckSignatureEncoding(vchSig, flags, serror) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
-                            // serror is set
-                            return false;
-                        }
-
                         // Check signature
                         bool fOk = checker.CheckECDSASignature(vchSig, vchPubKey, scriptCode, sigversion);
 
@@ -1161,16 +1012,14 @@ private:
     const T& txTo;             //!< reference to the spending transaction (the one being serialized)
     const CScript& scriptCode; //!< output script being consumed
     const unsigned int nIn;    //!< input index of txTo being signed
-    const bool fAnyoneCanPay;  //!< whether the hashtype has the SIGHASH_ANYONECANPAY flag set
-    const bool fHashSingle;    //!< whether the hashtype is SIGHASH_SINGLE
-    const bool fHashNone;      //!< whether the hashtype is SIGHASH_NONE
+    const int nHashType;       //!< SIGHASH type for the signature
+    const bool fAnyoneCanPay{(nHashType & SIGHASH_ANYONECANPAY) != 0}; //!< whether the hashtype has the SIGHASH_ANYONECANPAY flag set
+    const bool fHashSingle{(nHashType & 0x1f) == SIGHASH_SINGLE}; //!< whether the hashtype is SIGHASH_SINGLE
+    const bool fHashNone{(nHashType & 0x1f) == SIGHASH_NONE}; //!< whether the hashtype is SIGHASH_NONE
 
 public:
     CTransactionSignatureSerializer(const T& txToIn, const CScript& scriptCodeIn, unsigned int nInIn, int nHashTypeIn) :
-        txTo(txToIn), scriptCode(scriptCodeIn), nIn(nInIn),
-        fAnyoneCanPay(!!(nHashTypeIn & SIGHASH_ANYONECANPAY)),
-        fHashSingle((nHashTypeIn & 0x1f) == SIGHASH_SINGLE),
-        fHashNone((nHashTypeIn & 0x1f) == SIGHASH_NONE) {}
+        txTo(txToIn), scriptCode(scriptCodeIn), nIn(nInIn), nHashType(nHashTypeIn) {}
 
     /** Serialize the passed scriptCode, skipping OP_CODESEPARATORs */
     template<typename S>
@@ -1453,13 +1302,19 @@ template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
 {
     CPubKey pubkey(vchPubKey);
-    if (!pubkey.IsValid())
+    if (!pubkey.IsValid()) {
+        LogPrintf("CheckECDSASignature: invalid pubkey size=%u prefix=%s sigsize=%u sigprefix=%s\n",
+                 vchPubKey.size(), HexPrefix(vchPubKey, 4), vchSigIn.size(), HexPrefix(vchSigIn, 4));
         return false;
+    }
 
     // Hash type is one byte tacked on to the end of the signature
     std::vector<unsigned char> vchSig(vchSigIn);
-    if (vchSig.empty())
+    if (vchSig.empty()) {
+        LogPrintf("CheckECDSASignature: empty signature pubkeysize=%u prefix=%s\n",
+                 vchPubKey.size(), HexPrefix(vchPubKey, 4));
         return false;
+    }
     int nHashType = vchSig.back();
     vchSig.pop_back();
 
@@ -1468,8 +1323,12 @@ bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vecto
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata, &m_sighash_cache);
 
-    if (!VerifyECDSASignature(vchSig, pubkey, sighash))
+    if (!VerifyECDSASignature(vchSig, pubkey, sighash)) {
+        LogPrintf("CheckECDSASignature: verify failed sighash=%s hashtype=%02x sigversion=%d sigsize=%u sigprefix=%s pubkeysize=%u pubprefix=%s scriptcodesize=%u\n",
+                 sighash.ToString(), nHashType, static_cast<int>(sigversion), vchSig.size(), HexPrefix(vchSig, 4),
+                 vchPubKey.size(), HexPrefix(vchPubKey, 4), scriptCode.size());
         return false;
+    }
 
     return true;
 }

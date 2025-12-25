@@ -3,6 +3,7 @@
  */
 
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "api.h"
@@ -288,11 +289,14 @@ do_verify(
      * Decode public key.
      */
     if (pk[0] != 0x00 + 9) {
+        fprintf(stderr, "falcon512 verify: pubkey header mismatch (pk[0]=%02x)\n", pk[0]);
         return -1;
     }
-    if (PQCLEAN_FALCON512_CLEAN_modq_decode(h, 9,
+    v = PQCLEAN_FALCON512_CLEAN_modq_decode(h, 9,
                                             pk + 1, PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1)
-            != PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) {
+            ;
+    if (v != PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) {
+        fprintf(stderr, "falcon512 verify: pubkey decode failed (decoded=%zu)\n", v);
         return -1;
     }
     PQCLEAN_FALCON512_CLEAN_to_ntt_monty(h, 9);
@@ -301,21 +305,25 @@ do_verify(
      * Decode signature.
      */
     if (sigbuflen == 0) {
+        fprintf(stderr, "falcon512 verify: signature buffer length is zero\n");
         return -1;
     }
 
     v = PQCLEAN_FALCON512_CLEAN_comp_decode(sig, 9, sigbuf, sigbuflen);
     if (v == 0) {
+        fprintf(stderr, "falcon512 verify: signature decode failed (len=%zu)\n", sigbuflen);
         return -1;
     }
     if (v != sigbuflen) {
         if (sigbuflen == PQCLEAN_FALCONPADDED512_CLEAN_CRYPTO_BYTES - NONCELEN - 1) {
             while (v < sigbuflen) {
                 if (sigbuf[v++] != 0) {
+                    fprintf(stderr, "falcon512 verify: nonzero padding in signature (len=%zu, decoded=%zu)\n", sigbuflen, v);
                     return -1;
                 }
             }
         } else {
+            fprintf(stderr, "falcon512 verify: signature length mismatch (len=%zu, decoded=%zu)\n", sigbuflen, v);
             return -1;
         }
     }
@@ -334,6 +342,7 @@ do_verify(
      * Verify signature.
      */
     if (!PQCLEAN_FALCON512_CLEAN_verify_raw(hm, sig, h, 9, tmp.b)) {
+        fprintf(stderr, "falcon512 verify: verify_raw failed (siglen=%zu, msglen=%zu)\n", sigbuflen, mlen);
         return -1;
     }
     return 0;
@@ -361,9 +370,11 @@ PQCLEAN_FALCON512_CLEAN_crypto_sign_verify(
     const uint8_t *sig, size_t siglen,
     const uint8_t *m, size_t mlen, const uint8_t *pk) {
     if (siglen < 1 + NONCELEN) {
+        fprintf(stderr, "falcon512 verify: signature too short (siglen=%zu)\n", siglen);
         return -1;
     }
     if (sig[0] != 0x30 + 9) {
+        fprintf(stderr, "falcon512 verify: signature header mismatch (sig[0]=%02x)\n", sig[0]);
         return -1;
     }
     return do_verify(sig + 1,

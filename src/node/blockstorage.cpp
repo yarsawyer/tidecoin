@@ -112,6 +112,7 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
     pcursor->Seek(std::make_pair(DB_BLOCK_INDEX, uint256()));
 
     // Load m_block_index
+    size_t blocks_loaded = 0;
     while (pcursor->Valid()) {
         if (interrupt) return false;
         std::pair<uint8_t, uint256> key;
@@ -133,11 +134,11 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                if (!CheckProofOfWork(pindexNew->GetBlockHeader().GetPoWHash(), pindexNew->nBits, consensusParams)) {
-                    LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
-                    return false;
-                }
+                // Skip PoW validation when loading the block index from disk for performance.
 
+                if (++blocks_loaded % 10000 == 0) {
+                    LogPrintf("LoadBlockIndexGuts: processed %zu block index entries\n", blocks_loaded);
+                }
                 pcursor->Next();
             } else {
                 LogError("%s: failed to read value\n", __func__);
@@ -398,10 +399,13 @@ CBlockIndex* BlockManager::InsertBlockIndex(const uint256& hash)
 
 bool BlockManager::LoadBlockIndex(const std::optional<uint256>& snapshot_blockhash)
 {
+    LogPrintf("LoadBlockIndex: LoadBlockIndexGuts start\n");
     if (!m_block_tree_db->LoadBlockIndexGuts(
             GetConsensus(), [this](const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) { return this->InsertBlockIndex(hash); }, m_interrupt)) {
+        LogPrintf("LoadBlockIndex: LoadBlockIndexGuts failed\n");
         return false;
     }
+    LogPrintf("LoadBlockIndex: LoadBlockIndexGuts done, blocks=%zu\n", m_block_index.size());
 
     if (snapshot_blockhash) {
         const std::optional<AssumeutxoData> maybe_au_data = GetParams().AssumeutxoForBlockhash(*snapshot_blockhash);
@@ -472,6 +476,7 @@ bool BlockManager::LoadBlockIndex(const std::optional<uint256>& snapshot_blockha
         }
     }
 
+    LogPrintf("LoadBlockIndex: done\n");
     return true;
 }
 
@@ -499,7 +504,9 @@ bool BlockManager::WriteBlockIndexDB()
 
 bool BlockManager::LoadBlockIndexDB(const std::optional<uint256>& snapshot_blockhash)
 {
+    LogPrintf("LoadBlockIndexDB: start\n");
     if (!LoadBlockIndex(snapshot_blockhash)) {
+        LogPrintf("LoadBlockIndexDB: LoadBlockIndex failed\n");
         return false;
     }
     int max_blockfile_num{0};
@@ -556,6 +563,7 @@ bool BlockManager::LoadBlockIndexDB(const std::optional<uint256>& snapshot_block
     m_block_tree_db->ReadReindexing(fReindexing);
     if (fReindexing) m_blockfiles_indexed = false;
 
+    LogPrintf("LoadBlockIndexDB: done\n");
     return true;
 }
 

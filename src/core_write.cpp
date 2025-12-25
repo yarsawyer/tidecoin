@@ -12,6 +12,8 @@
 #include <script/descriptor.h>
 #include <script/script.h>
 #include <script/solver.h>
+#include <sign/falcon-1024/api.h>
+#include <sign/falcon-512/api.h>
 #include <serialize.h>
 #include <streams.h>
 #include <undo.h>
@@ -88,6 +90,34 @@ std::string SighashToStr(unsigned char sighash_type)
     return it->second;
 }
 
+namespace {
+constexpr size_t kFalconNonceLen = 40;
+constexpr unsigned char kFalcon512SigHeader = 0x30 + 9;
+constexpr unsigned char kFalcon1024SigHeader = 0x30 + 10;
+
+bool LooksLikeFalconSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
+{
+    if (sig_with_hashtype.size() <= kFalconNonceLen + 1) {
+        return false;
+    }
+    const unsigned char hash_type = sig_with_hashtype.back();
+    if (mapSigHashTypes.find(hash_type) == mapSigHashTypes.end()) {
+        return false;
+    }
+    const size_t sig_len = sig_with_hashtype.size() - 1;
+    if (sig_len < 1 + kFalconNonceLen) {
+        return false;
+    }
+    if (sig_with_hashtype[0] == kFalcon512SigHeader) {
+        return sig_len <= PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
+    }
+    if (sig_with_hashtype[0] == kFalcon1024SigHeader) {
+        return sig_len <= PQCLEAN_FALCON1024_CLEAN_CRYPTO_BYTES;
+    }
+    return false;
+}
+} // namespace
+
 /**
  * Create the assembly string representation of a CScript object.
  * @param[in] script    CScript object to convert into the asm string representation.
@@ -117,10 +147,7 @@ std::string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDeco
                 if (fAttemptSighashDecode && !script.IsUnspendable()) {
                     std::string strSigHashDecode;
                     // goal: only attempt to decode a defined sighash type from data that looks like a signature within a scriptSig.
-                    // this won't decode correctly formatted public keys in Pubkey or Multisig scripts due to
-                    // the restrictions on the pubkey formats (see IsCompressedOrUncompressedPubKey) being incongruous with the
-                    // checks in CheckSignatureEncoding.
-                    if (CheckSignatureEncoding(vch, SCRIPT_VERIFY_STRICTENC, nullptr)) {
+                    if (LooksLikeFalconSignatureWithSighash(vch)) {
                         const unsigned char chSigHashType = vch.back();
                         const auto it = mapSigHashTypes.find(chSigHashType);
                         if (it != mapSigHashTypes.end()) {

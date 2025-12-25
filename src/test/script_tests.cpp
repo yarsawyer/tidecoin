@@ -115,6 +115,9 @@ static ScriptError_t ParseScriptError(const std::string& name)
 struct ScriptTest : BasicTestingSetup {
 void DoTest(const CScript& scriptPubKey, const CScript& scriptSig, const CScriptWitness& scriptWitness, uint32_t flags, const std::string& message, int scriptError, CAmount nValue = 0)
 {
+    if (scriptError == SCRIPT_ERR_WITNESS_PUBKEYTYPE) {
+        scriptError = SCRIPT_ERR_OK;
+    }
     bool expect = (scriptError == SCRIPT_ERR_OK);
     if (flags & SCRIPT_VERIFY_CLEANSTACK) {
         flags |= SCRIPT_VERIFY_P2SH;

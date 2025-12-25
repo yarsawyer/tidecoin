@@ -369,7 +369,7 @@ struct PSBTInput
                     s >> sig;
 
                     // Check that the signature is validly encoded
-                    if (sig.empty() || !CheckSignatureEncoding(sig, SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_STRICTENC, nullptr)) {
+                    if (sig.empty()) {
                         throw std::ios_base::failure("Signature is not a valid encoding");
                     }
 
