@@ -54,7 +54,7 @@ add_dependencies(bitcoin_clientversion generate_build_info)
 
 add_subdirectory(crypto)
 add_subdirectory(util)
-add_subdirectory(sign)
+add_subdirectory(pq)
 if(ENABLE_IPC)
   add_subdirectory(ipc)
 endif()
@@ -127,6 +127,11 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   pow.cpp
   protocol.cpp
   psbt.cpp
+  pq/falcon512.c
+  pq/falcon1024.c
+  pq/mldsa44.c
+  pq/mldsa65.c
+  pq/mldsa87.c
   rpc/rawtransaction_util.cpp
   rpc/request.cpp
   rpc/util.cpp

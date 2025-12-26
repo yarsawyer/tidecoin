@@ -8,12 +8,8 @@
 #include <crypto/common.h>
 #include <crypto/hmac_sha512.h>
 #include <hash.h>
+#include <pq/pq_api.h>
 #include <random.h>
-#include <sign/falcon-512/api.h>
-
-extern "C" {
-#include <sign/falcon-512/inner.h>
-}
 
 #include <secp256k1.h>
 #include <secp256k1_ellswift.h>
@@ -21,86 +17,54 @@ extern "C" {
 
 static secp256k1_context* secp256k1_context_sign = nullptr;
 
-namespace {
-    bool ComputeFalconPublicKey(const unsigned char* sk, size_t sk_len, std::array<unsigned char, CKey::PUB_KEY_SIZE>& pk_out)
-    {
-        if (sk_len != CKey::PRIVATE_KEY_SIZE) {
-            return false;
-        }
-        if (sk[0] != 0x50 + 9) {
-            return false;
-        }
-
-        int8_t f[512];
-        int8_t g[512];
-        uint16_t h[512];
-        alignas(16) uint8_t tmp[2 * 512 * sizeof(uint16_t)];
-
-        size_t u = 1;
-        size_t v = PQCLEAN_FALCON512_CLEAN_trim_i8_decode(
-            f, 9, PQCLEAN_FALCON512_CLEAN_max_fg_bits[9],
-            sk + u, sk_len - u);
-        if (v == 0) {
-            return false;
-        }
-        u += v;
-        v = PQCLEAN_FALCON512_CLEAN_trim_i8_decode(
-            g, 9, PQCLEAN_FALCON512_CLEAN_max_fg_bits[9],
-            sk + u, sk_len - u);
-        if (v == 0) {
-            return false;
-        }
-
-        if (!PQCLEAN_FALCON512_CLEAN_compute_public(h, f, g, 9, tmp)) {
-            return false;
-        }
-
-        pk_out[0] = 0x00 + 9;
-        v = PQCLEAN_FALCON512_CLEAN_modq_encode(
-            pk_out.data() + 1, pk_out.size() - 1, h, 9);
-        return v == pk_out.size() - 1;
-    }
-} // namespace
-
-
-
-bool CKey::Check(const unsigned char *vch) {
-    return vch != nullptr && vch[0] == 0x50 + 9;
+bool CKey::DecodeSecretKey(std::span<const unsigned char> vch,
+                           const pq::SchemeInfo*& info,
+                           std::span<const unsigned char>& raw)
+{
+    return pq::DecodeSecretKey(vch, info, raw);
 }
 
 bool CKey::SetPubKeyFromSecret()
 {
-    if (!keydata || !pubkeydata) {
+    if (keydata.empty() || pubkeydata.empty()) {
         return false;
     }
-    return ComputeFalconPublicKey(keydata->data(), keydata->size(), *pubkeydata);
+    return pq::ComputePublicKeyFromSecret(Scheme(),
+                                          std::span<const unsigned char>{keydata.data(), keydata.size()},
+                                          std::span<unsigned char>{pubkeydata.data(), pubkeydata.size()});
 }
 
 void CKey::MakeNewKey(bool fCompressedIn) {
-    unsigned char sk[PRIVATE_KEY_SIZE];
-    unsigned char pk[PUB_KEY_SIZE];
-    const int status = PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk, sk);
-    assert(status == 0);
+    const auto& scheme = pq::ActiveScheme();
+    (void)fCompressedIn;
+    m_scheme = &scheme;
     MakeKeyData();
-    memcpy(keydata->data(), sk, PRIVATE_KEY_SIZE);
-    memcpy(pubkeydata->data(), pk, PUB_KEY_SIZE);
+    const bool ok = pq::GenerateKeyPair(scheme,
+                                        std::span<unsigned char>{pubkeydata.data(), pubkeydata.size()},
+                                        std::span<unsigned char>{keydata.data(), keydata.size()});
+    if (!ok) {
+        ClearKeyData();
+    }
 }
 
 CPrivKey CKey::GetPrivKey() const {
-    assert(keydata);
+    assert(!keydata.empty());
     CPrivKey seckey;
-    seckey.resize(PRIVATE_KEY_SIZE);
-    memcpy(seckey.data(), keydata->data(), keydata->size());
+    if (!pq::EncodeSecretKey(Scheme(),
+                             std::span<const unsigned char>{keydata.data(), keydata.size()},
+                             seckey)) {
+        return {};
+    }
     return seckey;
 }
 
 CPubKey CKey::GetPubKey() const {
-    assert(keydata);
-    assert(pubkeydata);
+    assert(!keydata.empty());
+    assert(!pubkeydata.empty());
     CPubKey result;
     unsigned char* pch = const_cast<unsigned char*>(result.begin());
-    memcpy(pch + 1, pubkeydata->data(), pubkeydata->size());
-    pch[0] = 7;
+    memcpy(pch + 1, pubkeydata.data(), pubkeydata.size());
+    pch[0] = Scheme().prefix;
     return result;
 }
 
@@ -120,19 +84,11 @@ bool SigHasLowR(const secp256k1_ecdsa_signature* sig)
 bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool grind, uint32_t test_case) const {
     (void)grind;
     (void)test_case;
-    if (!keydata) {
+    if (keydata.empty()) {
         return false;
     }
-
-    size_t sig_len = 0;
-    vchSig.resize(PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES);
-    const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
-        vchSig.data(), &sig_len, hash.begin(), 32, keydata->data());
-    if (r != 0) {
-        return false;
-    }
-    vchSig.resize(sig_len);
-    return true;
+    return pq::Sign(Scheme(), std::span<const unsigned char>{hash.begin(), 32},
+                    std::span<const unsigned char>{keydata.data(), keydata.size()}, vchSig, false);
 }
 
 bool CKey::VerifyPubKey(const CPubKey& pubkey) const {
@@ -146,12 +102,8 @@ bool CKey::VerifyPubKey(const CPubKey& pubkey) const {
 }
 
 bool CKey::Load(const CPrivKey &seckey, const CPubKey &vchPubKey, bool fSkipCheck=false) {
-    if (seckey.size() != PRIVATE_KEY_SIZE) {
-        ClearKeyData();
-        return false;
-    }
     Set(seckey.begin(), seckey.end(), vchPubKey);
-    if (!keydata || !pubkeydata) {
+    if (keydata.empty() || pubkeydata.empty()) {
         return false;
     }
     if (fSkipCheck) {
@@ -163,12 +115,14 @@ bool CKey::Load(const CPrivKey &seckey, const CPubKey &vchPubKey, bool fSkipChec
 bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const {
     assert(IsValid());
     std::vector<unsigned char, secure_allocator<unsigned char>> vout(64);
+    if (size() != 32) {
+        return false;
+    }
     if ((nChild >> 31) == 0) {
         CPubKey pubkey = GetPubKey();
         assert(pubkey.size() == CPubKey::SIZE);
         BIP32Hash(cc, nChild, *pubkey.begin(), pubkey.begin()+1, vout.data());
     } else {
-        assert(size() == 32);
         BIP32Hash(cc, nChild, 0, UCharCast(begin()), vout.data());
     }
     memcpy(ccChild.begin(), vout.data()+32, 32);
@@ -180,37 +134,41 @@ bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const
 
 EllSwiftPubKey CKey::EllSwiftCreate(std::span<const std::byte> ent32) const
 {
-    assert(keydata);
-    assert(ent32.size() == 32);
-    std::array<std::byte, EllSwiftPubKey::size()> encoded_pubkey;
+    std::array<std::byte, EllSwiftPubKey::size()> encoded_pubkey{};
+    if (keydata.size() != 32 || ent32.size() != 32) {
+        return {encoded_pubkey};
+    }
 
     auto success = secp256k1_ellswift_create(secp256k1_context_sign,
                                              UCharCast(encoded_pubkey.data()),
-                                             keydata->data(),
+                                             keydata.data(),
                                              UCharCast(ent32.data()));
 
-    // Should always succeed for valid keys (asserted above).
-    assert(success);
+    if (!success) {
+        return {std::array<std::byte, EllSwiftPubKey::size()>{}};
+    }
     return {encoded_pubkey};
 }
 
 ECDHSecret CKey::ComputeBIP324ECDHSecret(const EllSwiftPubKey& their_ellswift, const EllSwiftPubKey& our_ellswift, bool initiating) const
 {
-    assert(keydata);
-
-    ECDHSecret output;
+    ECDHSecret output{};
+    if (keydata.size() != 32) {
+        return output;
+    }
     // BIP324 uses the initiator as party A, and the responder as party B. Remap the inputs
     // accordingly:
     bool success = secp256k1_ellswift_xdh(secp256k1_context_sign,
                                           UCharCast(output.data()),
                                           UCharCast(initiating ? our_ellswift.data() : their_ellswift.data()),
                                           UCharCast(initiating ? their_ellswift.data() : our_ellswift.data()),
-                                          keydata->data(),
+                                          keydata.data(),
                                           initiating ? 0 : 1,
                                           secp256k1_ellswift_xdh_hash_function_bip324,
                                           nullptr);
-    // Should always succeed for valid keys (assert above).
-    assert(success);
+    if (!success) {
+        return {};
+    }
     return output;
 }
 

@@ -16,6 +16,8 @@
 
 namespace Consensus {
 
+static constexpr int AUXPOW_DISABLED = std::numeric_limits<int>::max();
+
 /**
  * A buried deployment is one where the height of the activation has been hardcoded into
  * the client implementation long after the consensus change has activated. See BIP 90.
@@ -102,6 +104,8 @@ struct Params {
      * Note that segwit v0 script rules are enforced on all blocks except the
      * BIP 16 exception blocks. */
     int SegwitHeight;
+    /** Block height at which auxpow (and associated signature rules) activates. */
+    int nAuxpowStartHeight{AUXPOW_DISABLED};
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV and segwit activations. */
     int MinBIP9WarningHeight;

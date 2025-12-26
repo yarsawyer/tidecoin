@@ -6,6 +6,7 @@
 #include <pubkey.h>
 
 #include <hash.h>
+#include <pq/pq_api.h>
 #include <secp256k1.h>
 #include <secp256k1_ellswift.h>
 #include <secp256k1_recovery.h>
@@ -31,8 +32,10 @@ bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchS
     if (!IsValid()) {
         return false;
     }
-    return PQCLEAN_FALCON512_CLEAN_crypto_sign_verify(
-        vchSig.data(), vchSig.size(), hash.begin(), 32, begin() + 1) == 0;
+    return pq::VerifyPrefixed(std::span<const unsigned char>{hash.begin(), 32},
+                              vchSig,
+                              std::span<const unsigned char>{begin(), size()},
+                              false);
 }
 
 bool CPubKey::Recover(const uint256 &hash, const std::vector<unsigned char>& vchSig) {
@@ -42,9 +45,11 @@ bool CPubKey::Recover(const uint256 &hash, const std::vector<unsigned char>& vch
     unsigned int mlen = vchSig.size() - (SIZE - 1);
     unsigned char *pch = const_cast<unsigned char*>(begin());
     memcpy(pch + 1, vchSig.data() + mlen, SIZE - 1);
-    pch[0] = 7;
-    return PQCLEAN_FALCON512_CLEAN_crypto_sign_verify(
-        vchSig.data(), mlen, hash.begin(), 32, pch + 1) == 0;
+    pch[0] = pq::kFalcon512Info.prefix;
+    return pq::VerifyPrefixed(std::span<const unsigned char>{hash.begin(), 32},
+                              std::span<const unsigned char>{vchSig.data(), mlen},
+                              std::span<const unsigned char>{begin(), size()},
+                              false);
 }
 
 bool CPubKey::IsFullyValid() const {
@@ -117,4 +122,3 @@ bool CExtPubKey::Derive(CExtPubKey &out, unsigned int _nChild) const {
     out.nChild = _nChild;
     return pubkey.Derive(out.pubkey, out.chaincode, _nChild, chaincode);
 }
-

@@ -8,8 +8,8 @@
 #define BITCOIN_KEY_H
 
 #include <pubkey.h>
+#include <pq/pq_scheme.h>
 #include <serialize.h>
-#include <sign/falcon-512/api.h>
 #include <support/allocators/secure.h>
 #include <uint256.h>
 
@@ -33,36 +33,38 @@ using ECDHSecret = std::array<std::byte, ECDH_SECRET_SIZE>;
 class CKey
 {
 public:
-    static constexpr unsigned int PRIVATE_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_SECRETKEYBYTES;
-    static constexpr unsigned int COMPRESSED_PRIVATE_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_SECRETKEYBYTES;
-    static constexpr unsigned int PUB_KEY_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES;
-    static constexpr unsigned int SIGN_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
-    static constexpr unsigned int SIZE = PRIVATE_KEY_SIZE;
+    static constexpr unsigned int SIZE = pq::kFalcon512Info.seckey_bytes;
 
 private:
-    /** Internal data container for private key material. */
-    using KeyTypeSk = std::array<unsigned char, PRIVATE_KEY_SIZE>;
-    using KeyTypePk = std::array<unsigned char, PUB_KEY_SIZE>;
+    using KeyData = std::vector<unsigned char, secure_allocator<unsigned char>>;
 
-    //! The actual byte data. nullptr for invalid keys.
-    secure_unique_ptr<KeyTypeSk> keydata;
-    secure_unique_ptr<KeyTypePk> pubkeydata;
+    const pq::SchemeInfo* m_scheme{&pq::kFalcon512Info};
+    KeyData keydata;
+    KeyData pubkeydata;
 
-    //! Check whether the 32-byte array pointed to by vch is valid keydata.
-    bool static Check(const unsigned char* vch);
+    //! Decode a potentially prefixed secret key and return the raw bytes.
+    bool static DecodeSecretKey(std::span<const unsigned char> vch,
+                                const pq::SchemeInfo*& info,
+                                std::span<const unsigned char>& raw);
     bool SetPubKeyFromSecret();
 
     void MakeKeyData()
     {
-        if (!keydata) keydata = make_secure_unique<KeyTypeSk>();
-        if (!pubkeydata) pubkeydata = make_secure_unique<KeyTypePk>();
+        if (m_scheme == nullptr) {
+            m_scheme = &pq::kFalcon512Info;
+        }
+        keydata.assign(m_scheme->seckey_bytes, 0);
+        pubkeydata.assign(m_scheme->pubkey_bytes, 0);
     }
 
     void ClearKeyData()
     {
-        keydata.reset();
-        pubkeydata.reset();
+        keydata.clear();
+        pubkeydata.clear();
+        m_scheme = &pq::kFalcon512Info;
     }
+
+    const pq::SchemeInfo& Scheme() const { return *m_scheme; }
 
 public:
     CKey() noexcept = default;
@@ -72,10 +74,10 @@ public:
     CKey& operator=(const CKey& other)
     {
         if (this != &other) {
-            if (other.keydata && other.pubkeydata) {
-                MakeKeyData();
-                *keydata = *other.keydata;
-                *pubkeydata = *other.pubkeydata;
+            if (other.IsValid()) {
+                m_scheme = other.m_scheme;
+                keydata = other.keydata;
+                pubkeydata = other.pubkeydata;
             } else {
                 ClearKeyData();
             }
@@ -95,45 +97,64 @@ public:
     template <typename T>
     void Set(const T pbegin, const T pend)
     {
-        if (size_t(pend - pbegin) != std::tuple_size_v<KeyTypeSk>) {
+        if (pbegin == pend) {
             ClearKeyData();
-        } else if (Check(UCharCast(&pbegin[0]))) {
-            MakeKeyData();
-            memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
-            if (!SetPubKeyFromSecret()) {
+        } else {
+            const size_t len = static_cast<size_t>(pend - pbegin);
+            const unsigned char* ptr = UCharCast(&pbegin[0]);
+            const std::span<const unsigned char> sk{ptr, len};
+            const pq::SchemeInfo* info = nullptr;
+            std::span<const unsigned char> raw;
+            if (DecodeSecretKey(sk, info, raw)) {
+                m_scheme = info;
+                MakeKeyData();
+                memcpy(keydata.data(), raw.data(), keydata.size());
+                if (!SetPubKeyFromSecret()) {
+                    ClearKeyData();
+                }
+            } else {
                 ClearKeyData();
             }
-        } else {
-            ClearKeyData();
         }
     }
 
     template <typename T>
     void Set(const T pbegin, const T pend, const CPubKey& pubkey)
     {
-        if (size_t(pend - pbegin) != std::tuple_size_v<KeyTypeSk> ||
-            pubkey.size() != PUB_KEY_SIZE + 1) {
+        if (pbegin == pend) {
             ClearKeyData();
-        } else if (Check(UCharCast(&pbegin[0]))) {
-            MakeKeyData();
-            memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
-            memcpy(pubkeydata->data(), pubkey.data() + 1, pubkeydata->size());
-        } else {
-            ClearKeyData();
+            return;
         }
+        const size_t len = static_cast<size_t>(pend - pbegin);
+        const unsigned char* ptr = UCharCast(&pbegin[0]);
+        const pq::SchemeInfo* info = nullptr;
+        std::span<const unsigned char> raw;
+        if (!DecodeSecretKey(std::span<const unsigned char>{ptr, len}, info, raw) || pubkey.size() == 0) {
+            ClearKeyData();
+            return;
+        }
+        const pq::SchemeInfo* pub_info = pq::SchemeFromPrefix(pubkey[0]);
+        if (!pub_info || pub_info != info || pubkey.size() != pub_info->pubkey_bytes + 1) {
+            ClearKeyData();
+            return;
+        }
+        m_scheme = info;
+        MakeKeyData();
+        memcpy(keydata.data(), raw.data(), keydata.size());
+        memcpy(pubkeydata.data(), pubkey.data() + 1, pubkeydata.size());
     }
 
     //! Simple read-only vector-like interface.
-    unsigned int size() const { return keydata ? keydata->size() : 0; }
-    const std::byte* data() const { return keydata ? reinterpret_cast<const std::byte*>(keydata->data()) : nullptr; }
+    unsigned int size() const { return static_cast<unsigned int>(keydata.size()); }
+    const std::byte* data() const { return keydata.empty() ? nullptr : reinterpret_cast<const std::byte*>(keydata.data()); }
     const std::byte* begin() const { return data(); }
     const std::byte* end() const { return data() + size(); }
-    unsigned int pksize() const { return pubkeydata ? pubkeydata->size() : 0; }
-    const unsigned char* pkbegin() const { return pubkeydata ? pubkeydata->data() : nullptr; }
-    const unsigned char* pkend() const { return pubkeydata ? pubkeydata->data() + pubkeydata->size() : nullptr; }
+    unsigned int pksize() const { return static_cast<unsigned int>(pubkeydata.size()); }
+    const unsigned char* pkbegin() const { return pubkeydata.empty() ? nullptr : pubkeydata.data(); }
+    const unsigned char* pkend() const { return pubkeydata.empty() ? nullptr : pubkeydata.data() + pubkeydata.size(); }
 
     //! Check whether this private key is valid.
-    bool IsValid() const { return !!keydata; }
+    bool IsValid() const { return !keydata.empty(); }
 
     //! Generate a new private key using a cryptographic PRNG.
     void MakeNewKey(bool fCompressed);

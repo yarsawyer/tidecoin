@@ -8,8 +8,8 @@
 #define BITCOIN_PUBKEY_H
 
 #include <hash.h>
+#include <pq/pq_scheme.h>
 #include <serialize.h>
-#include <sign/falcon-512/api.h>
 #include <span.h>
 #include <uint256.h>
 
@@ -33,9 +33,9 @@ typedef uint256 ChainCode;
 class CPubKey
 {
 public:
-    static constexpr unsigned int SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES + 1;
-    static constexpr unsigned int SIGNATURE_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
-    static constexpr unsigned int COMPACT_SIGNATURE_SIZE = PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
+    static constexpr unsigned int SIZE = pq::kFalcon512Info.pubkey_bytes + 1;
+    static constexpr unsigned int SIGNATURE_SIZE = pq::kFalcon512Info.sig_bytes_max;
+    static constexpr unsigned int COMPACT_SIGNATURE_SIZE = pq::kFalcon512Info.sig_bytes_max;
 
 private:
 
@@ -48,7 +48,7 @@ private:
     //! Compute the length of a pubkey with a given first byte.
     unsigned int static GetLen(unsigned char chHeader)
     {
-        if (chHeader == 7) {
+        if (chHeader == pq::kFalcon512Info.prefix) {
             return SIZE;
         }
         return 0;
@@ -182,7 +182,7 @@ public:
     /** Check if a public key is a syntactically valid compressed or uncompressed key. */
     bool IsValidNonHybrid() const noexcept
     {
-        return size() > 0 && vch[0] == 0x07;
+        return size() > 0 && vch[0] == pq::kFalcon512Info.prefix;
     }
 
     //! fully validate whether this is a valid public key (more expensive than IsValid())

@@ -9,11 +9,10 @@
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <key_io.h>
+#include <pq/pq_scheme.h>
 #include <script/descriptor.h>
 #include <script/script.h>
 #include <script/solver.h>
-#include <sign/falcon-1024/api.h>
-#include <sign/falcon-512/api.h>
 #include <serialize.h>
 #include <streams.h>
 #include <undo.h>
@@ -92,8 +91,8 @@ std::string SighashToStr(unsigned char sighash_type)
 
 namespace {
 constexpr size_t kFalconNonceLen = 40;
-constexpr unsigned char kFalcon512SigHeader = 0x30 + 9;
-constexpr unsigned char kFalcon1024SigHeader = 0x30 + 10;
+constexpr unsigned char kFalcon512SigHeader = pq::kFalcon512SigHeader;
+constexpr unsigned char kFalcon1024SigHeader = pq::kFalcon1024SigHeader;
 
 bool LooksLikeFalconSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
 {
@@ -109,10 +108,10 @@ bool LooksLikeFalconSignatureWithSighash(const std::vector<unsigned char>& sig_w
         return false;
     }
     if (sig_with_hashtype[0] == kFalcon512SigHeader) {
-        return sig_len <= PQCLEAN_FALCON512_CLEAN_CRYPTO_BYTES;
+        return sig_len <= pq::kFalcon512Info.sig_bytes_max;
     }
     if (sig_with_hashtype[0] == kFalcon1024SigHeader) {
-        return sig_len <= PQCLEAN_FALCON1024_CLEAN_CRYPTO_BYTES;
+        return sig_len <= pq::kFalcon1024Info.sig_bytes_max;
     }
     return false;
 }

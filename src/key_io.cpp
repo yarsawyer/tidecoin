@@ -180,11 +180,19 @@ CKey DecodeSecret(const std::string& str)
 {
     CKey key;
     std::vector<unsigned char> data;
-    if (DecodeBase58Check(str, data, 34)) {
+    constexpr int kMaxSecretKeyPayload = 4096;
+    if (DecodeBase58Check(str, data, kMaxSecretKeyPayload)) {
         const std::vector<unsigned char>& privkey_prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
-        if ((data.size() == 32 + privkey_prefix.size() || (data.size() == 33 + privkey_prefix.size() && data.back() == 1)) &&
+        if (data.size() > privkey_prefix.size() &&
             std::equal(privkey_prefix.begin(), privkey_prefix.end(), data.begin())) {
-            key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + 32);
+            size_t payload_len = data.size() - privkey_prefix.size();
+            if (payload_len > 0 && data.back() == 1) {
+                --payload_len;
+            }
+            if (payload_len > 0) {
+                key.Set(data.begin() + privkey_prefix.size(),
+                        data.begin() + privkey_prefix.size() + payload_len);
+            }
         }
     }
     if (!data.empty()) {
@@ -197,7 +205,8 @@ std::string EncodeSecret(const CKey& key)
 {
     assert(key.IsValid());
     std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
-    data.insert(data.end(), UCharCast(key.begin()), UCharCast(key.end()));
+    const CPrivKey privkey = key.GetPrivKey();
+    data.insert(data.end(), privkey.begin(), privkey.end());
     data.push_back(1);
     std::string ret = EncodeBase58Check(data);
     memory_cleanse(data.data(), data.size());

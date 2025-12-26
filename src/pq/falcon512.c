@@ -1,0 +1,54 @@
+// Copyright (c) 2024-present The Tidecoin developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or https://opensource.org/license/mit/.
+
+#include <stddef.h>
+
+#include <pq/falcon-512/api.h>
+#include <pq/falcon-512/inner.h>
+
+int tidecoin_falcon512_pubkey_from_sk(const uint8_t* sk, size_t sklen,
+                                      uint8_t* pk, size_t pklen)
+{
+    if (sklen != PQCLEAN_FALCON512_CLEAN_CRYPTO_SECRETKEYBYTES ||
+        pklen != PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES) {
+        return -1;
+    }
+
+    int8_t f[512];
+    int8_t g[512];
+    uint16_t h[512];
+    union {
+        uint8_t b[2 * 512 * sizeof(uint16_t)];
+        uint16_t dummy_u16;
+    } tmp;
+
+    size_t u = 1;
+    size_t v = PQCLEAN_FALCON512_CLEAN_trim_i8_decode(
+        f, 9, PQCLEAN_FALCON512_CLEAN_max_fg_bits[9],
+        sk + u, sklen - u);
+    if (v == 0) {
+        return -1;
+    }
+    u += v;
+    v = PQCLEAN_FALCON512_CLEAN_trim_i8_decode(
+        g, 9, PQCLEAN_FALCON512_CLEAN_max_fg_bits[9],
+        sk + u, sklen - u);
+    if (v == 0) {
+        return -1;
+    }
+
+    if (!PQCLEAN_FALCON512_CLEAN_compute_public(h, f, g, 9, tmp.b)) {
+        return -1;
+    }
+
+    pk[0] = 0x00 + 9;
+    v = PQCLEAN_FALCON512_CLEAN_modq_encode(
+        pk + 1, PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1,
+        h, 9);
+    if (v != PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) {
+        return -1;
+    }
+
+    return 0;
+}

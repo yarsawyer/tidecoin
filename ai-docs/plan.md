@@ -16,7 +16,7 @@ preserving Tidecoin network compatibility.
 
 ## Guiding Constraints
 - Maintain sync and consensus with existing Tidecoin network.
-- Gate new signature schemes (Falcon-1024, Dilithium 3,5) behind future activation heights.
+- Gate new signature schemes (Falcon-1024, ML-DSA-44/65/87) behind future activation heights.
 - Taproot must be removed (not post-quantum secure).
 - Add extensive tests for consensus and merged mining behavior.
 
@@ -56,9 +56,9 @@ Objective: Add HD wallet support aligned with Tidecoin needs.
 - Add functional tests for key derivation and address generation.
 Deliverable: HD wallet functionality with tests.
 
-### Phase 4: Additional PQ Signatures (Falcon-1024, Dilithium-3/5)
+### Phase 4: Additional PQ Signatures (Falcon-1024, ML-DSA-44/65/87)
 Objective: Add new PQ schemes gated by activation heights.
-- Integrate Falcon-1024 and Dilithium-3/5 signatures.
+- Integrate Falcon-1024 and ML-DSA-44/65/87 signatures.
 - Define script/versioning or opcodes for new schemes.
 - Add activation height logic and consensus gating.
 - Add tests for pre-activation and post-activation behavior.
