@@ -12,6 +12,36 @@ enum {
     TIDECOIN_FALCON512_NONCELEN = 40,
 };
 
+static int tidecoin_falcon512_is_short_legacy(const int16_t* s1,
+                                              const int16_t* s2,
+                                              unsigned logn)
+{
+    if (logn < 1 || logn > 10) {
+        return 0;
+    }
+
+    /*
+     * Legacy bound: floor((7085 * 12289) >> (10 - logn)).
+     * See oldtidecoin src/common.cpp.
+     */
+    const uint32_t bound = (uint32_t)(((uint64_t)7085 * 12289) >> (10 - logn));
+
+    size_t n = (size_t)1 << logn;
+    uint32_t s = 0;
+    uint32_t ng = 0;
+    for (size_t u = 0; u < n; ++u) {
+        int32_t z = s1[u];
+        s += (uint32_t)(z * z);
+        ng |= s;
+        z = s2[u];
+        s += (uint32_t)(z * z);
+        ng |= s;
+    }
+    s |= -(ng >> 31);
+
+    return s < bound;
+}
+
 static int tidecoin_falcon512_verify_legacy(const uint8_t* sig, size_t siglen,
                                             const uint8_t* m, size_t mlen,
                                             const uint8_t* pk)
@@ -61,7 +91,10 @@ static int tidecoin_falcon512_verify_legacy(const uint8_t* sig, size_t siglen,
     inner_shake256_ctx_release(&sc);
 
     if (!PQCLEAN_FALCON512_CLEAN_verify_raw(hm, sig_dec, h, 9, tmp.b)) {
-        return -1;
+        const int16_t* s1 = (const int16_t*)tmp.b;
+        if (!tidecoin_falcon512_is_short_legacy(s1, sig_dec, 9)) {
+            return -1;
+        }
     }
     return 0;
 }
