@@ -82,6 +82,7 @@ static std::vector<unsigned int> AllConsensusFlags()
         if (i & 4) flag |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
         if (i & 8) flag |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
         if (i & 16) flag |= SCRIPT_VERIFY_WITNESS;
+        if (i & 32) flag |= SCRIPT_VERIFY_PQ_STRICT;
 
         // SCRIPT_VERIFY_WITNESS requires SCRIPT_VERIFY_P2SH
         if (flag & SCRIPT_VERIFY_WITNESS && !(flag & SCRIPT_VERIFY_P2SH)) continue;
@@ -112,12 +113,12 @@ static void AssetTest(const UniValue& test, SignatureCache& signature_cache)
         CTransaction tx(mtx);
         PrecomputedTransactionData txdata;
         txdata.Init(tx, std::vector<CTxOut>(prevouts));
-        CachingTransactionSignatureChecker txcheck(&tx, idx, prevouts[idx].nValue, true, signature_cache, txdata);
-
         for (const auto flags : ALL_CONSENSUS_FLAGS) {
             // "final": true tests are valid for all flags. Others are only valid with flags that are
             // a subset of test_flags.
             if (fin || ((flags & test_flags) == flags)) {
+                const bool allow_legacy = !(flags & SCRIPT_VERIFY_PQ_STRICT);
+                CachingTransactionSignatureChecker txcheck(&tx, idx, prevouts[idx].nValue, true, signature_cache, txdata, allow_legacy);
                 bool ret = VerifyScript(tx.vin[idx].scriptSig, prevouts[idx].scriptPubKey, &tx.vin[idx].scriptWitness, flags, txcheck, nullptr);
                 BOOST_CHECK(ret);
             }
@@ -130,11 +131,11 @@ static void AssetTest(const UniValue& test, SignatureCache& signature_cache)
         CTransaction tx(mtx);
         PrecomputedTransactionData txdata;
         txdata.Init(tx, std::vector<CTxOut>(prevouts));
-        CachingTransactionSignatureChecker txcheck(&tx, idx, prevouts[idx].nValue, true, signature_cache, txdata);
-
         for (const auto flags : ALL_CONSENSUS_FLAGS) {
             // If a test is supposed to fail with test_flags, it should also fail with any superset thereof.
             if ((flags & test_flags) == test_flags) {
+                const bool allow_legacy = !(flags & SCRIPT_VERIFY_PQ_STRICT);
+                CachingTransactionSignatureChecker txcheck(&tx, idx, prevouts[idx].nValue, true, signature_cache, txdata, allow_legacy);
                 bool ret = VerifyScript(tx.vin[idx].scriptSig, prevouts[idx].scriptPubKey, &tx.vin[idx].scriptWitness, flags, txcheck, nullptr);
                 BOOST_CHECK(!ret);
             }

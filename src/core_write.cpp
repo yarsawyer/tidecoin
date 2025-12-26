@@ -89,6 +89,8 @@ std::string SighashToStr(unsigned char sighash_type)
     return it->second;
 }
 
+
+// TODO EXPAND TO ML-DSA
 namespace {
 constexpr size_t kFalconNonceLen = 40;
 constexpr unsigned char kFalcon512SigHeader = pq::kFalcon512SigHeader;

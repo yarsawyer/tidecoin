@@ -33,10 +33,11 @@ SignatureCache::SignatureCache(const size_t max_size_bytes)
               approx_size_bytes >> 20, max_size_bytes >> 20, num_elems);
 }
 
-void SignatureCache::ComputeEntryECDSA(uint256& entry, const uint256& hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey) const
+void SignatureCache::ComputeEntryECDSA(uint256& entry, const uint256& hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, bool allow_legacy) const
 {
     CSHA256 hasher = m_salted_hasher_ecdsa;
-    hasher.Write(hash.begin(), 32).Write(pubkey.data(), pubkey.size()).Write(vchSig.data(), vchSig.size()).Finalize(entry.begin());
+    const unsigned char legacy_tag = allow_legacy ? 1 : 0;
+    hasher.Write(hash.begin(), 32).Write(&legacy_tag, 1).Write(pubkey.data(), pubkey.size()).Write(vchSig.data(), vchSig.size()).Finalize(entry.begin());
 }
 
 bool SignatureCache::Get(const uint256& entry, const bool erase)
@@ -54,7 +55,7 @@ void SignatureCache::Set(const uint256& entry)
 bool CachingTransactionSignatureChecker::VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
 {
     uint256 entry;
-    m_signature_cache.ComputeEntryECDSA(entry, sighash, vchSig, pubkey);
+    m_signature_cache.ComputeEntryECDSA(entry, sighash, vchSig, pubkey, AllowLegacy());
     if (m_signature_cache.Get(entry, !store))
         return true;
     if (!TransactionSignatureChecker::VerifyPostQuantumSignature(vchSig, pubkey, sighash))

@@ -10,6 +10,10 @@
 extern "C" {
 int tidecoin_falcon512_pubkey_from_sk(const uint8_t* sk, size_t sklen,
                                       uint8_t* pk, size_t pklen);
+int tidecoin_falcon512_verify(const uint8_t* sig, size_t siglen,
+                              const uint8_t* m, size_t mlen,
+                              const uint8_t* pk, size_t pklen,
+                              int legacy_mode);
 int tidecoin_falcon1024_pubkey_from_sk(const uint8_t* sk, size_t sklen,
                                        uint8_t* pk, size_t pklen);
 int tidecoin_mldsa44_pubkey_from_sk(const uint8_t* sk, size_t sklen,
@@ -217,6 +221,8 @@ inline bool GenerateKeyPair(const SchemeInfo& info,
     switch (info.id) {
     case SchemeId::FALCON_512:
         return PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+    case SchemeId::FALCON_1024:
+        return PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
     case SchemeId::MLDSA_44:
         return PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
     case SchemeId::MLDSA_65:
@@ -243,6 +249,17 @@ inline bool Sign(const SchemeInfo& info,
         size_t sig_len = 0;
         sig_out.resize(info.sig_bytes_max);
         const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
+            sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
+        if (r != 0) {
+            return false;
+        }
+        sig_out.resize(sig_len);
+        return true;
+    }
+    case SchemeId::FALCON_1024: {
+        size_t sig_len = 0;
+        sig_out.resize(info.sig_bytes_max);
+        const int r = PQCLEAN_FALCON1024_CLEAN_crypto_sign_signature(
             sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
         if (r != 0) {
             return false;
@@ -300,7 +317,12 @@ inline bool Verify(const SchemeInfo& info,
     }
     switch (info.id) {
     case SchemeId::FALCON_512:
-        return PQCLEAN_FALCON512_CLEAN_crypto_sign_verify(
+        return tidecoin_falcon512_verify(sig.data(), sig.size(),
+                                         msg32.data(), msg32.size(),
+                                         pk.data(), pk.size(),
+                                         legacy_mode) == 0;
+    case SchemeId::FALCON_1024:
+        return PQCLEAN_FALCON1024_CLEAN_crypto_sign_verify(
             sig.data(), sig.size(), msg32.data(), msg32.size(), pk.data()) == 0;
     case SchemeId::MLDSA_44:
         return PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify(

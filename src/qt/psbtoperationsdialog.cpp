@@ -4,6 +4,7 @@
 
 #include <qt/psbtoperationsdialog.h>
 
+#include <chainparams.h>
 #include <common/messages.h>
 #include <core_io.h>
 #include <interfaces/node.h>
@@ -27,6 +28,22 @@ using node::AnalyzePSBT;
 using node::DEFAULT_MAX_RAW_TX_FEE_RATE;
 using node::PSBTAnalysis;
 using node::TransactionError;
+
+namespace {
+unsigned int GetPSBTAnalysisFlags(const ClientModel* client_model)
+{
+    unsigned int flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (!client_model) {
+        return flags;
+    }
+    const int tip_height = client_model->getNumBlocks();
+    const int next_height = tip_height >= 0 ? tip_height + 1 : 0;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        flags |= SCRIPT_VERIFY_PQ_STRICT;
+    }
+    return flags;
+}
+} // namespace
 
 PSBTOperationsDialog::PSBTOperationsDialog(
     QWidget* parent, WalletModel* wallet_model, ClientModel* client_model) : QDialog(parent, GUIUtil::dialog_flags),
@@ -192,7 +209,7 @@ QString PSBTOperationsDialog::renderTransaction(const PartiallySignedTransaction
         tx_description.append("<br>");
     }
 
-    PSBTAnalysis analysis = AnalyzePSBT(psbtx);
+    PSBTAnalysis analysis = AnalyzePSBT(psbtx, GetPSBTAnalysisFlags(m_client_model));
     tx_description.append(bullet_point);
     if (!*analysis.fee) {
         // This happens if the transaction is missing input UTXO information.
@@ -260,7 +277,7 @@ size_t PSBTOperationsDialog::couldSignInputs(const PartiallySignedTransaction &p
 }
 
 void PSBTOperationsDialog::showTransactionStatus(const PartiallySignedTransaction &psbtx) {
-    PSBTAnalysis analysis = AnalyzePSBT(psbtx);
+    PSBTAnalysis analysis = AnalyzePSBT(psbtx, GetPSBTAnalysisFlags(m_client_model));
     size_t n_could_sign = couldSignInputs(psbtx);
 
     switch (analysis.next) {

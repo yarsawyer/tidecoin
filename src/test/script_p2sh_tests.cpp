@@ -51,7 +51,9 @@ static bool Verify(const CScript& scriptSig, const CScript& scriptPubKey, bool f
     txTo.vin[0].scriptSig = scriptSig;
     txTo.vout[0].nValue = 1;
 
-    return VerifyScript(scriptSig, scriptPubKey, nullptr, fStrict ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE, MutableTransactionSignatureChecker(&txTo, 0, txFrom.vout[0].nValue, MissingDataBehavior::ASSERT_FAIL), &err);
+    const unsigned int flags = fStrict ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE;
+    const bool allow_legacy = !(flags & SCRIPT_VERIFY_PQ_STRICT);
+    return VerifyScript(scriptSig, scriptPubKey, nullptr, flags, MutableTransactionSignatureChecker(&txTo, 0, txFrom.vout[0].nValue, MissingDataBehavior::ASSERT_FAIL, allow_legacy), &err);
 }
 
 

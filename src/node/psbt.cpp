@@ -13,7 +13,7 @@
 #include <numeric>
 
 namespace node {
-PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
+PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx, unsigned int script_verify_flags)
 {
     // Go through each input and build status
     PSBTAnalysis result;
@@ -59,7 +59,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
         }
 
         // Check if it is final
-        if (!PSBTInputSignedAndVerified(psbtx, i, &txdata)) {
+        if (!PSBTInputSignedAndVerified(psbtx, i, &txdata, script_verify_flags)) {
             input_analysis.is_final = false;
 
             // Figure out what is missing
@@ -137,7 +137,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
 
         if (success) {
             CTransaction ctx = CTransaction(mtx);
-            size_t size(GetVirtualTransactionSize(ctx, GetTransactionSigOpCost(ctx, view, STANDARD_SCRIPT_VERIFY_FLAGS), ::nBytesPerSigOp));
+            size_t size(GetVirtualTransactionSize(ctx, GetTransactionSigOpCost(ctx, view, script_verify_flags), ::nBytesPerSigOp));
             result.estimated_vsize = size;
             // Estimate fee rate
             CFeeRate feerate(fee, size);
@@ -147,5 +147,10 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
     }
 
     return result;
+}
+
+PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
+{
+    return AnalyzePSBT(std::move(psbtx), STANDARD_SCRIPT_VERIFY_FLAGS);
 }
 } // namespace node

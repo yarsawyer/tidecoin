@@ -1699,7 +1699,15 @@ static RPCHelpMan analyzepsbt()
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
     }
 
-    PSBTAnalysis psbta = AnalyzePSBT(psbtx);
+    NodeContext& node = EnsureAnyNodeContext(request.context);
+    ChainstateManager& chainman = EnsureChainman(node);
+    const CBlockIndex* tip = chainman.ActiveChain().Tip();
+    const int next_height = tip ? tip->nHeight + 1 : 0;
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (next_height >= chainman.GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+    }
+    PSBTAnalysis psbta = AnalyzePSBT(psbtx, script_verify_flags);
 
     UniValue result(UniValue::VOBJ);
     UniValue inputs_result(UniValue::VARR);

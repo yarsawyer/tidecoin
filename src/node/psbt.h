@@ -52,6 +52,7 @@ struct PSBTAnalysis {
  * @param[in] psbtx the PSBT to analyze
  * @return A PSBTAnalysis with information about the provided PSBT.
  */
+PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx, unsigned int script_verify_flags);
 PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx);
 } // namespace node
 

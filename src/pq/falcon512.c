@@ -3,9 +3,82 @@
 // file COPYING or https://opensource.org/license/mit/.
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include <pq/falcon-512/api.h>
 #include <pq/falcon-512/inner.h>
+
+enum {
+    TIDECOIN_FALCON512_NONCELEN = 40,
+};
+
+static int tidecoin_falcon512_verify_legacy(const uint8_t* sig, size_t siglen,
+                                            const uint8_t* m, size_t mlen,
+                                            const uint8_t* pk)
+{
+    union {
+        uint8_t b[2 * 512];
+        uint64_t dummy_u64;
+        fpr dummy_fpr;
+    } tmp;
+    uint16_t h[512];
+    uint16_t hm[512];
+    int16_t sig_dec[512];
+    inner_shake256_context sc;
+
+    if (siglen < 1 + TIDECOIN_FALCON512_NONCELEN) {
+        return -1;
+    }
+    if (sig[0] != 0x30 + 9) {
+        return -1;
+    }
+    if (pk[0] != 0x00 + 9) {
+        return -1;
+    }
+    if (PQCLEAN_FALCON512_CLEAN_modq_decode(
+            h, 9, pk + 1, PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) !=
+        PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) {
+        return -1;
+    }
+    PQCLEAN_FALCON512_CLEAN_to_ntt_monty(h, 9);
+
+    const uint8_t* nonce = sig + 1;
+    const uint8_t* sigbuf = sig + 1 + TIDECOIN_FALCON512_NONCELEN;
+    const size_t sigbuflen = siglen - 1 - TIDECOIN_FALCON512_NONCELEN;
+
+    if (sigbuflen == 0) {
+        return -1;
+    }
+    if (PQCLEAN_FALCON512_CLEAN_comp_decode(sig_dec, 9, sigbuf, sigbuflen) != sigbuflen) {
+        return -1;
+    }
+
+    inner_shake256_init(&sc);
+    inner_shake256_inject(&sc, nonce, TIDECOIN_FALCON512_NONCELEN);
+    inner_shake256_inject(&sc, m, mlen);
+    inner_shake256_flip(&sc);
+    PQCLEAN_FALCON512_CLEAN_hash_to_point_ct(&sc, hm, 9, tmp.b);
+    inner_shake256_ctx_release(&sc);
+
+    if (!PQCLEAN_FALCON512_CLEAN_verify_raw(hm, sig_dec, h, 9, tmp.b)) {
+        return -1;
+    }
+    return 0;
+}
+
+int tidecoin_falcon512_verify(const uint8_t* sig, size_t siglen,
+                              const uint8_t* m, size_t mlen,
+                              const uint8_t* pk, size_t pklen,
+                              int legacy_mode)
+{
+    if (pklen != PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES) {
+        return -1;
+    }
+    if (legacy_mode) {
+        return tidecoin_falcon512_verify_legacy(sig, siglen, m, mlen, pk);
+    }
+    return PQCLEAN_FALCON512_CLEAN_crypto_sign_verify(sig, siglen, m, mlen, pk);
+}
 
 int tidecoin_falcon512_pubkey_from_sk(const uint8_t* sk, size_t sklen,
                                       uint8_t* pk, size_t pklen)

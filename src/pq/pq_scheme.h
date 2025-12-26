@@ -108,12 +108,12 @@ constexpr const SchemeInfo* SchemeFromPrefix(uint8_t prefix)
         return &kFalcon512Info;
     case kSchemePrefixFalcon1024:
         return &kFalcon1024Info;
+    case kSchemePrefixMLDSA44:
+        return &kMLDSA44Info;
     case kSchemePrefixMLDSA65:
         return &kMLDSA65Info;
     case kSchemePrefixMLDSA87:
         return &kMLDSA87Info;
-    case kSchemePrefixMLDSA44:
-        return &kMLDSA44Info;
     default:
         return nullptr;
     }

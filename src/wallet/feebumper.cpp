@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <chainparams.h>
 #include <common/system.h>
 #include <consensus/validation.h>
 #include <interfaces/chain.h>
@@ -208,6 +209,13 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
     // Figure out if we need to compute the input weight, and do so if necessary
     PrecomputedTransactionData txdata;
     txdata.Init(*wtx.tx, std::move(spent_outputs), /* force=*/ true);
+    const std::optional<int> tip_height = wallet.chain().getHeight();
+    const int next_height = tip_height ? *tip_height + 1 : 0;
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+    }
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
     for (unsigned int i = 0; i < wtx.tx->vin.size(); ++i) {
         const CTxIn& txin = wtx.tx->vin.at(i);
         const Coin& coin = coins.at(txin.prevout);
@@ -220,9 +228,9 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
             // In order to do this, we verify the script with a special SignatureChecker which
             // will observe the signatures verified and record their sizes.
             SignatureWeights weights;
-            TransactionSignatureChecker tx_checker(wtx.tx.get(), i, coin.out.nValue, txdata, MissingDataBehavior::FAIL);
+            TransactionSignatureChecker tx_checker(wtx.tx.get(), i, coin.out.nValue, txdata, MissingDataBehavior::FAIL, allow_legacy);
             SignatureWeightChecker size_checker(weights, tx_checker);
-            VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, size_checker);
+            VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, script_verify_flags, size_checker);
             // Add the difference between max and current to input_weight so that it represents the largest the input could be
             input_weight += weights.GetWeightDiffToMax();
             new_coin_control.SetInputWeight(txin.prevout, input_weight);

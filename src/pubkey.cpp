@@ -28,14 +28,14 @@ struct Secp256k1SelfTester
 
 } // namespace
 
-bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchSig) const {
+bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchSig, bool legacy_mode) const {
     if (!IsValid()) {
         return false;
     }
     return pq::VerifyPrefixed(std::span<const unsigned char>{hash.begin(), 32},
                               vchSig,
                               std::span<const unsigned char>{begin(), size()},
-                              false);
+                              legacy_mode);
 }
 
 bool CPubKey::Recover(const uint256 &hash, const std::vector<unsigned char>& vchSig) {

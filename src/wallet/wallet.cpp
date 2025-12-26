@@ -8,6 +8,7 @@
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 #include <addresstype.h>
 #include <blockfilter.h>
+#include <chainparams.h>
 #include <chain.h>
 #include <coins.h>
 #include <common/args.h>
@@ -30,6 +31,7 @@
 #include <node/types.h>
 #include <outputtype.h>
 #include <policy/feerate.h>
+#include <policy/policy.h>
 #include <policy/truc_policy.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
@@ -2170,8 +2172,14 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
 
     // Complete if every input is now signed
     complete = true;
+    const std::optional<int> tip_height = chain().getHeight();
+    const int next_height = tip_height ? *tip_height + 1 : 0;
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+    }
     for (size_t i = 0; i < psbtx.inputs.size(); ++i) {
-        complete &= PSBTInputSignedAndVerified(psbtx, i, &txdata);
+        complete &= PSBTInputSignedAndVerified(psbtx, i, &txdata, script_verify_flags);
     }
 
     return {};
