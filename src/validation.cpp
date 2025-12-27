@@ -64,6 +64,7 @@
 #include <validationinterface.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <deque>
@@ -72,8 +73,10 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 using kernel::CCoinsStats;
 using kernel::CoinStatsHashType;
@@ -4119,8 +4122,56 @@ std::vector<unsigned char> ChainstateManager::GenerateCoinbaseCommitment(CBlock&
 
 bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consensus::Params& consensusParams)
 {
-    return std::all_of(headers.cbegin(), headers.cend(),
+    constexpr size_t kMinParallelHeaders = 64;
+    constexpr size_t kWorkChunk = 128;
+    constexpr size_t kMaxThreads = 8;
+
+    if (headers.size() < kMinParallelHeaders) {
+        return std::all_of(headers.cbegin(), headers.cend(),
             [&](const auto& header) { return CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams);});
+    }
+
+    size_t thread_limit = std::thread::hardware_concurrency();
+    if (thread_limit == 0) thread_limit = 2;
+    thread_limit = std::min(thread_limit, kMaxThreads);
+
+    const size_t total_chunks = (headers.size() + kWorkChunk - 1) / kWorkChunk;
+    const size_t threads = std::min(thread_limit, total_chunks);
+    if (threads <= 1) {
+        return std::all_of(headers.cbegin(), headers.cend(),
+            [&](const auto& header) { return CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams);});
+    }
+
+    std::atomic<size_t> next_chunk{0};
+    std::atomic<bool> failed{false};
+
+    auto worker = [&]() {
+        while (!failed.load(std::memory_order_relaxed)) {
+            const size_t chunk = next_chunk.fetch_add(1, std::memory_order_relaxed);
+            if (chunk >= total_chunks) return;
+            const size_t start = chunk * kWorkChunk;
+            const size_t end = std::min(start + kWorkChunk, headers.size());
+            for (size_t i = start; i < end; ++i) {
+                if (failed.load(std::memory_order_relaxed)) return;
+                const auto& header = headers[i];
+                if (!CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams)) {
+                    failed.store(true, std::memory_order_relaxed);
+                    return;
+                }
+            }
+        }
+    };
+
+    std::vector<std::thread> pool;
+    pool.reserve(threads - 1);
+    for (size_t i = 1; i < threads; ++i) {
+        pool.emplace_back(worker);
+    }
+    worker();
+    for (auto& thread : pool) {
+        thread.join();
+    }
+    return !failed.load(std::memory_order_relaxed);
 }
 
 bool IsBlockMutated(const CBlock& block, bool check_witness_root)
