@@ -6,7 +6,7 @@
 #ifndef BITCOIN_NET_H
 #define BITCOIN_NET_H
 
-#include <bip324.h>
+#include <bip324_pq.h>
 #include <chainparams.h>
 #include <common/bloom.h>
 #include <compat/compat.h>
@@ -23,6 +23,7 @@
 #include <node/protocol_version.h>
 #include <policy/feerate.h>
 #include <protocol.h>
+#include <pq/pq_api.h>
 #include <random.h>
 #include <semaphore_grant.h>
 #include <span.h>
@@ -451,6 +452,9 @@ public:
 class V2Transport final : public Transport
 {
 private:
+    static constexpr size_t KEM_PUBLIC_KEY_LEN = pq::MLKEM512_PUBLICKEY_BYTES;
+    static constexpr size_t KEM_CIPHERTEXT_LEN = pq::MLKEM512_CIPHERTEXT_BYTES;
+
     /** Contents of the version packet to send. BIP324 stipulates that senders should leave this
      *  empty, and receivers should ignore it. Future extensions can change what is sent as long as
      *  an empty version packet contents is interpreted as no extensions supported. */
@@ -478,6 +482,11 @@ private:
      *  KEY_MAYBE_V1 -> KEY -> GARB_GARBTERM -> VERSION -> APP -> APP_READY
      *        |
      *        \-------> V1
+     *
+     *   start(initiator)
+     *        |
+     *        v
+     *       CT -> GARB_GARBTERM -> VERSION -> APP -> APP_READY
      */
     enum class RecvState : uint8_t {
         /** (Responder only) either v2 public key or v1 header.
@@ -487,12 +496,19 @@ private:
          * (for v1). */
         KEY_MAYBE_V1,
 
-        /** Public key.
+        /** Public key (responder only).
          *
-         * This is the initial state for initiators, during which the other side's public key is
-         * received. When that information arrives, the ciphers get initialized and the state
-         * becomes GARB_GARBTERM. */
+         * This is the state where the responder receives the initiator's ML-KEM public key. When
+         * that information arrives, the ciphers get initialized and the state becomes
+         * GARB_GARBTERM. */
         KEY,
+
+        /** Ciphertext (initiator only).
+         *
+         * This is the initial state for initiators, during which the responder's ML-KEM
+         * ciphertext is received. When that information arrives, the ciphers get initialized and
+         * the state becomes GARB_GARBTERM. */
+        CT,
 
         /** Garbage and garbage terminator.
          *
@@ -553,11 +569,10 @@ private:
          */
         MAYBE_V1,
 
-        /** Waiting for the other side's public key.
+        /** Waiting for the other side's handshake bytes.
          *
-         * This is the initial state for initiators. The public key and garbage is sent out. When
-         * the receiver receives the other side's public key and transitions to GARB_GARBTERM, the
-         * sender state becomes READY. */
+         * This is the initial state for initiators. The ML-KEM public key and garbage is sent
+         * out. When the receiver transitions to GARB_GARBTERM, the sender state becomes READY. */
         AWAITING_KEY,
 
         /** Normal sending state.
@@ -575,18 +590,20 @@ private:
     };
 
     /** Cipher state. */
-    BIP324Cipher m_cipher;
+    BIP324PQCipher m_cipher;
     /** Whether we are the initiator side. */
     const bool m_initiating;
     /** NodeId (for debug logging). */
     const NodeId m_nodeid;
     /** Encapsulate a V1Transport to fall back to. */
     V1Transport m_v1_fallback;
+    /** ML-KEM keypair for initiator-side decapsulation. */
+    pq::MLKEM512Keypair m_kem_keypair;
 
     /** Lock for receiver-side fields. */
     mutable Mutex m_recv_mutex ACQUIRED_BEFORE(m_send_mutex);
     /** In {VERSION, APP}, the decrypted packet length, if m_recv_buffer.size() >=
-     *  BIP324Cipher::LENGTH_LEN. Unspecified otherwise. */
+     *  BIP324PQCipher::LENGTH_LEN. Unspecified otherwise. */
     uint32_t m_recv_len GUARDED_BY(m_recv_mutex) {0};
     /** Receive buffer; meaning is determined by m_recv_state. */
     std::vector<uint8_t> m_recv_buffer GUARDED_BY(m_recv_mutex);
@@ -621,12 +638,14 @@ private:
     static std::optional<std::string> GetMessageType(std::span<const uint8_t>& contents) noexcept;
     /** Determine how many received bytes can be processed in one go (not allowed in V1 state). */
     size_t GetMaxBytesToProcess() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_recv_mutex);
-    /** Put our public key + garbage in the send buffer. */
-    void StartSendingHandshake() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_send_mutex);
+    /** Put handshake bytes + garbage in the send buffer. */
+    void StartSendingHandshake(std::span<const uint8_t> payload) noexcept EXCLUSIVE_LOCKS_REQUIRED(m_send_mutex);
     /** Process bytes in m_recv_buffer, while in KEY_MAYBE_V1 state. */
     void ProcessReceivedMaybeV1Bytes() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_recv_mutex, !m_send_mutex);
     /** Process bytes in m_recv_buffer, while in KEY state. */
     bool ProcessReceivedKeyBytes() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_recv_mutex, !m_send_mutex);
+    /** Process bytes in m_recv_buffer, while in CT state. */
+    bool ProcessReceivedCiphertextBytes() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_recv_mutex, !m_send_mutex);
     /** Process bytes in m_recv_buffer, while in GARB_GARBTERM state. */
     bool ProcessReceivedGarbageBytes() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_recv_mutex);
     /** Process bytes in m_recv_buffer, while in VERSION/APP state. */
@@ -642,8 +661,8 @@ public:
      */
     V2Transport(NodeId nodeid, bool initiating) noexcept;
 
-    /** Construct a V2 transport with specified keys and garbage (test use only). */
-    V2Transport(NodeId nodeid, bool initiating, const CKey& key, std::span<const std::byte> ent32, std::vector<uint8_t> garbage) noexcept;
+    /** Construct a V2 transport with specified ML-KEM keypair and garbage (test use only). */
+    V2Transport(NodeId nodeid, bool initiating, std::span<const uint8_t> kem_pk, std::span<const uint8_t> kem_sk, std::vector<uint8_t> garbage) noexcept;
 
     // Receive side functions.
     bool ReceivedMessageComplete() const noexcept override EXCLUSIVE_LOCKS_REQUIRED(!m_recv_mutex);

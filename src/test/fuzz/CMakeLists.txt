@@ -13,7 +13,7 @@ add_executable(fuzz
   banman.cpp
   base_encode_decode.cpp
   bech32.cpp
-  bip324.cpp
+  bip324_pq.cpp
   bitdeque.cpp
   bitset.cpp
   block.cpp

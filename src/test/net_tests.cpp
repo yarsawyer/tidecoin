@@ -13,6 +13,7 @@
 #include <netbase.h>
 #include <netmessagemaker.h>
 #include <node/protocol_version.h>
+#include <pq/pq_api.h>
 #include <serialize.h>
 #include <span.h>
 #include <streams.h>
@@ -26,6 +27,8 @@
 #include <boost/test/unit_test.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cassert>
 #include <ios>
 #include <memory>
 #include <optional>
@@ -995,29 +998,31 @@ BOOST_AUTO_TEST_CASE(advertise_local_address)
 
 namespace {
 
-CKey GenerateRandomTestKey(FastRandomContext& rng) noexcept
+void InitTestKEMKeypair(pq::MLKEM512Keypair& keypair, FastRandomContext& rng) noexcept
 {
-    CKey key;
-    uint256 key_data = rng.rand256();
-    key.Set(key_data.begin(), key_data.end());
-    return key;
+    auto coins = rng.randbytes<uint8_t>(pq::MLKEM512_KEYPAIR_COINS_BYTES);
+    const bool ok = keypair.GenerateDeterministic(coins);
+    assert(ok);
 }
 
 /** A class for scenario-based tests of V2Transport
  *
  * Each V2TransportTester encapsulates a V2Transport (the one being tested), and can be told to
- * interact with it. To do so, it also encapsulates a BIP324Cipher to act as the other side. A
+ * interact with it. To do so, it also encapsulates a BIP324PQCipher to act as the other side. A
  * second V2Transport is not used, as doing so would not permit scenarios that involve sending
- * invalid data, or ones using BIP324 features that are not implemented on the sending
+ * invalid data, or ones using v2 features that are not implemented on the sending
  * side (like decoy packets).
  */
 class V2TransportTester
 {
     FastRandomContext& m_rng;
     V2Transport m_transport; //!< V2Transport being tested
-    BIP324Cipher m_cipher; //!< Cipher to help with the other side
+    BIP324PQCipher m_cipher; //!< Cipher to help with the other side
     bool m_test_initiator; //!< Whether m_transport is the initiator (true) or responder (false)
+    bool m_peer_initiator; //!< Whether the tester is the initiator
 
+    pq::MLKEM512Keypair m_kem_keypair;
+    std::vector<uint8_t> m_kem_ciphertext;
     std::vector<uint8_t> m_sent_garbage; //!< The garbage we've sent to m_transport.
     std::vector<uint8_t> m_recv_garbage; //!< The garbage we've received from m_transport.
     std::vector<uint8_t> m_to_send; //!< Bytes we have queued up to send to m_transport.
@@ -1030,8 +1035,14 @@ public:
     explicit V2TransportTester(FastRandomContext& rng, bool test_initiator)
         : m_rng{rng},
           m_transport{0, test_initiator},
-          m_cipher{GenerateRandomTestKey(m_rng), MakeByteSpan(m_rng.rand256())},
-          m_test_initiator(test_initiator) {}
+          m_cipher{},
+          m_test_initiator(test_initiator),
+          m_peer_initiator(!test_initiator)
+    {
+        if (m_peer_initiator) {
+            InitTestKEMKeypair(m_kem_keypair, m_rng);
+        }
+    }
 
     /** Data type returned by Interact:
      *
@@ -1096,7 +1107,7 @@ public:
     }
 
     /** Expose the cipher. */
-    BIP324Cipher& GetCipher() { return m_cipher; }
+    BIP324PQCipher& GetCipher() { return m_cipher; }
 
     /** Schedule bytes to be sent to the transport. */
     void Send(std::span<const uint8_t> data)
@@ -1116,8 +1127,16 @@ public:
     /** Schedule bytes to be sent to the transport. */
     void Send(std::span<const std::byte> data) { Send(MakeUCharSpan(data)); }
 
-    /** Schedule our ellswift key to be sent to the transport. */
-    void SendKey() { Send(m_cipher.GetOurPubKey()); }
+    /** Schedule our KEM payload (public key or ciphertext) to be sent to the transport. */
+    void SendKey()
+    {
+        if (m_peer_initiator) {
+            Send(m_kem_keypair.PublicKey());
+            return;
+        }
+        BOOST_REQUIRE(!m_kem_ciphertext.empty());
+        Send(m_kem_ciphertext);
+    }
 
     /** Schedule specified garbage to be sent to the transport. */
     void SendGarbage(std::span<const uint8_t> garbage)
@@ -1150,19 +1169,36 @@ public:
         m_msg_to_send.push_back(std::move(msg));
     }
 
-    /** Expect ellswift key to have been received from transport and process it.
+    /** Expect KEM payload to have been received from transport and process it.
      *
      * Many other V2TransportTester functions cannot be called until after ReceiveKey() has been
      * called, as no encryption keys are set up before that point.
      */
     void ReceiveKey()
     {
-        // When processing a key, enough bytes need to have been received already.
-        BOOST_REQUIRE(m_received.size() >= EllSwiftPubKey::size());
-        // Initialize the cipher using it (acting as the opposite side of the tested transport).
-        m_cipher.Initialize(MakeByteSpan(m_received).first(EllSwiftPubKey::size()), !m_test_initiator);
-        // Strip the processed bytes off the front of the receive buffer.
-        m_received.erase(m_received.begin(), m_received.begin() + EllSwiftPubKey::size());
+        if (m_peer_initiator) {
+            // We are initiator; expect ciphertext from transport.
+            BOOST_REQUIRE(m_received.size() >= pq::MLKEM512_CIPHERTEXT_BYTES);
+            std::array<uint8_t, pq::MLKEM512_SHARED_SECRET_BYTES> ss{};
+            auto ct_span = std::span{m_received}.first(pq::MLKEM512_CIPHERTEXT_BYTES);
+            const bool ok = pq::MLKEM512Decaps(ct_span, m_kem_keypair.SecretKey(), ss);
+            BOOST_REQUIRE(ok);
+            m_cipher.InitializeFromSharedSecret(MakeByteSpan(ss), /*initiator=*/true);
+            m_received.erase(m_received.begin(), m_received.begin() + pq::MLKEM512_CIPHERTEXT_BYTES);
+            return;
+        }
+
+        // We are responder; expect initiator public key.
+        BOOST_REQUIRE(m_received.size() >= pq::MLKEM512_PUBLICKEY_BYTES);
+        std::array<uint8_t, pq::MLKEM512_CIPHERTEXT_BYTES> ct{};
+        std::array<uint8_t, pq::MLKEM512_SHARED_SECRET_BYTES> ss{};
+        auto pk_span = std::span{m_received}.first(pq::MLKEM512_PUBLICKEY_BYTES);
+        auto coins = m_rng.randbytes<uint8_t>(pq::MLKEM512_SHARED_SECRET_BYTES);
+        const bool ok = pq::MLKEM512EncapsDeterministic(pk_span, coins, ct, ss);
+        BOOST_REQUIRE(ok);
+        m_kem_ciphertext.assign(ct.begin(), ct.end());
+        m_cipher.InitializeFromSharedSecret(MakeByteSpan(ss), /*initiator=*/false);
+        m_received.erase(m_received.begin(), m_received.begin() + pq::MLKEM512_PUBLICKEY_BYTES);
     }
 
     /** Schedule an encrypted packet with specified content/aad/ignore to be sent to transport
@@ -1171,7 +1207,7 @@ public:
     {
         // Use cipher to construct ciphertext.
         std::vector<std::byte> ciphertext;
-        ciphertext.resize(content.size() + BIP324Cipher::EXPANSION);
+        ciphertext.resize(content.size() + BIP324PQCipher::EXPANSION);
         m_cipher.Encrypt(
             /*contents=*/MakeByteSpan(content),
             /*aad=*/MakeByteSpan(aad),
@@ -1207,17 +1243,17 @@ public:
         // Loop as long as there are ignored packets that are to be skipped.
         while (true) {
             // When processing a packet, at least enough bytes for its length descriptor must be received.
-            BOOST_REQUIRE(m_received.size() >= BIP324Cipher::LENGTH_LEN);
+            BOOST_REQUIRE(m_received.size() >= BIP324PQCipher::LENGTH_LEN);
             // Decrypt the content length.
-            size_t size = m_cipher.DecryptLength(MakeByteSpan(std::span{m_received}.first(BIP324Cipher::LENGTH_LEN)));
+            size_t size = m_cipher.DecryptLength(MakeByteSpan(std::span{m_received}.first(BIP324PQCipher::LENGTH_LEN)));
             // Check that the full packet is in the receive buffer.
-            BOOST_REQUIRE(m_received.size() >= size + BIP324Cipher::EXPANSION);
+            BOOST_REQUIRE(m_received.size() >= size + BIP324PQCipher::EXPANSION);
             // Decrypt the packet contents.
             contents.resize(size);
             bool ignore{false};
             bool ret = m_cipher.Decrypt(
                 /*input=*/MakeByteSpan(
-                    std::span{m_received}.first(size + BIP324Cipher::EXPANSION).subspan(BIP324Cipher::LENGTH_LEN)),
+                    std::span{m_received}.first(size + BIP324PQCipher::EXPANSION).subspan(BIP324PQCipher::LENGTH_LEN)),
                 /*aad=*/aad,
                 /*ignore=*/ignore,
                 /*contents=*/MakeWritableByteSpan(contents));
@@ -1225,7 +1261,7 @@ public:
             // Don't expect AAD in further packets.
             aad = {};
             // Strip the processed packet's bytes off the front of the receive buffer.
-            m_received.erase(m_received.begin(), m_received.begin() + size + BIP324Cipher::EXPANSION);
+            m_received.erase(m_received.begin(), m_received.begin() + size + BIP324PQCipher::EXPANSION);
             // Stop if the ignore bit is not set on this packet.
             if (!ignore) break;
         }
@@ -1239,22 +1275,22 @@ public:
         // Figure out the garbage length.
         size_t garblen;
         for (garblen = 0; garblen <= V2Transport::MAX_GARBAGE_LEN; ++garblen) {
-            BOOST_REQUIRE(m_received.size() >= garblen + BIP324Cipher::GARBAGE_TERMINATOR_LEN);
-            auto term_span = MakeByteSpan(std::span{m_received}.subspan(garblen, BIP324Cipher::GARBAGE_TERMINATOR_LEN));
+            BOOST_REQUIRE(m_received.size() >= garblen + BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
+            auto term_span = MakeByteSpan(std::span{m_received}.subspan(garblen, BIP324PQCipher::GARBAGE_TERMINATOR_LEN));
             if (std::ranges::equal(term_span, m_cipher.GetReceiveGarbageTerminator())) break;
         }
         // Copy the garbage to a buffer.
         m_recv_garbage.assign(m_received.begin(), m_received.begin() + garblen);
         // Strip garbage + garbage terminator off the front of the receive buffer.
-        m_received.erase(m_received.begin(), m_received.begin() + garblen + BIP324Cipher::GARBAGE_TERMINATOR_LEN);
+        m_received.erase(m_received.begin(), m_received.begin() + garblen + BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
     }
 
     /** Expect version packet to have been received, and process it (only after ReceiveKey). */
     void ReceiveVersion()
     {
         auto contents = ReceivePacket(/*aad=*/MakeByteSpan(m_recv_garbage));
-        // Version packets from real BIP324 peers are expected to be empty, despite the fact that
-        // this class supports *sending* non-empty version packets (to test that BIP324 peers
+        // Version packets from real v2 peers are expected to be empty, despite the fact that
+        // this class supports *sending* non-empty version packets (to test that v2 peers
         // correctly ignore version packet contents).
         BOOST_CHECK(contents.empty());
     }
@@ -1334,9 +1370,9 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         V2TransportTester tester(m_rng, true);
         auto ret = tester.Interact();
         BOOST_REQUIRE(ret && ret->empty());
+        tester.ReceiveKey();
         tester.SendKey();
         tester.SendGarbage();
-        tester.ReceiveKey();
         tester.SendGarbageTerm();
         tester.SendVersion();
         ret = tester.Interact();
@@ -1395,7 +1431,8 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         BOOST_CHECK((*ret)[1] && (*ret)[1]->m_type == "pong" && std::ranges::equal((*ret)[1]->m_recv, MakeByteSpan(msg_data_2)));
 
         // Then send a too-large message.
-        auto msg_data_3 = m_rng.randbytes<uint8_t>(4005000);
+        const size_t max_payload = std::min<size_t>(MAX_SIZE, MAX_PROTOCOL_MESSAGE_LENGTH);
+        auto msg_data_3 = m_rng.randbytes<uint8_t>(max_payload + CMessageHeader::MESSAGE_TYPE_SIZE + 1);
         tester.SendMessage(uint8_t(11), msg_data_3); // getdata short id
         ret = tester.Interact();
         BOOST_CHECK(!ret);
@@ -1409,24 +1446,28 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         size_t garb_len = m_rng.randbool() ? 0 : V2Transport::MAX_GARBAGE_LEN;
         /** How many decoy packets to send before the version packet. */
         unsigned num_ignore_version = m_rng.randrange(10);
-        /** What data to send in the version packet (ignored by BIP324 peers, but reserved for future extensions). */
+        /** What data to send in the version packet (ignored by v2 peers, but reserved for future extensions). */
         auto ver_data = m_rng.randbytes<uint8_t>(m_rng.randbool() ? 0 : m_rng.randrange(1000));
         /** Whether to immediately send key and garbage out (required for responders, optional otherwise). */
         bool send_immediately = !initiator || m_rng.randbool();
         /** How many decoy packets to send before the first and second real message. */
         unsigned num_decoys_1 = m_rng.randrange(1000), num_decoys_2 = m_rng.randrange(1000);
         V2TransportTester tester(m_rng, initiator);
-        if (send_immediately) {
+        if (!initiator) {
             tester.SendKey();
             tester.SendGarbage(garb_len);
         }
         auto ret = tester.Interact();
         BOOST_REQUIRE(ret && ret->empty());
-        if (!send_immediately) {
+        tester.ReceiveKey();
+        if (initiator) {
+            if (!send_immediately) {
+                ret = tester.Interact();
+                BOOST_REQUIRE(ret && ret->empty());
+            }
             tester.SendKey();
             tester.SendGarbage(garb_len);
         }
-        tester.ReceiveKey();
         tester.SendGarbageTerm();
         for (unsigned v = 0; v < num_ignore_version; ++v) {
             size_t ver_ign_data_len = m_rng.randbool() ? 0 : m_rng.randrange(1000);
@@ -1469,9 +1510,9 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         V2TransportTester tester(m_rng, true);
         auto ret = tester.Interact();
         BOOST_REQUIRE(ret && ret->empty());
+        tester.ReceiveKey();
         tester.SendKey();
         tester.SendGarbage(V2Transport::MAX_GARBAGE_LEN + 1);
-        tester.ReceiveKey();
         tester.SendGarbageTerm();
         ret = tester.Interact();
         BOOST_CHECK(!ret);
@@ -1495,8 +1536,8 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         V2TransportTester tester(m_rng, true);
         auto ret = tester.Interact();
         BOOST_REQUIRE(ret && ret->empty());
-        tester.SendKey();
         tester.ReceiveKey();
+        tester.SendKey();
         /** The number of random garbage bytes before the included first 15 bytes of terminator. */
         size_t len_before = m_rng.randrange(V2Transport::MAX_GARBAGE_LEN - 16 + 1);
         /** The number of random garbage bytes after it. */

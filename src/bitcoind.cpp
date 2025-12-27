@@ -14,6 +14,7 @@
 #include <init.h>
 #include <interfaces/chain.h>
 #include <interfaces/init.h>
+#include <key.h>
 #include <kernel/context.h>
 #include <node/context.h>
 #include <node/interface_ui.h>

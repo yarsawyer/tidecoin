@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_BIP324_H
-#define BITCOIN_BIP324_H
+#ifndef TIDECOIN_BIP324_PQ_H
+#define TIDECOIN_BIP324_PQ_H
 
 #include <array>
 #include <cstddef>
@@ -11,12 +11,10 @@
 
 #include <crypto/chacha20.h>
 #include <crypto/chacha20poly1305.h>
-#include <key.h>
-#include <pubkey.h>
 #include <span.h>
 
-/** The BIP324 packet cipher, encapsulating its key derivation, stream cipher, and AEAD. */
-class BIP324Cipher
+/** The Tidecoin v2 PQ packet cipher, encapsulating its key derivation, stream cipher, and AEAD. */
+class BIP324PQCipher
 {
 public:
     static constexpr unsigned SESSION_ID_LEN{32};
@@ -33,33 +31,23 @@ private:
     std::optional<FSChaCha20Poly1305> m_send_p_cipher;
     std::optional<FSChaCha20Poly1305> m_recv_p_cipher;
 
-    CKey m_key;
-    EllSwiftPubKey m_our_pubkey;
-
     std::array<std::byte, SESSION_ID_LEN> m_session_id;
     std::array<std::byte, GARBAGE_TERMINATOR_LEN> m_send_garbage_terminator;
     std::array<std::byte, GARBAGE_TERMINATOR_LEN> m_recv_garbage_terminator;
 
 public:
-    /** No default constructor; keys must be provided to create a BIP324Cipher. */
-    BIP324Cipher() = delete;
+    /** Default constructor. Call InitializeFromSharedSecret before use. */
+    BIP324PQCipher() = default;
 
-    /** Initialize a BIP324 cipher with specified key and encoding entropy (testing only). */
-    BIP324Cipher(const CKey& key, std::span<const std::byte> ent32) noexcept;
-
-    /** Initialize a BIP324 cipher with specified key (testing only). */
-    BIP324Cipher(const CKey& key, const EllSwiftPubKey& pubkey) noexcept;
-
-    /** Retrieve our public key. */
-    const EllSwiftPubKey& GetOurPubKey() const noexcept { return m_our_pubkey; }
-
-    /** Initialize when the other side's public key is received. Can only be called once.
+    /** Initialize from a shared secret. Can only be called once.
      *
      * initiator is set to true if we are the initiator establishing the v2 P2P connection.
      * self_decrypt is only for testing, and swaps encryption/decryption keys, so that encryption
      * and decryption can be tested without knowing the other side's private key.
      */
-    void Initialize(const EllSwiftPubKey& their_pubkey, bool initiator, bool self_decrypt = false) noexcept;
+    void InitializeFromSharedSecret(std::span<const std::byte> shared_secret,
+                                    bool initiator,
+                                    bool self_decrypt = false) noexcept;
 
     /** Determine whether this cipher is fully initialized. */
     explicit operator bool() const noexcept { return m_send_l_cipher.has_value(); }
@@ -93,4 +81,4 @@ public:
     std::span<const std::byte> GetReceiveGarbageTerminator() const noexcept { return m_recv_garbage_terminator; }
 };
 
-#endif // BITCOIN_BIP324_H
+#endif // TIDECOIN_BIP324_PQ_H

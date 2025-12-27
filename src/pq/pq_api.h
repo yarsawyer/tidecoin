@@ -2,8 +2,10 @@
 #define TIDECOIN_PQ_API_H
 
 #include <pq/pq_scheme.h>
+#include <pq/ml-kem-512/api.h>
 
 #include <algorithm>
+#include <array>
 #include <span>
 #include <vector>
 
@@ -25,6 +27,47 @@ int tidecoin_mldsa87_pubkey_from_sk(const uint8_t* sk, size_t sklen,
 }
 
 namespace pq {
+
+constexpr size_t MLKEM512_PUBLICKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_PUBLICKEYBYTES;
+constexpr size_t MLKEM512_SECRETKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_SECRETKEYBYTES;
+constexpr size_t MLKEM512_CIPHERTEXT_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_CIPHERTEXTBYTES;
+constexpr size_t MLKEM512_SHARED_SECRET_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_BYTES;
+constexpr size_t MLKEM512_KEYPAIR_COINS_BYTES = 2 * MLKEM512_SHARED_SECRET_BYTES;
+
+class MLKEM512Keypair
+{
+public:
+    MLKEM512Keypair() = default;
+    ~MLKEM512Keypair();
+    MLKEM512Keypair(const MLKEM512Keypair&) = delete;
+    MLKEM512Keypair& operator=(const MLKEM512Keypair&) = delete;
+    MLKEM512Keypair(MLKEM512Keypair&&) = delete;
+    MLKEM512Keypair& operator=(MLKEM512Keypair&&) = delete;
+
+    bool Generate();
+    bool GenerateDeterministic(std::span<const uint8_t> coins);
+    bool Set(std::span<const uint8_t> pk, std::span<const uint8_t> sk);
+
+    bool IsInitialized() const noexcept { return m_initialized; }
+    std::span<const uint8_t> PublicKey() const noexcept { return m_pk; }
+    std::span<const uint8_t> SecretKey() const noexcept { return m_sk; }
+
+private:
+    std::array<uint8_t, MLKEM512_PUBLICKEY_BYTES> m_pk{};
+    std::array<uint8_t, MLKEM512_SECRETKEY_BYTES> m_sk{};
+    bool m_initialized{false};
+};
+
+bool MLKEM512Encaps(std::span<const uint8_t> pk,
+                    std::span<uint8_t> ct,
+                    std::span<uint8_t> ss);
+bool MLKEM512EncapsDeterministic(std::span<const uint8_t> pk,
+                                 std::span<const uint8_t> coins,
+                                 std::span<uint8_t> ct,
+                                 std::span<uint8_t> ss);
+bool MLKEM512Decaps(std::span<const uint8_t> ct,
+                    std::span<const uint8_t> sk,
+                    std::span<uint8_t> ss);
 
 inline const SchemeInfo& ActiveScheme()
 {

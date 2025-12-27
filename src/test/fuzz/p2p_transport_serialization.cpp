@@ -6,6 +6,7 @@
 #include <hash.h>
 #include <net.h>
 #include <netmessagemaker.h>
+#include <pq/pq_api.h>
 #include <protocol.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
@@ -25,7 +26,6 @@ auto g_all_messages = ALL_NET_MESSAGE_TYPES;
 
 void initialize_p2p_transport_serialization()
 {
-    static ECC_Context ecc_context{};
     SelectParams(ChainType::REGTEST);
     std::sort(g_all_messages.begin(), g_all_messages.end());
 }
@@ -339,9 +339,10 @@ std::unique_ptr<Transport> MakeV1Transport(NodeId nodeid) noexcept
 template<RandomNumberGenerator RNG>
 std::unique_ptr<Transport> MakeV2Transport(NodeId nodeid, bool initiator, RNG& rng, FuzzedDataProvider& provider)
 {
-    // Retrieve key
-    auto key = ConsumePrivateKey(provider);
-    if (!key.IsValid()) return {};
+    pq::MLKEM512Keypair keypair;
+    auto coins = provider.ConsumeBytes<uint8_t>(pq::MLKEM512_KEYPAIR_COINS_BYTES);
+    if (coins.size() != pq::MLKEM512_KEYPAIR_COINS_BYTES) return {};
+    if (!keypair.GenerateDeterministic(coins)) return {};
     // Construct garbage
     size_t garb_len = provider.ConsumeIntegralInRange<size_t>(0, V2Transport::MAX_GARBAGE_LEN);
     std::vector<uint8_t> garb;
@@ -354,20 +355,7 @@ std::unique_ptr<Transport> MakeV2Transport(NodeId nodeid, bool initiator, RNG& r
         // (hopefully) irrelevant data needing to be stored in the fuzzer data.
         garb = rng.randbytes(garb_len);
     }
-    // Retrieve entropy
-    auto ent = provider.ConsumeBytes<std::byte>(32);
-    ent.resize(32);
-    // Use as entropy SHA256(ent || garbage). This prevents a situation where the fuzzer manages to
-    // include the garbage terminator (which is a function of both ellswift keys) in the garbage.
-    // This is extremely unlikely (~2^-116) with random keys/garbage, but the fuzzer can choose
-    // both non-randomly and dependently. Since the entropy is hashed anyway inside the ellswift
-    // computation, no coverage should be lost by using a hash as entropy, and it removes the
-    // possibility of garbage that happens to contain what is effectively a hash of the keys.
-    CSHA256().Write(UCharCast(ent.data()), ent.size())
-             .Write(garb.data(), garb.size())
-             .Finalize(UCharCast(ent.data()));
-
-    return std::make_unique<V2Transport>(nodeid, initiator, key, ent, std::move(garb));
+    return std::make_unique<V2Transport>(nodeid, initiator, keypair.PublicKey(), keypair.SecretKey(), std::move(garb));
 }
 
 } // namespace

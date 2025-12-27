@@ -986,36 +986,52 @@ std::vector<uint8_t> GenerateRandomGarbage() noexcept
 
 } // namespace
 
-void V2Transport::StartSendingHandshake() noexcept
+void V2Transport::StartSendingHandshake(std::span<const uint8_t> payload) noexcept
 {
     AssertLockHeld(m_send_mutex);
     Assume(m_send_state == SendState::AWAITING_KEY);
     Assume(m_send_buffer.empty());
-    // Initialize the send buffer with ellswift pubkey + provided garbage.
-    m_send_buffer.resize(EllSwiftPubKey::size() + m_send_garbage.size());
-    std::copy(std::begin(m_cipher.GetOurPubKey()), std::end(m_cipher.GetOurPubKey()), MakeWritableByteSpan(m_send_buffer).begin());
-    std::copy(m_send_garbage.begin(), m_send_garbage.end(), m_send_buffer.begin() + EllSwiftPubKey::size());
+    // Initialize the send buffer with handshake payload + provided garbage.
+    m_send_buffer.resize(payload.size() + m_send_garbage.size());
+    std::copy(payload.begin(), payload.end(), m_send_buffer.begin());
+    std::copy(m_send_garbage.begin(), m_send_garbage.end(), m_send_buffer.begin() + payload.size());
     // We cannot wipe m_send_garbage as it will still be used as AAD later in the handshake.
 }
 
-V2Transport::V2Transport(NodeId nodeid, bool initiating, const CKey& key, std::span<const std::byte> ent32, std::vector<uint8_t> garbage) noexcept
-    : m_cipher{key, ent32}, m_initiating{initiating}, m_nodeid{nodeid},
+V2Transport::V2Transport(NodeId nodeid,
+                         bool initiating,
+                         std::span<const uint8_t> kem_pk,
+                         std::span<const uint8_t> kem_sk,
+                         std::vector<uint8_t> garbage) noexcept
+    : m_initiating{initiating}, m_nodeid{nodeid},
       m_v1_fallback{nodeid},
-      m_recv_state{initiating ? RecvState::KEY : RecvState::KEY_MAYBE_V1},
+      m_recv_state{initiating ? RecvState::CT : RecvState::KEY_MAYBE_V1},
       m_send_garbage{std::move(garbage)},
       m_send_state{initiating ? SendState::AWAITING_KEY : SendState::MAYBE_V1}
 {
     Assume(m_send_garbage.size() <= MAX_GARBAGE_LEN);
     // Start sending immediately if we're the initiator of the connection.
     if (initiating) {
+        Assume(m_kem_keypair.Set(kem_pk, kem_sk));
         LOCK(m_send_mutex);
-        StartSendingHandshake();
+        StartSendingHandshake(m_kem_keypair.PublicKey());
     }
 }
 
 V2Transport::V2Transport(NodeId nodeid, bool initiating) noexcept
-    : V2Transport{nodeid, initiating, GenerateRandomKey(),
-                  MakeByteSpan(GetRandHash()), GenerateRandomGarbage()} {}
+    : m_initiating{initiating}, m_nodeid{nodeid},
+      m_v1_fallback{nodeid},
+      m_recv_state{initiating ? RecvState::CT : RecvState::KEY_MAYBE_V1},
+      m_send_garbage{GenerateRandomGarbage()},
+      m_send_state{initiating ? SendState::AWAITING_KEY : SendState::MAYBE_V1}
+{
+    Assume(m_send_garbage.size() <= MAX_GARBAGE_LEN);
+    if (initiating) {
+        Assume(m_kem_keypair.Generate());
+        LOCK(m_send_mutex);
+        StartSendingHandshake(m_kem_keypair.PublicKey());
+    }
+}
 
 void V2Transport::SetReceiveState(RecvState recv_state) noexcept
 {
@@ -1026,6 +1042,7 @@ void V2Transport::SetReceiveState(RecvState recv_state) noexcept
         Assume(recv_state == RecvState::KEY || recv_state == RecvState::V1);
         break;
     case RecvState::KEY:
+    case RecvState::CT:
         Assume(recv_state == RecvState::GARB_GARBTERM);
         break;
     case RecvState::GARB_GARBTERM:
@@ -1092,10 +1109,9 @@ void V2Transport::ProcessReceivedMaybeV1Bytes() noexcept
     if (!std::equal(m_recv_buffer.begin(), m_recv_buffer.end(), v1_prefix.begin())) {
         // Mismatch with v1 prefix, so we can assume a v2 connection.
         SetReceiveState(RecvState::KEY); // Convert to KEY state, leaving received bytes around.
-        // Transition the sender to AWAITING_KEY state and start sending.
+        // Transition the sender to AWAITING_KEY state.
         LOCK(m_send_mutex);
         SetSendState(SendState::AWAITING_KEY);
-        StartSendingHandshake();
     } else if (m_recv_buffer.size() == v1_prefix.size()) {
         // Full match with the v1 prefix, so fall back to v1 behavior.
         LOCK(m_send_mutex);
@@ -1120,7 +1136,7 @@ bool V2Transport::ProcessReceivedKeyBytes() noexcept
     AssertLockHeld(m_recv_mutex);
     AssertLockNotHeld(m_send_mutex);
     Assume(m_recv_state == RecvState::KEY);
-    Assume(m_recv_buffer.size() <= EllSwiftPubKey::size());
+    Assume(m_recv_buffer.size() <= KEM_PUBLIC_KEY_LEN);
 
     // As a special exception, if bytes 4-16 of the key on a responder connection match the
     // corresponding bytes of a V1 version message, but bytes 0-4 don't match the network magic
@@ -1138,14 +1154,23 @@ bool V2Transport::ProcessReceivedKeyBytes() noexcept
         }
     }
 
-    if (m_recv_buffer.size() == EllSwiftPubKey::size()) {
-        // Other side's key has been fully received, and can now be Diffie-Hellman combined with
-        // our key to initialize the encryption ciphers.
+    if (m_recv_buffer.size() == KEM_PUBLIC_KEY_LEN) {
+        // Initiator's public key has been fully received; encapsulate and initialize ciphers.
+        if (m_initiating) {
+            return false;
+        }
 
-        // Initialize the ciphers.
-        EllSwiftPubKey ellswift(MakeByteSpan(m_recv_buffer));
+        std::array<uint8_t, KEM_CIPHERTEXT_LEN> ct{};
+        std::array<uint8_t, pq::MLKEM512_SHARED_SECRET_BYTES> ss{};
+        if (!pq::MLKEM512Encaps(m_recv_buffer, ct, ss)) {
+            return false;
+        }
+
         LOCK(m_send_mutex);
-        m_cipher.Initialize(ellswift, m_initiating);
+        if (m_send_buffer.empty()) {
+            StartSendingHandshake(ct);
+        }
+        m_cipher.InitializeFromSharedSecret(MakeByteSpan(ss), m_initiating);
 
         // Switch receiver state to GARB_GARBTERM.
         SetReceiveState(RecvState::GARB_GARBTERM);
@@ -1155,18 +1180,18 @@ bool V2Transport::ProcessReceivedKeyBytes() noexcept
         SetSendState(SendState::READY);
 
         // Append the garbage terminator to the send buffer.
-        m_send_buffer.resize(m_send_buffer.size() + BIP324Cipher::GARBAGE_TERMINATOR_LEN);
+        m_send_buffer.resize(m_send_buffer.size() + BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
         std::copy(m_cipher.GetSendGarbageTerminator().begin(),
                   m_cipher.GetSendGarbageTerminator().end(),
-                  MakeWritableByteSpan(m_send_buffer).last(BIP324Cipher::GARBAGE_TERMINATOR_LEN).begin());
+                  MakeWritableByteSpan(m_send_buffer).last(BIP324PQCipher::GARBAGE_TERMINATOR_LEN).begin());
 
         // Construct version packet in the send buffer, with the sent garbage data as AAD.
-        m_send_buffer.resize(m_send_buffer.size() + BIP324Cipher::EXPANSION + VERSION_CONTENTS.size());
+        m_send_buffer.resize(m_send_buffer.size() + BIP324PQCipher::EXPANSION + VERSION_CONTENTS.size());
         m_cipher.Encrypt(
             /*contents=*/VERSION_CONTENTS,
             /*aad=*/MakeByteSpan(m_send_garbage),
             /*ignore=*/false,
-            /*output=*/MakeWritableByteSpan(m_send_buffer).last(BIP324Cipher::EXPANSION + VERSION_CONTENTS.size()));
+            /*output=*/MakeWritableByteSpan(m_send_buffer).last(BIP324PQCipher::EXPANSION + VERSION_CONTENTS.size()));
         // We no longer need the garbage.
         ClearShrink(m_send_garbage);
     } else {
@@ -1175,19 +1200,66 @@ bool V2Transport::ProcessReceivedKeyBytes() noexcept
     return true;
 }
 
+bool V2Transport::ProcessReceivedCiphertextBytes() noexcept
+{
+    AssertLockHeld(m_recv_mutex);
+    AssertLockNotHeld(m_send_mutex);
+    Assume(m_recv_state == RecvState::CT);
+    Assume(m_recv_buffer.size() <= KEM_CIPHERTEXT_LEN);
+
+    if (m_recv_buffer.size() == KEM_CIPHERTEXT_LEN) {
+        if (!m_initiating || !m_kem_keypair.IsInitialized()) {
+            return false;
+        }
+
+        std::array<uint8_t, pq::MLKEM512_SHARED_SECRET_BYTES> ss{};
+        if (!pq::MLKEM512Decaps(m_recv_buffer, m_kem_keypair.SecretKey(), ss)) {
+            return false;
+        }
+
+        LOCK(m_send_mutex);
+        m_cipher.InitializeFromSharedSecret(MakeByteSpan(ss), m_initiating);
+
+        // Switch receiver state to GARB_GARBTERM.
+        SetReceiveState(RecvState::GARB_GARBTERM);
+        m_recv_buffer.clear();
+
+        // Switch sender state to READY.
+        SetSendState(SendState::READY);
+
+        // Append the garbage terminator to the send buffer.
+        m_send_buffer.resize(m_send_buffer.size() + BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
+        std::copy(m_cipher.GetSendGarbageTerminator().begin(),
+                  m_cipher.GetSendGarbageTerminator().end(),
+                  MakeWritableByteSpan(m_send_buffer).last(BIP324PQCipher::GARBAGE_TERMINATOR_LEN).begin());
+
+        // Construct version packet in the send buffer, with the sent garbage data as AAD.
+        m_send_buffer.resize(m_send_buffer.size() + BIP324PQCipher::EXPANSION + VERSION_CONTENTS.size());
+        m_cipher.Encrypt(
+            /*contents=*/VERSION_CONTENTS,
+            /*aad=*/MakeByteSpan(m_send_garbage),
+            /*ignore=*/false,
+            /*output=*/MakeWritableByteSpan(m_send_buffer).last(BIP324PQCipher::EXPANSION + VERSION_CONTENTS.size()));
+        // We no longer need the garbage.
+        ClearShrink(m_send_garbage);
+    }
+
+    return true;
+}
+
 bool V2Transport::ProcessReceivedGarbageBytes() noexcept
 {
     AssertLockHeld(m_recv_mutex);
     Assume(m_recv_state == RecvState::GARB_GARBTERM);
-    Assume(m_recv_buffer.size() <= MAX_GARBAGE_LEN + BIP324Cipher::GARBAGE_TERMINATOR_LEN);
-    if (m_recv_buffer.size() >= BIP324Cipher::GARBAGE_TERMINATOR_LEN) {
-        if (std::ranges::equal(MakeByteSpan(m_recv_buffer).last(BIP324Cipher::GARBAGE_TERMINATOR_LEN), m_cipher.GetReceiveGarbageTerminator())) {
+    Assume(m_recv_buffer.size() <= MAX_GARBAGE_LEN + BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
+    if (m_recv_buffer.size() >= BIP324PQCipher::GARBAGE_TERMINATOR_LEN) {
+        if (std::ranges::equal(MakeByteSpan(m_recv_buffer).last(BIP324PQCipher::GARBAGE_TERMINATOR_LEN), m_cipher.GetReceiveGarbageTerminator())) {
             // Garbage terminator received. Store garbage to authenticate it as AAD later.
             m_recv_aad = std::move(m_recv_buffer);
-            m_recv_aad.resize(m_recv_aad.size() - BIP324Cipher::GARBAGE_TERMINATOR_LEN);
+            m_recv_aad.resize(m_recv_aad.size() - BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
             m_recv_buffer.clear();
             SetReceiveState(RecvState::VERSION);
-        } else if (m_recv_buffer.size() == MAX_GARBAGE_LEN + BIP324Cipher::GARBAGE_TERMINATOR_LEN) {
+        } else if (m_recv_buffer.size() == MAX_GARBAGE_LEN + BIP324PQCipher::GARBAGE_TERMINATOR_LEN) {
             // We've reached the maximum length for garbage + garbage terminator, and the
             // terminator still does not match. Abort.
             LogDebug(BCLog::NET, "V2 transport error: missing garbage terminator, peer=%d\n", m_nodeid);
@@ -1215,21 +1287,21 @@ bool V2Transport::ProcessReceivedPacketBytes() noexcept
         1 + CMessageHeader::MESSAGE_TYPE_SIZE +
         std::min<size_t>(MAX_SIZE, MAX_PROTOCOL_MESSAGE_LENGTH);
 
-    if (m_recv_buffer.size() == BIP324Cipher::LENGTH_LEN) {
+    if (m_recv_buffer.size() == BIP324PQCipher::LENGTH_LEN) {
         // Length descriptor received.
         m_recv_len = m_cipher.DecryptLength(MakeByteSpan(m_recv_buffer));
         if (m_recv_len > MAX_CONTENTS_LEN) {
             LogDebug(BCLog::NET, "V2 transport error: packet too large (%u bytes), peer=%d\n", m_recv_len, m_nodeid);
             return false;
         }
-    } else if (m_recv_buffer.size() > BIP324Cipher::LENGTH_LEN && m_recv_buffer.size() == m_recv_len + BIP324Cipher::EXPANSION) {
+    } else if (m_recv_buffer.size() > BIP324PQCipher::LENGTH_LEN && m_recv_buffer.size() == m_recv_len + BIP324PQCipher::EXPANSION) {
         // Ciphertext received, decrypt it into m_recv_decode_buffer.
         // Note that it is impossible to reach this branch without hitting the branch above first,
         // as GetMaxBytesToProcess only allows up to LENGTH_LEN into the buffer before that point.
         m_recv_decode_buffer.resize(m_recv_len);
         bool ignore{false};
         bool ret = m_cipher.Decrypt(
-            /*input=*/MakeByteSpan(m_recv_buffer).subspan(BIP324Cipher::LENGTH_LEN),
+            /*input=*/MakeByteSpan(m_recv_buffer).subspan(BIP324PQCipher::LENGTH_LEN),
             /*aad=*/MakeByteSpan(m_recv_aad),
             /*ignore=*/ignore,
             /*contents=*/MakeWritableByteSpan(m_recv_decode_buffer));
@@ -1285,12 +1357,16 @@ size_t V2Transport::GetMaxBytesToProcess() noexcept
         // back into the m_v1_fallback V1 transport.
         return V1_PREFIX_LEN - m_recv_buffer.size();
     case RecvState::KEY:
-        // During the KEY state, we only allow the 64-byte key into the receive buffer.
-        Assume(m_recv_buffer.size() <= EllSwiftPubKey::size());
+        // During the KEY state, we only allow the public key into the receive buffer.
+        Assume(m_recv_buffer.size() <= KEM_PUBLIC_KEY_LEN);
         // As long as we have not received the other side's public key, don't receive more than
-        // that (64 bytes), as garbage follows, and locating the garbage terminator requires the
+        // that, as garbage follows, and locating the garbage terminator requires the
         // key exchange first.
-        return EllSwiftPubKey::size() - m_recv_buffer.size();
+        return KEM_PUBLIC_KEY_LEN - m_recv_buffer.size();
+    case RecvState::CT:
+        // During the CT state, we only allow the ciphertext into the receive buffer.
+        Assume(m_recv_buffer.size() <= KEM_CIPHERTEXT_LEN);
+        return KEM_CIPHERTEXT_LEN - m_recv_buffer.size();
     case RecvState::GARB_GARBTERM:
         // Process garbage bytes one by one (because terminator may appear anywhere).
         return 1;
@@ -1299,14 +1375,14 @@ size_t V2Transport::GetMaxBytesToProcess() noexcept
         // These three states all involve decoding a packet. Process the length descriptor first,
         // so that we know where the current packet ends (and we don't process bytes from the next
         // packet or decoy yet). Then, process the ciphertext bytes of the current packet.
-        if (m_recv_buffer.size() < BIP324Cipher::LENGTH_LEN) {
-            return BIP324Cipher::LENGTH_LEN - m_recv_buffer.size();
+        if (m_recv_buffer.size() < BIP324PQCipher::LENGTH_LEN) {
+            return BIP324PQCipher::LENGTH_LEN - m_recv_buffer.size();
         } else {
-            // Note that BIP324Cipher::EXPANSION is the total difference between contents size
+            // Note that BIP324PQCipher::EXPANSION is the total difference between contents size
             // and encoded packet size, which includes the 3 bytes due to the packet length.
             // When transitioning from receiving the packet length to receiving its ciphertext,
             // the encrypted packet length is left in the receive buffer.
-            return BIP324Cipher::EXPANSION + m_recv_len - m_recv_buffer.size();
+            return BIP324PQCipher::EXPANSION + m_recv_len - m_recv_buffer.size();
         }
     case RecvState::APP_READY:
         // No bytes can be processed until GetMessage() is called.
@@ -1342,10 +1418,11 @@ bool V2Transport::ReceivedBytes(std::span<const uint8_t>& msg_bytes) noexcept
             switch (m_recv_state) {
             case RecvState::KEY_MAYBE_V1:
             case RecvState::KEY:
+            case RecvState::CT:
             case RecvState::GARB_GARBTERM:
                 // During the initial states (key/garbage), allocate once to fit the maximum (4111
                 // bytes).
-                m_recv_buffer.reserve(MAX_GARBAGE_LEN + BIP324Cipher::GARBAGE_TERMINATOR_LEN);
+                m_recv_buffer.reserve(MAX_GARBAGE_LEN + BIP324PQCipher::GARBAGE_TERMINATOR_LEN);
                 break;
             case RecvState::VERSION:
             case RecvState::APP: {
@@ -1384,6 +1461,10 @@ bool V2Transport::ReceivedBytes(std::span<const uint8_t>& msg_bytes) noexcept
 
         case RecvState::KEY:
             if (!ProcessReceivedKeyBytes()) return false;
+            break;
+
+        case RecvState::CT:
+            if (!ProcessReceivedCiphertextBytes()) return false;
             break;
 
         case RecvState::GARB_GARBTERM:
@@ -1460,8 +1541,8 @@ CNetMessage V2Transport::GetReceivedMessage(std::chrono::microseconds time, bool
     std::span<const uint8_t> contents{m_recv_decode_buffer};
     auto msg_type = GetMessageType(contents);
     CNetMessage msg{DataStream{}};
-    // Note that BIP324Cipher::EXPANSION also includes the length descriptor size.
-    msg.m_raw_message_size = m_recv_decode_buffer.size() + BIP324Cipher::EXPANSION;
+    // Note that BIP324PQCipher::EXPANSION also includes the length descriptor size.
+    msg.m_raw_message_size = m_recv_decode_buffer.size() + BIP324PQCipher::EXPANSION;
     if (msg_type) {
         reject_message = false;
         msg.m_type = std::move(*msg_type);
@@ -1503,7 +1584,7 @@ bool V2Transport::SetMessageToSend(CSerializedNetMsg& msg) noexcept
         std::copy(msg.data.begin(), msg.data.end(), contents.begin() + 1 + CMessageHeader::MESSAGE_TYPE_SIZE);
     }
     // Construct ciphertext in send buffer.
-    m_send_buffer.resize(contents.size() + BIP324Cipher::EXPANSION);
+    m_send_buffer.resize(contents.size() + BIP324PQCipher::EXPANSION);
     m_cipher.Encrypt(MakeByteSpan(contents), {}, false, MakeWritableByteSpan(m_send_buffer));
     m_send_type = msg.m_type;
     // Release memory

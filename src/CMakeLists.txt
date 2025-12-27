@@ -129,6 +129,7 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   psbt.cpp
   pq/falcon512.c
   pq/falcon1024.c
+  pq/kem.cpp
   pq/mldsa44.c
   pq/mldsa65.c
   pq/mldsa87.c
@@ -187,7 +188,7 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   addrdb.cpp
   addrman.cpp
   banman.cpp
-  bip324.cpp
+  bip324_pq.cpp
   blockencodings.cpp
   blockfilter.cpp
   consensus/tx_verify.cpp

@@ -2,15 +2,15 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <bip324.h>
+#include <bip324_pq.h>
 #include <chainparams.h>
-#include <random.h>
 #include <span.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -18,45 +18,26 @@ namespace {
 
 void Initialize()
 {
-    static ECC_Context ecc_context{};
     SelectParams(ChainType::MAIN);
 }
 
 }  // namespace
 
-FUZZ_TARGET(bip324_cipher_roundtrip, .init=Initialize)
+FUZZ_TARGET(bip324_pq_cipher_roundtrip, .init=Initialize)
 {
-    // Test that BIP324Cipher's encryption and decryption agree.
+    // Test that BIP324PQCipher's encryption and decryption agree.
 
-    // Load keys from fuzzer.
     FuzzedDataProvider provider(buffer.data(), buffer.size());
-    // Initiator key
-    CKey init_key = ConsumePrivateKey(provider, /*compressed=*/true);
-    if (!init_key.IsValid()) return;
-    // Initiator entropy
-    auto init_ent = provider.ConsumeBytes<std::byte>(32);
-    init_ent.resize(32);
-    // Responder key
-    CKey resp_key = ConsumePrivateKey(provider, /*compressed=*/true);
-    if (!resp_key.IsValid()) return;
-    // Responder entropy
-    auto resp_ent = provider.ConsumeBytes<std::byte>(32);
-    resp_ent.resize(32);
+    std::array<std::byte, 32> shared_secret{};
+    const auto secret_bytes = provider.ConsumeBytes<std::byte>(shared_secret.size());
+    std::copy(secret_bytes.begin(), secret_bytes.end(), shared_secret.begin());
 
-    // Initialize ciphers by exchanging public keys.
-    BIP324Cipher initiator(init_key, init_ent);
-    assert(!initiator);
-    BIP324Cipher responder(resp_key, resp_ent);
-    assert(!responder);
-    initiator.Initialize(responder.GetOurPubKey(), true);
-    assert(initiator);
-    responder.Initialize(initiator.GetOurPubKey(), false);
-    assert(responder);
+    BIP324PQCipher initiator;
+    BIP324PQCipher responder;
+    initiator.InitializeFromSharedSecret(shared_secret, true);
+    responder.InitializeFromSharedSecret(shared_secret, false);
 
-    // Initialize RNG deterministically, to generate contents and AAD. We assume that there are no
-    // (potentially buggy) edge cases triggered by specific values of contents/AAD, so we can avoid
-    // reading the actual data for those from the fuzzer input (which would need large amounts of
-    // data).
+    // Initialize RNG deterministically, to generate contents and AAD.
     InsecureRandomContext rng(provider.ConsumeIntegral<uint64_t>());
 
     // Compare session IDs and garbage terminators.
@@ -91,8 +72,7 @@ FUZZ_TARGET(bip324_cipher_roundtrip, .init=Initialize)
         std::vector<std::byte> ciphertext(length + initiator.EXPANSION);
         sender.Encrypt(contents, aad, ignore, ciphertext);
 
-        // Optionally damage 1 bit in either the ciphertext (corresponding to a change in transit)
-        // or the aad (to make sure that decryption will fail if the AAD mismatches).
+        // Optionally damage 1 bit in either the ciphertext or the aad.
         if (damage) {
             unsigned damage_bit = provider.ConsumeIntegralInRange<unsigned>(0,
                 (ciphertext.size() + aad.size()) * 8U - 1U);
@@ -110,9 +90,7 @@ FUZZ_TARGET(bip324_cipher_roundtrip, .init=Initialize)
         if (!damage) {
             assert(dec_length == length);
         } else {
-            // For performance reasons, don't try to decode if length got increased too much.
             if (dec_length > 16384 + length) break;
-            // Otherwise, just append zeros if dec_length > length.
             ciphertext.resize(dec_length + initiator.EXPANSION);
         }
 
@@ -120,7 +98,6 @@ FUZZ_TARGET(bip324_cipher_roundtrip, .init=Initialize)
         std::vector<std::byte> decrypt(dec_length);
         bool dec_ignore{false};
         bool ok = receiver.Decrypt(std::span{ciphertext}.subspan(initiator.LENGTH_LEN), aad, dec_ignore, decrypt);
-        // Decryption *must* fail if the packet was damaged, and succeed if it wasn't.
         assert(!ok == damage);
         if (!ok) break;
         assert(ignore == dec_ignore);
