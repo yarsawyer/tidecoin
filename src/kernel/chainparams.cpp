@@ -242,7 +242,7 @@ public:
     explicit CRegTestParams(const RegTestOptions& opts)
     {
         m_chain_type = ChainType::REGTEST;
-        consensus.nSubsidyHalvingInterval = 150;
+        consensus.nSubsidyHalvingInterval = 20;
         consensus.BIP34Height = 1; // Always active unless overridden
         consensus.BIP34Hash = uint256();
         consensus.BIP65Height = 1;  // Always active unless overridden
