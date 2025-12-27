@@ -22,20 +22,20 @@ SignatureCache::SignatureCache(const size_t max_size_bytes)
     uint256 nonce = GetRandHash();
     // We want the nonce to be 64 bytes long to force the hasher to process
     // this chunk, which makes later hash computations more efficient. We
-    // just write our 32-byte entropy, and then pad with 'E' for ECDSA
+    // just write our 32-byte entropy, and then pad with 'P' for PQ
     // (followed by 0 bytes).
-    static constexpr unsigned char PADDING_ECDSA[32] = {'E'};
-    m_salted_hasher_ecdsa.Write(nonce.begin(), 32);
-    m_salted_hasher_ecdsa.Write(PADDING_ECDSA, 32);
+    static constexpr unsigned char PADDING_PQ[32] = {'P'};
+    m_salted_hasher_pq.Write(nonce.begin(), 32);
+    m_salted_hasher_pq.Write(PADDING_PQ, 32);
 
     const auto [num_elems, approx_size_bytes] = setValid.setup_bytes(max_size_bytes);
     LogInfo("Using %zu MiB out of %zu MiB requested for signature cache, able to store %zu elements",
               approx_size_bytes >> 20, max_size_bytes >> 20, num_elems);
 }
 
-void SignatureCache::ComputeEntryECDSA(uint256& entry, const uint256& hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, bool allow_legacy) const
+void SignatureCache::ComputeEntryPQ(uint256& entry, const uint256& hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, bool allow_legacy) const
 {
-    CSHA256 hasher = m_salted_hasher_ecdsa;
+    CSHA256 hasher = m_salted_hasher_pq;
     const unsigned char legacy_tag = allow_legacy ? 1 : 0;
     hasher.Write(hash.begin(), 32).Write(&legacy_tag, 1).Write(pubkey.data(), pubkey.size()).Write(vchSig.data(), vchSig.size()).Finalize(entry.begin());
 }
@@ -55,7 +55,7 @@ void SignatureCache::Set(const uint256& entry)
 bool CachingTransactionSignatureChecker::VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
 {
     uint256 entry;
-    m_signature_cache.ComputeEntryECDSA(entry, sighash, vchSig, pubkey, AllowLegacy());
+    m_signature_cache.ComputeEntryPQ(entry, sighash, vchSig, pubkey, AllowLegacy());
     if (m_signature_cache.Get(entry, !store))
         return true;
     if (!TransactionSignatureChecker::VerifyPostQuantumSignature(vchSig, pubkey, sighash))

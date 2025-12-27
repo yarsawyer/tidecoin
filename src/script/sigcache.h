@@ -21,10 +21,8 @@
 class CPubKey;
 class CTransaction;
 
-// DoS prevention: limit cache size to 32MiB (over 1000000 entries on 64-bit
-// systems). Due to how we count cache size, actual memory usage is slightly
-// more (~32.25 MiB)
-static constexpr size_t DEFAULT_VALIDATION_CACHE_BYTES{32 << 20};
+// DoS prevention: limit cache size to 64MiB
+static constexpr size_t DEFAULT_VALIDATION_CACHE_BYTES{64 << 20};
 static constexpr size_t DEFAULT_SIGNATURE_CACHE_BYTES{DEFAULT_VALIDATION_CACHE_BYTES / 2};
 static constexpr size_t DEFAULT_SCRIPT_EXECUTION_CACHE_BYTES{DEFAULT_VALIDATION_CACHE_BYTES / 2};
 static_assert(DEFAULT_VALIDATION_CACHE_BYTES == DEFAULT_SIGNATURE_CACHE_BYTES + DEFAULT_SCRIPT_EXECUTION_CACHE_BYTES);
@@ -37,8 +35,8 @@ static_assert(DEFAULT_VALIDATION_CACHE_BYTES == DEFAULT_SIGNATURE_CACHE_BYTES + 
 class SignatureCache
 {
 private:
-    //! Entries are SHA256(nonce || 'E' || 31 zero bytes || signature hash || legacy_tag || public key || signature):
-    CSHA256 m_salted_hasher_ecdsa;
+    //! Entries are SHA256(nonce || 'P' || 31 zero bytes || signature hash || legacy_tag || public key || signature):
+    CSHA256 m_salted_hasher_pq;
     typedef CuckooCache::cache<uint256, SignatureCacheHasher> map_type;
     map_type setValid;
     std::shared_mutex cs_sigcache;
@@ -49,7 +47,7 @@ public:
     SignatureCache(const SignatureCache&) = delete;
     SignatureCache& operator=(const SignatureCache&) = delete;
 
-    void ComputeEntryECDSA(uint256& entry, const uint256 &hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, bool allow_legacy) const;
+    void ComputeEntryPQ(uint256& entry, const uint256& hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, bool allow_legacy) const;
 
     bool Get(const uint256& entry, const bool erase);
 
