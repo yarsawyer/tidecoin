@@ -91,7 +91,8 @@ public:
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 1;
         consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED;
-        consensus.MinBIP9WarningHeight = 1; // segwit activation height + miner confirmation window
+        // Suppress unknown versionbit warnings until auxpow activation height.
+        consensus.MinBIP9WarningHeight = consensus.nAuxpowStartHeight;
         consensus.powLimit = uint256{"01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 5 * 24 * 60 * 60; // 5 days
         consensus.nPowTargetSpacing = 60;
