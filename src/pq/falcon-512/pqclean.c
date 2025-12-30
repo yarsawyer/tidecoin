@@ -11,7 +11,7 @@
 
 #define NONCELEN   40
 
-#include "randombytes.h"
+#include "../randombytes.h"
 
 /*
  * Encoding formats (nnnn = log of degree, 9 for Falcon-512, 10 for Falcon-1024)
@@ -113,6 +113,9 @@ int
 PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair_deterministic(
     uint8_t *pk, uint8_t *sk,
     const uint8_t *seed, size_t seed_len) {
+    if (seed_len != 48) {
+        return -1;
+    }
     union {
         uint8_t b[FALCON_KEYGEN_TEMP_9];
         uint64_t dummy_u64;

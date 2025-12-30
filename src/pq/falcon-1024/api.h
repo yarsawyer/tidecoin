@@ -22,6 +22,9 @@
  */
 int PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(
     uint8_t *pk, uint8_t *sk);
+int PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair_deterministic(
+    uint8_t *pk, uint8_t *sk,
+    const uint8_t *seed, size_t seed_len);
 
 /*
  * Compute a signature on a provided message (m, mlen), with a given

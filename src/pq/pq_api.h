@@ -2,7 +2,10 @@
 #define TIDECOIN_PQ_API_H
 
 #include <pq/pq_scheme.h>
+#include <pq/pqhd_kdf.h>
 #include <pq/ml-kem-512/api.h>
+
+#include <support/allocators/secure.h>
 
 #include <algorithm>
 #include <array>
@@ -27,6 +30,9 @@ int tidecoin_mldsa87_pubkey_from_sk(const uint8_t* sk, size_t sklen,
 }
 
 namespace pq {
+
+/** Secure byte container (locked + cleansed on deallocation). */
+using SecureKeyBytes = std::vector<uint8_t, secure_allocator<uint8_t>>;
 
 constexpr size_t MLKEM512_PUBLICKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_PUBLICKEYBYTES;
 constexpr size_t MLKEM512_SECRETKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_SECRETKEYBYTES;
@@ -394,6 +400,26 @@ inline bool VerifyPrefixed(std::span<const unsigned char> msg32,
     const SchemeInfo* info = SchemeFromId(id);
     return info && Verify(*info, msg32, sig, raw, legacy_mode);
 }
+
+/** PQHD v1+ deterministic key generation (see `ai-docs/pqhd.md` §7.5). */
+[[nodiscard]] bool KeyGenFromSeed(uint32_t pqhd_version,
+                                  SchemeId scheme_id,
+                                  std::span<const uint8_t, 64> key_material,
+                                  std::vector<uint8_t>& pk_out,
+                                  SecureKeyBytes& sk_out);
+
+/** PQHD v1+ key generation from an untrusted byte span (length must be 64). */
+[[nodiscard]] bool KeyGenFromSeedBytes(uint32_t pqhd_version,
+                                       SchemeId scheme_id,
+                                       std::span<const uint8_t> key_material,
+                                       std::vector<uint8_t>& pk_out,
+                                       SecureKeyBytes& sk_out);
+
+/** PQHD v1+ key generation from strongly-typed leaf material (scheme id + key material bound together). */
+[[nodiscard]] bool KeyGenFromLeafMaterial(uint32_t pqhd_version,
+                                          const pqhd::LeafMaterialV1& leaf_material,
+                                          std::vector<uint8_t>& pk_out,
+                                          SecureKeyBytes& sk_out);
 
 } // namespace pq
 

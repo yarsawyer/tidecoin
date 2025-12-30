@@ -20,7 +20,16 @@ Legend:
 ## Implemented
 
 - PQHD-REQ-0001 — Scheme registry is canonical and stable (`src/pq/pq_scheme.h`, `src/pq/pq_api.h`)
+- PQHD-REQ-0004 — SeedID32 is the only seed identifier (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0019 — PSBT is BIP174 and supports proprietary key/value records (`src/psbt.h`, `src/rpc/rawtransaction.cpp` raw proprietary display)
+- PQHD-REQ-0009 — PQHD path constants and semantics are fixed (`src/pq/pqhd_params.h` for purpose/coin_type; hardened-only enforcement in `src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`; vectors in `src/test/pqhd_kdf_tests.cpp`)
+- PQHD-REQ-0010 — NodeSecret/ChainCode derivation (hardened-only CKD) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
+- PQHD-REQ-0011 — Leaf key material derivation (HKDF-style) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
+  - Safety hardening: strict v1 leaf-path validation (shape + hardened-only + scheme must be recognized by build), cleanses secret intermediates, move-only RAII for 64-byte stream keys.
+- PQHD-REQ-0012 — Versioned `KeyGenFromSeed` wrappers per scheme (`src/pq/pq_api.h`, `src/pq/pqhd_keygen.cpp`, `src/test/pqhd_keygen_tests.cpp`)
+  - Covers Falcon-512/1024 + ML-DSA-44/65/87; deterministic keypair seed length is enforced and negative-tested.
+- PQHD-REQ-0013 — Deterministic RNG scoping for keygen (`src/pq/pqhd_keygen.cpp` uses deterministic keypair entrypoints; no global RNG override)
+- PQHD-REQ-0023 — PQHD unit tests for determinism + parsing (determinism: `src/test/pqhd_kdf_tests.cpp`, `src/test/pqhd_keygen_tests.cpp`)
 
 ---
 
@@ -35,17 +44,12 @@ Legend:
 ## Not Started
 
 ### Seed Identity + Storage
-- PQHD-REQ-0004 — SeedID32 is the only seed identifier
 - PQHD-REQ-0005 — Seed import de-duplication is by SeedID32 (idempotent)
 - PQHD-REQ-0006 — Multi-root wallets: multiple PQHD seeds per wallet
 - PQHD-REQ-0008 — Wallet DB schema for PQHD seeds and policy
 
 ### Derivation + Keygen
-- PQHD-REQ-0009 — PQHD path constants and semantics are fixed
-- PQHD-REQ-0010 — NodeSecret/ChainCode derivation (hardened-only CKD)
-- PQHD-REQ-0011 — Leaf key material derivation (HKDF-style)
-- PQHD-REQ-0012 — Versioned `KeyGenFromSeed` wrappers per scheme
-- PQHD-REQ-0013 — Deterministic RNG scoping for keygen
+- (none)
 
 ### Key Container Refactor
 - PQHD-REQ-0014 — `CPubKey` becomes scheme-aware and variable-length
@@ -62,5 +66,13 @@ Legend:
 
 ### Migration + Tests
 - PQHD-REQ-0022 — Migration baseline: oldtidecoin wallets are legacy BDB non-HD
-- PQHD-REQ-0023 — PQHD unit tests for determinism + parsing
 - PQHD-REQ-0024 — PQHD functional tests for wallet behavior and gating
+
+---
+
+## PR Slice Status (from `ai-docs/sprints/pqhd-next-sprint.md`)
+
+- PR-1 (PQHD KDF primitives + vectors): implemented (`src/pq/pqhd_kdf.*`, `src/pq/pqhd_params.h`, `src/test/pqhd_kdf_tests.cpp`)
+- PR-2 (`KeyGenFromSeed` v1 for all schemes + determinism tests): implemented (`src/pq/pqhd_keygen.cpp`, `src/test/pqhd_keygen_tests.cpp`)
+- PR-3 (`CPubKey` variable-length refactor): not started (no `CPubKey` work in PQHD PRs yet)
+- PR-4 (wallet DB seed/policy records + auxpow gating semantics): next

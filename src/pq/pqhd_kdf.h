@@ -3,7 +3,13 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
+
+#include <pq/pq_scheme.h>
+
+// Used for cleansing secret key material in small RAII wrappers.
+#include <support/cleanse.h>
 
 /**
  * PQHD KDF primitives (PQHD v1).
@@ -18,8 +24,47 @@ namespace pqhd {
 using SeedID32 = std::array<uint8_t, 32>;
 using NodeSecret = std::array<uint8_t, 32>;
 using ChainCode = std::array<uint8_t, 32>;
-using KeygenStreamKey64 = std::array<uint8_t, 64>;
 using KeygenStreamBlock64 = std::array<uint8_t, 64>;
+
+class KeygenStreamKey64
+{
+public:
+    KeygenStreamKey64() = default;
+    ~KeygenStreamKey64() { memory_cleanse(m_bytes.data(), m_bytes.size()); }
+
+    KeygenStreamKey64(const KeygenStreamKey64&) = delete;
+    KeygenStreamKey64& operator=(const KeygenStreamKey64&) = delete;
+
+    KeygenStreamKey64(KeygenStreamKey64&& other) noexcept
+    {
+        m_bytes = other.m_bytes;
+        memory_cleanse(other.m_bytes.data(), other.m_bytes.size());
+    }
+
+    KeygenStreamKey64& operator=(KeygenStreamKey64&& other) noexcept
+    {
+        if (this == &other) return *this;
+        memory_cleanse(m_bytes.data(), m_bytes.size());
+        m_bytes = other.m_bytes;
+        memory_cleanse(other.m_bytes.data(), other.m_bytes.size());
+        return *this;
+    }
+
+    uint8_t* data() noexcept { return m_bytes.data(); }
+    const uint8_t* data() const noexcept { return m_bytes.data(); }
+    size_t size() const noexcept { return m_bytes.size(); }
+
+    std::span<uint8_t, 64> MutableSpan() noexcept { return std::span<uint8_t, 64>(m_bytes); }
+    std::span<const uint8_t, 64> Span() const noexcept { return std::span<const uint8_t, 64>(m_bytes); }
+
+private:
+    std::array<uint8_t, 64> m_bytes{};
+};
+
+struct LeafMaterialV1 {
+    pq::SchemeId scheme_id;
+    KeygenStreamKey64 stream_key;
+};
 
 struct Node {
     NodeSecret node_secret;
@@ -33,24 +78,31 @@ SeedID32 ComputeSeedID32(std::span<const uint8_t, 32> master_seed);
 Node MakeMasterNode(std::span<const uint8_t, 32> master_seed);
 
 /** Hardened-only child derivation (CKD). `index_hardened` must have bit 31 set. */
-Node DeriveChild(const Node& parent, uint32_t index_hardened);
+[[nodiscard]] std::optional<Node> DeriveChild(const Node& parent, uint32_t index_hardened);
 
 /** Convenience: derive a node by iterating hardened CKD along `path_hardened`. */
-Node DerivePath(const Node& master, std::span<const uint32_t> path_hardened);
+[[nodiscard]] std::optional<Node> DerivePath(const Node& master, std::span<const uint32_t> path_hardened);
+
+/** Validate a PQHD v1 leaf derivation path (shape + hardened-only). */
+[[nodiscard]] bool ValidateV1LeafPath(std::span<const uint32_t> path_hardened);
+
+/** Derive the PQHD v1 leaf material (scheme id + 64-byte stream key) for a leaf path. */
+[[nodiscard]] std::optional<LeafMaterialV1> DeriveLeafMaterialV1(std::span<const uint8_t, 32> node_secret_leaf,
+                                                                 std::span<const uint32_t> path_hardened);
 
 /**
  * Derive the PQHD v1 64-byte stream key used as internal keygen material.
  *
  * `path_hardened` must be the full hardened path for the leaf (including the
- * scheme element). `scheme_id` is provided explicitly to domain-separate
- * material per scheme.
+ * scheme element, which must fit in one byte). The scheme id is derived from
+ * `path_hardened[2]` and is included in HKDF "info" to domain-separate material
+ * per scheme.
  */
-KeygenStreamKey64 DeriveKeygenStreamKey(std::span<const uint8_t, 32> node_secret_leaf,
-                                        uint8_t scheme_id,
-                                        std::span<const uint32_t> path_hardened);
+[[nodiscard]] std::optional<KeygenStreamKey64> DeriveKeygenStreamKey(std::span<const uint8_t, 32> node_secret_leaf,
+                                                                     std::span<const uint32_t> path_hardened);
 
 /** Derive the PQHD v1 stream block for `ctr` (0,1,2,...) from a stream key. */
-KeygenStreamBlock64 DeriveKeygenStreamBlock(std::span<const uint8_t, 64> stream_key, uint32_t ctr);
+[[nodiscard]] KeygenStreamBlock64 DeriveKeygenStreamBlock(std::span<const uint8_t, 64> stream_key, uint32_t ctr);
 
 } // namespace pqhd
 

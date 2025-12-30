@@ -106,7 +106,7 @@ set_fpu_cw(unsigned x) {
  * as part of PQClean.
  */
 
-#include "fips202.h"
+#include "../fips202.h"
 
 #define inner_shake256_context                shake256incctx
 #define inner_shake256_init(sc)               shake256_inc_init(sc)

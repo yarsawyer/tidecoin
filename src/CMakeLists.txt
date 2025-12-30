@@ -131,6 +131,7 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   pq/falcon1024.c
   pq/kem.cpp
   pq/pqhd_kdf.cpp
+  pq/pqhd_keygen.cpp
   pq/mldsa44.c
   pq/mldsa65.c
   pq/mldsa87.c

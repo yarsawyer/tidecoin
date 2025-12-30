@@ -291,12 +291,13 @@ Notes:
 - Unlike BIP32, there is no “invalid scalar” edge case.
 
 ### 7.4 Leaf → deterministic keygen material (PQHD v1)
-Given `NodeSecret_leaf` and the full hardened path (including `scheme_id`):
+Given `NodeSecret_leaf` and the full hardened path (including the hardened `scheme'` element at index 2):
 
 1) HKDF-Extract (HMAC-SHA512):
 - `PRK = HMAC-SHA512(key=PQHD_HKDF_SALT, msg=NodeSecret_leaf)`
 
 2) HKDF-Expand to a 64-byte keygen stream key:
+- `scheme_id = (path_hardened[2] & 0x7FFFFFFF)` and MUST fit into one byte (`scheme_id <= 255`)
 - `info = PQHD_STREAM_INFO || ser32be(scheme_id) || concat(ser32be(path_elem_i))`
 - `stream_key = HKDF-Expand(PRK, info, L=64)`
 
@@ -310,6 +311,8 @@ Notes:
 - This stream is **internal PQHD v1 key material**. It is *not* a contract that
   “PQClean will call `randombytes()` the same way forever”. The determinism
   contract is defined in §7.5.
+- All path elements MUST be hardened. Any non-hardened element is an error and
+  derivation must fail explicitly (no “all-zero node” fallback).
 
 ### 7.5 KeyGenFromSeed (per-scheme, versioned) — determinism contract
 Decision: **Option B** (selected).
@@ -320,7 +323,7 @@ which would silently change derived keys and break wallet restore.
 
 Instead, PQHD v1 defines a versioned, stable API surface implemented by Tidecoin:
 
-- `KeyGenFromSeed(pqhd_version, scheme_id, key_material) -> (sk, pk)`
+- `KeyGenFromSeed(pqhd_version, scheme_id, key_material[64]) -> (sk, pk)`
 
 Where:
 - `pqhd_version` is stored with the seed record (`CPQHDSeedRecord::pqhd_version`,

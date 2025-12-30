@@ -1,8 +1,13 @@
 #ifndef TIDECOIN_RANDOMBYTES_H
 #define TIDECOIN_RANDOMBYTES_H
 
+#ifdef __cplusplus
+#include <cstddef>
+#include <cstdint>
+#else
 #include <stddef.h>
 #include <stdint.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {

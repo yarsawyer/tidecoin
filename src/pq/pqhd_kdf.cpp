@@ -1,12 +1,14 @@
 #include <pq/pqhd_kdf.h>
+#include <pq/pqhd_params.h>
 
 #include <crypto/common.h>
 #include <crypto/hmac_sha512.h>
 #include <crypto/sha256.h>
 
+#include <support/cleanse.h>
+
 #include <algorithm>
 #include <cstring>
-#include <vector>
 
 namespace pqhd {
 namespace {
@@ -24,13 +26,6 @@ std::array<uint8_t, 64> HmacSha512(std::span<const uint8_t> key, std::span<const
     return out;
 }
 
-std::array<uint8_t, 32> Sha256(std::span<const uint8_t> msg)
-{
-    std::array<uint8_t, 32> out{};
-    CSHA256().Write(msg.data(), msg.size()).Finalize(out.data());
-    return out;
-}
-
 std::array<uint8_t, 4> Ser32BE(uint32_t v)
 {
     std::array<uint8_t, 4> out{};
@@ -38,111 +33,131 @@ std::array<uint8_t, 4> Ser32BE(uint32_t v)
     return out;
 }
 
-KeygenStreamKey64 HKDFExpandSha512(std::span<const uint8_t, 64> prk,
-                                  std::span<const uint8_t> info,
-                                  size_t out_len)
-{
-    // RFC5869 HKDF-Expand(PRK, info, L). Here we only need L <= 64.
-    // T(0) = empty string
-    // T(1) = HMAC(PRK, T(0) || info || 0x01)
-    if (out_len > KeygenStreamKey64{}.size()) return KeygenStreamKey64{};
-
-    std::vector<uint8_t> msg;
-    msg.reserve(info.size() + 1);
-    msg.insert(msg.end(), info.begin(), info.end());
-    msg.push_back(0x01);
-
-    const auto t1 = HmacSha512(prk, msg);
-    KeygenStreamKey64 out{};
-    std::copy_n(t1.begin(), out_len, out.begin());
-    return out;
-}
-
 } // namespace
 
 SeedID32 ComputeSeedID32(std::span<const uint8_t, 32> master_seed)
 {
-    std::vector<uint8_t> msg;
-    msg.reserve(std::strlen(PQHD_SEEDID_TAG) + master_seed.size());
-    msg.insert(msg.end(), PQHD_SEEDID_TAG, PQHD_SEEDID_TAG + std::strlen(PQHD_SEEDID_TAG));
-    msg.insert(msg.end(), master_seed.begin(), master_seed.end());
-    return Sha256(msg);
+    SeedID32 out{};
+    CSHA256()
+        .Write(reinterpret_cast<const uint8_t*>(PQHD_SEEDID_TAG), std::strlen(PQHD_SEEDID_TAG))
+        .Write(master_seed.data(), master_seed.size())
+        .Finalize(out.data());
+    return out;
 }
 
 Node MakeMasterNode(std::span<const uint8_t, 32> master_seed)
 {
     const std::span<const uint8_t> key{reinterpret_cast<const uint8_t*>(PQHD_MASTER_KEY),
                                        std::strlen(PQHD_MASTER_KEY)};
-    const auto I = HmacSha512(key, master_seed);
+    auto I = HmacSha512(key, master_seed);
 
     Node out{};
     std::copy_n(I.begin(), 32, out.node_secret.begin());
     std::copy_n(I.begin() + 32, 32, out.chain_code.begin());
+    memory_cleanse(I.data(), I.size());
     return out;
 }
 
-Node DeriveChild(const Node& parent, uint32_t index_hardened)
+std::optional<Node> DeriveChild(const Node& parent, uint32_t index_hardened)
 {
     // PQHD v1 is hardened-only.
-    if ((index_hardened & 0x80000000U) == 0) return {};
+    if ((index_hardened & 0x80000000U) == 0) return std::nullopt;
 
-    std::vector<uint8_t> data;
-    data.reserve(1 + parent.node_secret.size() + 4);
-    data.push_back(0x00);
-    data.insert(data.end(), parent.node_secret.begin(), parent.node_secret.end());
+    std::array<uint8_t, 1 + 32 + 4> data{};
+    data[0] = 0x00;
+    std::copy(parent.node_secret.begin(), parent.node_secret.end(), data.begin() + 1);
     const auto ser = Ser32BE(index_hardened);
-    data.insert(data.end(), ser.begin(), ser.end());
+    std::copy(ser.begin(), ser.end(), data.begin() + 1 + parent.node_secret.size());
 
-    const auto I = HmacSha512(parent.chain_code, data);
+    auto I = HmacSha512(parent.chain_code, data);
+    memory_cleanse(data.data(), data.size());
 
     Node out{};
     std::copy_n(I.begin(), 32, out.node_secret.begin());
     std::copy_n(I.begin() + 32, 32, out.chain_code.begin());
+    memory_cleanse(I.data(), I.size());
     return out;
 }
 
-Node DerivePath(const Node& master, std::span<const uint32_t> path_hardened)
+std::optional<Node> DerivePath(const Node& master, std::span<const uint32_t> path_hardened)
 {
     Node node = master;
     for (const uint32_t i : path_hardened) {
-        node = DeriveChild(node, i);
+        auto child = DeriveChild(node, i);
+        if (!child) {
+            memory_cleanse(node.node_secret.data(), node.node_secret.size());
+            memory_cleanse(node.chain_code.data(), node.chain_code.size());
+            return std::nullopt;
+        }
+        node = *child;
+        memory_cleanse(child->node_secret.data(), child->node_secret.size());
+        memory_cleanse(child->chain_code.data(), child->chain_code.size());
     }
     return node;
 }
 
-KeygenStreamKey64 DeriveKeygenStreamKey(std::span<const uint8_t, 32> node_secret_leaf,
-                                        uint8_t scheme_id,
-                                        std::span<const uint32_t> path_hardened)
+bool ValidateV1LeafPath(std::span<const uint32_t> path_hardened)
 {
+    constexpr uint32_t HARDENED = 0x80000000U;
+    constexpr size_t V1_PATH_LEN = 6;
+
+    if (path_hardened.size() != V1_PATH_LEN) return false;
+    for (const uint32_t elem : path_hardened) {
+        if ((elem & HARDENED) == 0) return false;
+    }
+    if (path_hardened[0] != (HARDENED | pqhd::PURPOSE)) return false;
+    if (path_hardened[1] != (HARDENED | pqhd::COIN_TYPE)) return false;
+
+    const uint32_t scheme_u32 = path_hardened[2] & ~HARDENED;
+    if (scheme_u32 > 0xFFU) return false;
+    if (pq::SchemeFromId(static_cast<pq::SchemeId>(scheme_u32)) == nullptr) return false;
+    return true;
+}
+
+std::optional<LeafMaterialV1> DeriveLeafMaterialV1(std::span<const uint8_t, 32> node_secret_leaf,
+                                                   std::span<const uint32_t> path_hardened)
+{
+    if (!ValidateV1LeafPath(path_hardened)) return std::nullopt;
+    const auto scheme_id = static_cast<pq::SchemeId>(path_hardened[2] & 0x7FFFFFFFU);
+
     const std::span<const uint8_t> salt{reinterpret_cast<const uint8_t*>(PQHD_HKDF_SALT),
                                         std::strlen(PQHD_HKDF_SALT)};
-    const auto prk_full = HmacSha512(salt, node_secret_leaf);
+    auto prk_full = HmacSha512(salt, node_secret_leaf);
 
-    // info = PQHD_STREAM_INFO || ser32be(scheme_id) || concat(ser32be(path_elem_i))
-    std::vector<uint8_t> info;
-    info.reserve(std::strlen(PQHD_STREAM_INFO) + 4 + path_hardened.size() * 4);
-    info.insert(info.end(), PQHD_STREAM_INFO, PQHD_STREAM_INFO + std::strlen(PQHD_STREAM_INFO));
-    const auto ser_scheme = Ser32BE(scheme_id);
-    info.insert(info.end(), ser_scheme.begin(), ser_scheme.end());
+    const auto ser_scheme = Ser32BE(static_cast<uint32_t>(scheme_id));
+    CHMAC_SHA512 hmac(prk_full.data(), prk_full.size());
+    hmac.Write(reinterpret_cast<const uint8_t*>(PQHD_STREAM_INFO), std::strlen(PQHD_STREAM_INFO));
+    hmac.Write(ser_scheme.data(), ser_scheme.size());
     for (const uint32_t elem : path_hardened) {
         const auto ser = Ser32BE(elem);
-        info.insert(info.end(), ser.begin(), ser.end());
+        hmac.Write(ser.data(), ser.size());
     }
+    const uint8_t ctr = 0x01;
+    hmac.Write(&ctr, 1);
+    LeafMaterialV1 out{scheme_id, {}};
+    hmac.Finalize(out.stream_key.data());
+    memory_cleanse(prk_full.data(), prk_full.size());
 
-    return HKDFExpandSha512(std::span<const uint8_t, 64>(prk_full.data(), prk_full.size()), info, 64);
+    return out;
+}
+
+std::optional<KeygenStreamKey64> DeriveKeygenStreamKey(std::span<const uint8_t, 32> node_secret_leaf,
+                                                       std::span<const uint32_t> path_hardened)
+{
+    auto material = DeriveLeafMaterialV1(node_secret_leaf, path_hardened);
+    if (!material) return std::nullopt;
+    return std::move(material->stream_key);
 }
 
 KeygenStreamBlock64 DeriveKeygenStreamBlock(std::span<const uint8_t, 64> stream_key, uint32_t ctr)
 {
-    std::vector<uint8_t> msg;
-    msg.reserve(std::strlen(PQHD_RNG_PREFIX) + 4);
-    msg.insert(msg.end(), PQHD_RNG_PREFIX, PQHD_RNG_PREFIX + std::strlen(PQHD_RNG_PREFIX));
     const auto ser = Ser32BE(ctr);
-    msg.insert(msg.end(), ser.begin(), ser.end());
 
-    const auto block = HmacSha512(stream_key, msg);
     KeygenStreamBlock64 out{};
-    std::copy(block.begin(), block.end(), out.begin());
+    CHMAC_SHA512(stream_key.data(), stream_key.size())
+        .Write(reinterpret_cast<const uint8_t*>(PQHD_RNG_PREFIX), std::strlen(PQHD_RNG_PREFIX))
+        .Write(ser.data(), ser.size())
+        .Finalize(out.data());
     return out;
 }
 
