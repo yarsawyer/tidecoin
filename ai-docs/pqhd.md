@@ -43,8 +43,9 @@ and “new spec” pieces.
 
 ### Not implemented yet (big gaps)
 - PQHD seed storage (encrypted) + derivation logic (NodeSecret/ChainCode).
-- Deterministic scoped RNG stream for PQClean keygen (a thread/scope local
-  `randombytes()` backend).
+- Deterministic key generation contract:
+  - versioned per-scheme `KeyGenFromSeed` wrappers (see §7.5) so wallet restore
+    is stable across Tidecoin/PQClean upgrades.
 - Descriptor language support for `pqhd(...)` key expressions.
 - Per-scheme keypool refill and change/external tracking driven by PQHD.
 - PSBT proprietary field integration for PQHD origin metadata.
@@ -56,9 +57,8 @@ and “new spec” pieces.
     - See `src/pubkey.h`.
   - Many existing subsystems assume a fixed `CPubKey::SIZE` (descriptors, PSBT
     partial sig key parsing, etc.). Supporting multiple PQ schemes in-wallet
-    requires either refactoring `CPubKey` to be scheme-aware/variable-length,
-    or introducing a new byte-oriented PQ pubkey type and updating all call
-    sites to use it.
+    requires refactoring `CPubKey` to be scheme-aware/variable-length.
+    Decision: **refactor `CPubKey`** (see §16.2).
   - `CPubKey` still exposes legacy BIP32-oriented APIs (e.g. `Derive(...)` in
     `src/pubkey.h`). PQHD will not use these; PQHD derivation state lives in
     wallet-managed seed material, not in CPubKey objects.
@@ -234,20 +234,26 @@ Decision:
   - Falcon-512: `scheme' = 7'`
   - ML-DSA-65: `scheme' = 10'`
 
-### 6.2 Purpose constant (still to finalize)
+### 6.2 Purpose constant (decision)
 The purpose field is a namespace selector (BIP43 concept).
 
-Recommendation:
-- choose a Tidecoin-specific purpose in SLIP/BIP43 reserved range 10001–19999
-  (avoid implying BIP44 semantics).
+Decision:
+- `purpose' = 10007'`
 
-Candidate:
-- 10007' (mnemonic tie to Falcon-512 prefix 0x07)
+Rationale:
+- Tidecoin PQHD is not BIP44 (extra `scheme'` component, hardened-only
+  everywhere), so using `44'` would be misleading.
+- 10007 is in the SLIP/BIP43 reserved range 10001–19999 and is mnemonic with
+  the historical Falcon-512 prefix `0x07`.
 
-### 6.3 coin_type' (still to finalize)
-Must be defined for wallet discovery. Options:
-- register in SLIP-0044 (preferred long-term)
-- define a Tidecoin-internal constant (short-term)
+### 6.3 coin_type' (decision)
+Decision:
+- `coin_type' = 6868'`
+
+Notes:
+- This is a Tidecoin-internal constant for now (not yet registered in SLIP-0044).
+- This value must be treated as stable once shipped, because changing it breaks
+  wallet restore/discovery (it changes the derivation subtree).
 
 ---
 
@@ -284,13 +290,13 @@ Given parent `(NodeSecret_par, ChainCode_par)` and hardened index `i_h`:
 Notes:
 - Unlike BIP32, there is no “invalid scalar” edge case.
 
-### 7.4 Leaf → deterministic randomness stream for PQClean keygen
-Given `NodeSecret_leaf`:
+### 7.4 Leaf → deterministic keygen material (PQHD v1)
+Given `NodeSecret_leaf` and the full hardened path (including `scheme_id`):
 
 1) HKDF-Extract (HMAC-SHA512):
 - `PRK = HMAC-SHA512(key=PQHD_HKDF_SALT, msg=NodeSecret_leaf)`
 
-2) HKDF-Expand to 64-byte stream key:
+2) HKDF-Expand to a 64-byte keygen stream key:
 - `info = PQHD_STREAM_INFO || ser32be(scheme_id) || concat(ser32be(path_elem_i))`
 - `stream_key = HKDF-Expand(PRK, info, L=64)`
 
@@ -300,12 +306,45 @@ For counter `ctr = 0,1,2,...`:
 
 Stream is concatenation of blocks.
 
-### 7.5 Deterministic keypair generation rule
-- Determine `scheme_id` from path `scheme'` element.
-- Instantiate deterministic stream from §7.4.
-- Override PQClean `randombytes(out, n)` so it consumes from the stream.
-- Call scheme’s PQClean keypair.
-- Construct TidePubKey = prefix byte || pk bytes.
+Notes:
+- This stream is **internal PQHD v1 key material**. It is *not* a contract that
+  “PQClean will call `randombytes()` the same way forever”. The determinism
+  contract is defined in §7.5.
+
+### 7.5 KeyGenFromSeed (per-scheme, versioned) — determinism contract
+Decision: **Option B** (selected).
+
+We do **not** define PQHD v1 as “override `randombytes()` and call PQClean
+keypair”, because PQClean is free to change how many bytes it consumes (or when),
+which would silently change derived keys and break wallet restore.
+
+Instead, PQHD v1 defines a versioned, stable API surface implemented by Tidecoin:
+
+- `KeyGenFromSeed(pqhd_version, scheme_id, key_material) -> (sk, pk)`
+
+Where:
+- `pqhd_version` is stored with the seed record (`CPQHDSeedRecord::pqhd_version`,
+  see §12.5.1) and is part of the wallet restore contract.
+- `scheme_id` is the 1-byte SchemeId/prefix (Falcon-512=7, etc.).
+- `key_material` is derived from §7.4 for the leaf path (stream bytes and/or
+  derived fixed-length seeds; the exact interpretation is defined by the
+  scheme+version wrapper).
+
+PQHD v1 requirements:
+- For a given `(SeedID32/master_seed, scheme_id, path)`, the produced `(sk, pk)`
+  must be identical across Tidecoin versions and across builds/platforms.
+- Any change to a scheme’s `KeyGenFromSeed` behavior must bump `pqhd_version`,
+  and new seeds/descriptors must opt into the new version explicitly. Existing
+  seeds continue to use their original version indefinitely.
+
+Implementation guidance (non-normative, but strongly preferred):
+- Prefer deterministic “seed/coins” keypair entrypoints (e.g. `*_keypair_derand`
+  style APIs) or Tidecoin-owned keygen wrappers that do not depend on PQClean’s
+  internal randomness consumption pattern.
+- Avoid a global `randombytes()` override. If any scoped override is used for
+  a legacy scheme wrapper, it must be strictly limited (thread-local + RAII) and
+  treated as part of the versioned `KeyGenFromSeed` implementation (i.e., pinned
+  behavior for PQHD v1).
 
 Implementation constraint:
 - The deterministic RNG override must be **scoped** (RAII/thread-local) so no
@@ -370,7 +409,7 @@ unchanged.
   descriptor must carry the full SeedID32.
 - Make canonical printing deterministic so descriptor checksums are stable.
 
-### 9.1 Explicit pubkeys: use hex TidePubKey (no new wrapper)
+### 9.1 Explicit pubkeys: use hex TidePubKey (canonical)
 Descriptor KEY expressions already support raw hex public keys:
 - `wpkh(<hex_pubkey>)`
 - `wsh(sortedmulti(2,<hex_pubkey_1>,<hex_pubkey_2>,...))`
@@ -381,6 +420,11 @@ For Tidecoin, the canonical explicit key representation is:
 
 This matches current descriptor implementation behavior:
 `ConstPubkeyProvider::ToString()` prints pubkeys as raw hex.
+
+Optional (later): add a readability wrapper `pkpq(<hex_tide_pubkey>)`.
+- This would be syntactic sugar only (parser expands to the raw hex key form).
+- Canonical printing should remain the raw hex form so descriptor checksums stay
+  stable and we minimize descriptor-system churn.
 
 ### 9.2 PQHD key expression: `pqhd(<SeedID32>)`
 
@@ -394,14 +438,27 @@ Where:
   with PQHD-specific restrictions below.
 
 #### 9.2.1 Path restrictions (PQHD v1)
-- Hardened-only: every component must be hardened (`h` or `'`).
-- If the key expression is ranged, the terminal wildcard must be `/*h` (or `/*'`).
-- Multipath expressions (`{a,b}`) are not supported for PQHD v1.
-- `m` prefix is not used inside the descriptor key expression.
+This section is intentionally strict. PQHD descriptors must be deterministic,
+easy to canonicalize, and must not accidentally imply “public derivation” (there
+is no xpub).
+
+Allowed path element forms (informal grammar):
+- Hardened index: `<n>h` or `<n>'` where `0 <= n < 2^31`
+- Terminal ranged wildcard (only as the final path element): `*h` or `*'`
+
+Hard rules:
+- Hardened-only: every numeric component must be hardened (`h` or `'`).
+- If wildcard is present, it must be the terminal path element and must be
+  hardened (`/*h` or `/*'`).
+- Exactly one wildcard maximum (or none).
+- Multipath expressions are not supported (no `{a,b}` anywhere inside PQHD v1).
+- No `m` prefix inside the key expression (use only slash-separated indices).
+- No “range endpoints” syntax (e.g. `/<0;100>h`) for PQHD v1.
+- Reject negative numbers and reject values `>= 2^31` before hardening.
 
 Canonical keypool templates (receive/change):
-- Receive: `wpkh(pqhd(<SeedID32>)/<purpose>h/<coin>h/<scheme>h/<account>h/0h/*h)`
-- Change:  `wpkh(pqhd(<SeedID32>)/<purpose>h/<coin>h/<scheme>h/<account>h/1h/*h)`
+- Receive: `wpkh(pqhd(<SeedID32>)/10007h/6868h/<scheme>h/<account>h/0h/*h)`
+- Change:  `wpkh(pqhd(<SeedID32>)/10007h/6868h/<scheme>h/<account>h/1h/*h)`
 
 Scheme rules:
 - The `scheme` path component value must equal the 1-byte SchemeId/prefix.
@@ -409,11 +466,33 @@ Scheme rules:
 - Derived pubkeys must serialize with the same SchemeId prefix.
 
 Solvability:
-- `pqhd(...)` is solvable only when the wallet contains the referenced seed
-  material (stored encrypted separately). The descriptor never contains the
-  master seed itself.
+- `pqhd(...)` can only be expanded when the wallet has access to the referenced
+  seed record. The descriptor never contains the `master_seed` itself.
 
-#### 9.2.2 Canonical printing rules
+#### 9.2.2 Seed availability and wallet behavior
+
+`pqhd()` is a **wallet-private key source**: unlike xpub descriptors (which can
+derive pubkeys from public data embedded in the descriptor), `pqhd()` requires
+wallet-local seed material.
+
+Wallet usability rules:
+- If the wallet does **not** have the referenced `SeedID32`:
+  - the descriptor can be parsed as a string, but it is **not usable** by the
+    wallet (cannot be expanded into scriptPubKeys, cannot be made active, cannot
+    top up keypools).
+  - `importdescriptors` must reject such descriptors unless the seed is imported
+    first. PQHD v1 does not support “seedless pqhd watch-only”.
+- If the wallet has the seed record but is **encrypted and locked**:
+  - the wallet can still watch and use already-derived scriptPubKeys that are
+    already persisted in the descriptor/keypool state,
+  - but cannot derive new pubkeys or top up PQHD keypools (derivation requires
+    decrypting `master_seed`),
+  - and cannot sign while locked (see §12.5.2A).
+- If the wallet is **unlocked**:
+  - PQHD derivation and keypool top-up are permitted (subject to scheme policy),
+  - signing requires unlocked state, same as any encrypted private key material.
+
+#### 9.2.3 Canonical printing rules
 To keep descriptor strings stable:
 - Always print hardened components using `h` (not `'`).
 - Always print `<seedid32_hex>` as lowercase hex.
@@ -507,9 +586,10 @@ Important repo constraint:
 - Current PSBT code still uses `CPubKey` as the “pubkey-sized key” for several
   standard fields (e.g., `PSBT_IN_PARTIAL_SIG` parsing checks
   `key.size() == CPubKey::SIZE + 1` in `src/psbt.h`).
-- Because `CPubKey` is currently Falcon-512-only, full multi-scheme PSBT support
-  will require updating these assumptions (even if PQHD metadata is carried via
-  proprietary fields).
+- With the decision to refactor `CPubKey` to be variable-length and scheme-aware,
+  we must update these fixed-size checks to accept variable-length TidePubKeys
+  (while still enforcing internal PSBT invariants like “keydata contains exactly
+  one serialized pubkey”).
 
 ### 10.2 Tidecoin proprietary PSBT fields (registry)
 
@@ -545,8 +625,18 @@ Consistency rules:
 We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
 
 - `walletprocesspsbt` (when `bip32derivs=true`):
-  - Add `tidecoin/PQHD_ORIGIN` proprietary records for all PQHD-derived keys
-    involved in the PSBT (inputs and relevant outputs).
+  - Add `tidecoin/PQHD_ORIGIN` proprietary records for all PQHD-derived keys the
+    wallet can attribute to a `SeedID32` + hardened path.
+  - Write scope (frozen policy for PQHD v1):
+    - Inputs: write for every input pubkey that the wallet can sign for (and/or
+      that appears in satisfactions/scripts the wallet is expected to satisfy).
+    - Outputs:
+      - Always write for wallet-owned outputs (at minimum: change outputs).
+      - Additionally write for any output the wallet recognizes as “ours” and
+        whose script contains PQHD-derived pubkeys (e.g. multisig outputs where
+        the wallet controls one or more participant keys).
+      - Never write for recipient outputs that are not wallet-owned (avoid
+        leaking internal origin structure; not useful to the recipient).
   - Do not add `bip32_derivs` for PQHD.
 
 - `decodepsbt`:
@@ -639,14 +729,13 @@ Implication:
 
 ### 12.2 Migration approach (target)
 - Import old keys as explicit entries (no derivation).
-- Create one PQHD seed for new deterministic keypool usage.
+- Create at least one PQHD seed for new deterministic keypool usage.
 - Generate new receive/change descriptors driven by PQHD.
 - Optionally sweep funds into PQHD-derived outputs for cleanliness.
 
 Note:
 - multi-scheme support does not require multiple seeds; scheme separation is a
-  path component and domain separation input. Multiple seeds remain possible
-  for compartmentalization or multiple signers.
+  path component and domain separation input.
 
 ### 12.3 Scheme selection policy (wallet vs `pq::ActiveScheme`)
 
@@ -718,7 +807,416 @@ Scheme selection policy must align with network policy and hardfork activation:
   types), the wallet may update its defaults, but must still be able to spend
   older-scheme UTXOs.
 
+#### 12.3.5 Concrete rule (decided): only Falcon-512 before auxpow
+
+Decision:
+- Before auxpow activation (`height < nAuxpowStartHeight`), the wallet MUST only
+  generate new outputs (receive/change keypool items) using **Falcon-512**
+  (`SchemeId = 0x07`).
+- Other schemes (Falcon-1024, ML-DSA-44/65/87) are **disabled for new output
+  generation** until auxpow activation.
+
+Rationale:
+- Prevents the wallet from creating outputs that may be non-standard, non-relay,
+  or otherwise unusable before the hardfork boundary that we already plan to use
+  for “big” consensus/policy changes (auxpow + PQ-native output type).
+- Keeps pre-auxpow wallet behavior fully compatible with existing Tidecoin chain
+  history (Falcon-512-only).
+
+Enforcement requirements:
+- Any RPC/Qt per-call override (e.g. `getnewaddress scheme=...`, `change_scheme`,
+  or coin control options) MUST be rejected (or ignored with a clear error) when
+  it would select a non-Falcon-512 scheme and the intended inclusion height is
+  `< nAuxpowStartHeight`.
+- The same gating applies to background keypool refill/top-up.
+- After auxpow activation (`height >= nAuxpowStartHeight`), additional schemes
+  may be enabled for generation (subject to any further policy/consensus gating,
+  and likely coupled with switching the default output type to the planned
+  PQ-native commitment).
+
+Network notes:
+- `nAuxpowStartHeight` is per-network (main/test/regtest) via chainparams.
+- For regtest, it is reasonable to set `nAuxpowStartHeight = 0` to make all
+  schemes immediately testable, while still exercising the same gating logic.
+
+#### 12.3.6 RPC/Qt surface (frozen) — scheme policy + overrides
+
+This section freezes the user-facing naming, UX, and precedence rules. These
+controls determine which per-scheme descriptors/keypools are considered “active”.
+
+Terminology:
+- “Receive scheme” controls `getnewaddress` (external keypool / receive descriptors).
+- “Change scheme” controls automatically-generated change outputs (internal keypool).
+
+**Persistent wallet policy (stored in wallet DB)**
+- `default_receive_scheme_id` (required, `uint8` SchemeId)
+  - default for generating new receive addresses.
+- `default_change_scheme_id` (optional, `uint8` SchemeId)
+  - if unset, change falls back to `default_receive_scheme_id`.
+
+Defaults:
+- New wallets default to:
+  - `default_receive_scheme_id = 0x07` (Falcon-512)
+  - `default_change_scheme_id = unset` (“same as receive”)
+- Before auxpow (`height < nAuxpowStartHeight`), any persisted defaults MUST
+  resolve to Falcon-512 (§12.3.5).
+
+**Introspection RPC**
+- `getwalletinfo` (extended) should report:
+  - `receive_scheme` (string + numeric SchemeId)
+  - `change_scheme` (string + numeric SchemeId; or `"same_as_receive"`)
+  - `auxpow_start_height` (for clarity; from chainparams)
+  - (optional) `seed_for_scheme` mapping (SchemeId -> SeedID32) + `default_seedid32`
+    to make multi-root policy auditable.
+
+**Wallet policy mutation RPC**
+- New RPC (name frozen): `setwalletscheme`
+  - Named arguments:
+    - `receive_scheme` (required): string scheme name or numeric SchemeId
+    - `change_scheme` (optional): string SchemeId, numeric SchemeId, or `"same"`
+  - Behavior:
+    - Updates wallet defaults persistently (DB write).
+    - Validates auxpow gating:
+      - if chain tip (or `target_height`, if provided) is `< nAuxpowStartHeight`,
+        only `0x07` is accepted.
+    - Does not change per-scheme seed policy (that is separate; see §12.4.1).
+
+Scheme encoding in RPC:
+- Accept both:
+  - numeric SchemeId (e.g. `7`), and
+  - canonical names: `falcon512`, `falcon1024`, `mldsa44`, `mldsa65`, `mldsa87`.
+- RPC responses should always include both name + numeric id for clarity.
+
+**Per-call overrides (non-persistent)**
+
+Goal: match Bitcoin’s pattern where wallet defaults exist, but transaction
+creation calls can override behavior without changing wallet policy.
+
+- `getnewaddress`:
+  - Add optional named argument `scheme=<...>` (same encoding rules as above).
+  - If provided, it selects which receive descriptor/keypool is used for this call.
+  - Gating: must obey §12.3.5 and must return a clear error if disallowed.
+
+- Transaction creation flows (`send`, `walletcreatefundedpsbt`, and any other
+  wallet-driven funding RPCs):
+  - Add two optional fields to the options object:
+    - `scheme` (receive/default scheme override, if a new change output is needed)
+    - `change_scheme` (explicit change override)
+  - Precedence (frozen):
+    1) explicit `change_address` (scheme implied by destination/script)
+    2) `change_scheme` override (if present)
+    3) wallet `default_change_scheme_id` (if set)
+    4) `scheme` override (if present)
+    5) wallet `default_receive_scheme_id`
+  - Gating:
+    - any scheme selection resulting in non-Falcon-512 before auxpow must error.
+
+**Qt UX**
+- Wallet settings:
+  - “Default signature scheme (receive)” dropdown (Falcon-512, Falcon-1024, ML-DSA-44/65/87).
+  - “Default signature scheme (change)” dropdown with:
+    - “Same as receive” (default)
+    - the same scheme options.
+- When auxpow is not active:
+  - non-Falcon scheme choices are disabled/hidden, or selectable but show an
+    immediate error explaining “available after auxpow activation height”.
+
+**Keypool/descriptor implications**
+- The wallet must maintain per-scheme (and per external/internal) keypool state.
+- Changing the default scheme does not invalidate existing keys:
+  - it only changes which descriptor/keypool is used for new allocations.
+- When a scheme becomes newly “active” (policy changed or auxpow activated),
+  the wallet should top up the corresponding keypool when unlocked; if locked,
+  it should defer and surface “keypool ran out / unlock to refill” semantics
+  consistent with Bitcoin (§9.2.2, §12.5.1).
+
 ---
+
+### 12.4 Multiple PQHD seeds (multiple roots) — decided
+
+Decision:
+- A single wallet can contain **multiple PQHD roots** (multiple `SeedID32`
+  entries), similar to how Bitcoin wallets can contain multiple independent
+  roots/keys.
+
+Rationale (practical + codebase alignment):
+- Descriptor wallets already support importing multiple independent private key
+  sources (for Bitcoin: multiple xprv descriptors; see
+  `src/wallet/test/psbt_wallet_tests.cpp`).
+- Wallet code already has infrastructure for tracking multiple HD chains
+  (active + inactive) even in the classic BIP32 world:
+  - `m_hd_chain` and `m_inactive_hd_chains` in `src/wallet/scriptpubkeyman.h`
+  - loading/migration paths in `src/wallet/walletdb.cpp` and
+    `src/wallet/scriptpubkeyman.cpp`
+- PQHD has no xpub/public-derivation token; therefore the *only* robust way to
+  disambiguate roots in descriptors/PSBT is to carry a full root identifier.
+  Supporting multiple roots is safe as long as every derived key is tagged with
+  its `SeedID32`.
+
+Implications:
+- Every PQHD-derived key must be attributable to exactly one `SeedID32` (stored
+  in key metadata and used for PSBT origin export).
+- The wallet needs a policy for which root seed is used for new key generation:
+  - minimum: one `default_seedid32` per wallet
+  - optional: per-scheme defaults (e.g. Falcon keys from seed A, ML-DSA from seed B)
+- Spending/signing does not require “default seed” selection: the wallet chooses
+  the correct secret by looking up the specific key referenced by the script.
+
+Non-goal:
+- We do not attempt to replicate xpub-style “public-only discovery” across roots.
+  Watch-only remains explicit-only or bounded export (§11).
+
+#### 12.4.1 PQHD seed lifecycle rules — frozen
+
+This subsection freezes the required behavior for PQHD seed creation/import/
+export and “default seed” selection. These rules must be stable because they
+affect restore/migration UX and wallet DB policy semantics.
+
+**Seed identity**
+- Seeds are uniquely identified by full `SeedID32` only (§8.3). No short aliases
+  (4/8 byte fingerprints) are used anywhere, including UI.
+
+**Seed states**
+- Each PQHD seed record has an explicit lifecycle state:
+  - `ENABLED`: eligible for new receive/change keypool usage.
+  - `DISABLED`: not eligible for new keypool usage, but retained for spending
+    existing UTXOs (signing) and for scanning/metadata.
+- A “deleted” state is **not supported** for PQHD v1 (see deletion policy below).
+
+**Seed creation**
+- When creating a new wallet with private keys enabled:
+  - Create exactly one PQHD seed by default.
+  - Set it as the wallet’s `default_seedid32`.
+  - Seed creation uses strong OS randomness (`GetStrongRandBytes(32)`).
+- If the wallet already has PQHD seeds, creating another seed is a distinct
+  action (“add seed”), not automatic.
+
+**Seed import**
+- A PQHD seed import provides `master_seed` (32 bytes) and optional label.
+- Compute `SeedID32` and deduplicate by `SeedID32`:
+  - If the `SeedID32` already exists, the import is a no-op (idempotent).
+- Imported seeds default to `DISABLED` unless the caller explicitly enables
+  them or sets them as default (to avoid accidental “silent re-rooting”).
+- For encrypted wallets:
+  - import requires the wallet to be unlocked (so the seed can be encrypted
+    under the wallet master key).
+
+**Seed export**
+- Seed export returns `master_seed` (32 bytes) and metadata (`SeedID32`, label,
+  created_time).
+- For encrypted wallets:
+  - export requires the wallet to be unlocked (seed must be decrypted).
+- Security property (explicit):
+  - exporting a PQHD seed is equivalent to exporting *all* keys under that root.
+
+**Default seed selection (global + per-scheme)**
+- Wallet policy stores:
+  - a global `default_seedid32`, and
+  - optional per-scheme default seed overrides.
+- When generating a new receive address (or reserving from receive keypool):
+  1) determine `scheme_id` (wallet default or RPC override, §12.3.1),
+  2) select `seed_id`:
+     - if `policy.seedid32_for_scheme[scheme_id]` exists, use it,
+     - else use `policy.default_seedid32`,
+  3) require the selected seed to be `ENABLED`; otherwise fail with an explicit
+     error and require the user to select/enable a different seed.
+- When generating change outputs:
+  - determine `change_scheme_id` (§12.3.2), then apply the same `seedid32_for_scheme`
+    lookup and `ENABLED` requirement for that scheme.
+
+**Seed disabling**
+- Disabling a seed:
+  - prevents using it for new receive/change keypool derivation and for future
+    address allocation,
+  - does **not** remove the wallet’s ability to spend existing UTXOs that are
+    already attributed to that seed (the wallet still derives the needed key at
+    signing time once unlocked).
+- Disabling the current `default_seedid32` is allowed only if done atomically
+  with selecting a new enabled default seed (to keep policy consistent).
+
+**Seed deletion policy (v1)**
+- PQHD v1 does not support deleting seed records.
+- Rationale:
+  - Deleting a seed can make existing funds permanently unspendable if the seed
+    is the only source of truth for the derived private keys.
+  - “Rotation” is achieved by creating a new seed and disabling the old seed for
+    new keypool usage (but retaining it for signing historical funds).
+- Optional future work (explicitly out of v1 scope):
+  - allow deletion only after a “sweep to a different seed” workflow and after
+    verifying there are no remaining wallet descriptors/UTXOs tied to that seed.
+
+---
+
+### 12.5 Wallet DB schema/versioning (PQHD — frozen for implementation)
+
+This section “freezes” the on-disk wallet state we need to store to implement
+PQHD deterministically and safely. The goal is:
+- restorability: a wallet can be restored from seed(s) + descriptor state
+- determinism: a given `SeedID32` + path yields stable keys (under PQHD v1)
+- no ambiguity: **all references use full `SeedID32`**
+- parity with Bitcoin UX: keypool behavior, change handling, multi-root support
+
+#### 12.5.1 Wallet feature flags / minimum version
+
+Add a wallet feature flag (and corresponding min-version bump) to mark that the
+wallet contains PQHD state, so older binaries fail cleanly:
+- `WALLET_FLAG_PQHD` (name TBD)
+
+Rationale:
+- PQHD introduces new DB record types and new descriptor key expressions.
+- A wallet without PQHD support must not “partially load” and then corrupt state.
+
+#### 12.5.2 New DB record types (keys + values)
+
+We store *PQHD seeds* separately from descriptors, and then reference seeds from
+descriptors by `SeedID32` (as already specified in §8.3 and §9.2).
+
+All DB keys below follow existing patterns in `src/wallet/walletdb.h`:
+`(DBKeys::<TYPE>, <key-data...>) -> <value>`.
+
+**A) PQHD seed records**
+
+Key:
+- `(DBKeys::PQHDSEED, <SeedID32>)`
+  - `<SeedID32>`: 32 bytes, stored as raw bytes (not hex string)
+
+Value: `CPQHDSeedRecord` (new struct; versioned)
+- `uint32_t record_version` (start at 1)
+- `uint16_t pqhd_version` (start at 1; bumps when PQHD derivation/keygen rules change)
+- `uint64_t created_time` (unix seconds)
+- `std::string label` (user-facing label; optional but recommended)
+- `uint8_t state` (`ENABLED` or `DISABLED`, §12.4.1)
+- `std::vector<uint8_t> seed_material`
+  - If wallet is unencrypted: `seed_material = master_seed` (32 bytes)
+  - If wallet is encrypted: `seed_material = Encrypt(master_seed)` (opaque bytes)
+
+Encryption/locking semantics (frozen):
+- **Store `master_seed` only**. Do not persist derived `NodeSecret`/`ChainCode`;
+  they are deterministically derived from `master_seed` + constants (§7.3–§7.4).
+- For encrypted wallets, encryption uses the wallet’s existing master-key
+  mechanism (same as `CRYPTED_KEY` / `WALLETDESCRIPTORCKEY`), so locking/unlocking
+  behavior matches current wallet expectations:
+  - When the wallet is locked, `master_seed` cannot be decrypted, so:
+    - new PQHD key derivation (keypool top-up) is not possible
+    - seed export is not possible
+    - **signing is not possible** for any wallet-managed private keys, because
+      encrypted private key material cannot be decrypted while locked
+      (see `src/wallet/rpc/util.cpp:87` and `src/wallet/scriptpubkeyman.cpp:941`).
+    - the wallet can still perform watch-only operations and construct unsigned
+      transactions/PSBTs, but any RPC/action that requires signing must either:
+      - unlock the wallet (`walletpassphrase`), or
+      - use an external signer (if configured).
+  - When the wallet is unlocked, seed decryption is permitted. PQHD should
+    **decrypt on demand** (e.g. during keypool top-up) and wipe temporary
+    plaintext buffers after use, rather than keeping `master_seed` resident in
+    memory indefinitely.
+- Encryption primitive should reuse the wallet’s existing `EncryptSecret` /
+  `DecryptSecret` helpers, with a deterministic IV derived from the seed id:
+  - `iv = uint256(SeedID32)` (32 bytes interpreted as `uint256`)
+  This mirrors how Bitcoin uses deterministic IVs for key encryption while the
+  actual security comes from the master key.
+
+Notes:
+- We store the **master_seed** (not the derived NodeSecret/ChainCode) because
+  it is the canonical root secret per §7.3, and because it allows us to define
+  PQHD v2/v3 rules without inventing an “inverse derivation”.
+- When the wallet is encrypted, PQHD seed records must be locked/unlocked
+  together with existing wallet key material.
+
+DBKeys naming:
+- Add `DBKeys::PQHDSEED` (string constant) alongside existing key types.
+
+De-dup semantics:
+- Seed import is keyed by `SeedID32`; importing the same seed twice must be a
+  no-op (same `SeedID32` record), and attempting to insert a seed with an
+  existing `SeedID32` but different content must be treated as corruption.
+
+**B) PQHD wallet policy record (defaults)**
+
+Key:
+- `(DBKeys::PQHDPOLICY)`
+
+Value: `CPQHDPolicy` (new struct; versioned)
+- `uint32_t record_version` (start at 1)
+- `SeedID32 default_seedid32` (32 bytes)
+- `uint8_t default_scheme_id` (for new receive addresses, §12.3.1)
+- `std::optional<uint8_t> default_change_scheme_id` (or use “default scheme” fallback, §12.3.2)
+- Optional future extension: per-scheme default seed overrides:
+  - `map<uint8_t scheme_id, SeedID32> seedid32_for_scheme` (so schemes can be partitioned across roots)
+
+Notes:
+- This is the persistent representation of what today is “kind of” implied by
+  `pq::ActiveScheme()`. PQHD requires it to be explicit and wallet-local.
+- This record is small and can also be redundantly mirrored in `DBKeys::SETTINGS`
+  if we prefer, but we should pick exactly one canonical location to avoid drift.
+
+DBKeys naming:
+- Add `DBKeys::PQHDPOLICY`.
+
+**C) PQHD-derived private key storage for descriptor keypools**
+
+Descriptors already store derived keys in the wallet DB via:
+- `DBKeys::WALLETDESCRIPTORKEY` / `DBKeys::WALLETDESCRIPTORCKEY`
+  keyed by `(desc_id, CPubKey)`
+
+Decision:
+- We will **refactor `CPubKey`** to be scheme-aware and variable-length, so
+  `DBKeys::WALLETDESCRIPTORKEY` / `DBKeys::WALLETDESCRIPTORCKEY` continue to be
+  usable for Falcon-1024 and ML-DSA keys.
+
+Implications:
+- `CPubKey` must be able to hold and serialize the canonical TidePubKey byte
+  representation (`<SchemeId-prefix byte> || <scheme_pubkey_bytes>`, §2.1).
+- Wallet DB descriptor-key storage remains “Bitcoin-shaped” (no parallel PQ key
+  tables required), and keypool counters remain `WalletDescriptor.next_index`
+  and `WalletDescriptor.range_end` (§12.5.3).
+
+#### 12.5.3 Keypool counters (how they persist)
+
+PQHD keypool counters are persisted through existing descriptor wallet fields:
+- `WalletDescriptor.next_index` (next index to hand out)
+- `WalletDescriptor.range_end` (how far the keypool has been topped up)
+
+These fields are stored as part of the `DBKeys::WALLETDESCRIPTOR` record in
+`WalletDescriptor` serialization (`src/wallet/walletutil.h`).
+
+PQHD implication:
+- We will have *multiple* `WalletDescriptor` entries (and corresponding
+  ScriptPubKeyMan instances) to represent:
+  - receive vs change (`change=0` vs `change=1`)
+  - per-scheme pools (Falcon-512, ML-DSA-65, …)
+  - optionally per-root pools (if per-scheme default seeds are used)
+
+The currently-active receive/change ScriptPubKeyMan IDs remain a single pair
+(`DBKeys::ACTIVEEXTERNALSPK` / `DBKeys::ACTIVEINTERNALSPK`), and are selected
+according to wallet policy defaults (§12.3, §12.5.2B). Other scheme pools are
+present but inactive until selected.
+
+#### 12.5.4 Key metadata (seed + path) — frozen representation
+
+We will need per-key metadata that records PQHD origin (seed + hardened path).
+The current `CKeyMetadata` has BIP32-specific fields:
+- `hd_seed_id` (20-byte hash160)
+- `KeyOriginInfo` (4-byte fingerprint + path)
+
+For PQHD v1, we standardize on:
+- `SeedID32` (32 bytes) + full hardened path (vector<u32>)
+- no short fingerprint handles
+
+This requires either:
+- extending `CKeyMetadata` with PQHD-only fields (preferred), or
+- introducing a parallel `CPQKeyMetadata` record keyed by TidePubKey bytes.
+
+Frozen requirement (independent of the chosen code shape):
+- Every stored PQ private key must have metadata that includes:
+  - `SeedID32` (32 bytes)
+  - hardened path (purpose/coin_type/scheme/account/change/index)
+  - scheme id (redundant but useful for sanity checks)
+
+This metadata is what drives:
+- PSBT origin export (`tidecoin/PQHD_ORIGIN`)
+- wallet GUI labels (“seed X, account Y, change, index Z”)
+- migration/restore correctness
 
 ## 13. Consensus/Policy Hooks (Interplay)
 
@@ -739,9 +1237,9 @@ PQHD should align with consensus/policy activation:
 
 If PQHD v1 is adopted, we must ship:
 - derivation test vectors (master → path → NodeSecret/ChainCode)
-- RNG stream test vectors (first N bytes for given leaf)
-- per-scheme keygen reproducibility tests inside our own build (because it
-  depends on the deterministic `randombytes()` override behavior)
+- keygen material test vectors (first N bytes / derived seeds for given leaf)
+- per-scheme `KeyGenFromSeed` reproducibility tests (same seed+path must yield
+  identical pk/sk across versions/builds/platforms)
 
 Any “example vectors” from drafts must be treated as non-authoritative until
 validated by an implementation + tests.
@@ -755,17 +1253,24 @@ validated by an implementation + tests.
 - scheme index in PQHD path equals SchemeId/prefix.
 - Hardened-only derivation, no xpub.
 - PQHD deterministic RNG must be stream-based (not “fixed N bytes”).
+- Key generation determinism uses Tidecoin-owned, versioned `KeyGenFromSeed`
+  wrappers per scheme; `pqhd_version` in the seed record pins behavior (§7.5).
 - Seed references use full SeedID32 only (no short handles).
+- Refactor `CPubKey` to be scheme-aware and variable-length (store TidePubKey bytes; remove fixed-size assumptions).
 - Descriptors: explicit TidePubKey keys are raw hex; PQHD uses `pqhd(<SeedID32>)/...` and canonical printing uses `h`.
 - PSBT: keep BIP174 PSBT framing; store PQHD origin in `tidecoin` proprietary keys (`subtype=1`).
 - Scheme selection for new keys is wallet policy (default receive scheme + change scheme), not `pq::ActiveScheme()`.
+- Scheme activation gating: only Falcon-512 outputs before auxpow activation; other
+  schemes enabled for output generation only at/after `nAuxpowStartHeight` (§12.3.5).
 - Watch-only is explicit-only or bounded export.
 - PQ-native output type planned at auxpow hardfork boundary.
+- PQHD path constants: `purpose' = 10007'`, `coin_type' = 6868'`.
+- Wallet supports multiple PQHD seeds (multiple `SeedID32` roots) (§12.4).
 
 ### Still to finalize
-- purpose' constant for PQHD subtree.
-- coin_type' constant.
-- Concrete RPC/Qt surface for scheme policy overrides (names + UX).
+- Concrete RPC/Qt surface implementing §12.4.1 (seed lifecycle):
+  RPC/Qt names, parameters, and UX for create/import/export, enable/disable, and
+  default seed + per-scheme seed selection.
 - (Optional) whether `PQHD_ORIGIN` is also written for outputs that are not
   change/receive but still contain PQHD-derived pubkeys (e.g., multisig).
 - (Optional, later) PSBT cleanup: remove xpub/BIP32 PSBT metadata (see §10.4).
@@ -778,29 +1283,28 @@ Before we start implementing PQHD, we should lock down these items to avoid
 large rework:
 
 ### 16.1 Remaining spec decisions
-- `purpose'` and `coin_type'` constants (wallet discovery, restore behavior).
-- Clarify whether PQHD v1 supports exactly one “wallet PQHD seed” vs multiple
-  seeds per wallet (the spec allows multiple; UX may prefer one).
+- Define the exact RPC/Qt UX for multi-root PQHD (implementing §12.4.1):
+  - seed create/import/export + labels
+  - enable/disable + default seed selection (global + optional per-scheme)
 
 ### 16.2 Major code prerequisites
 - Multi-scheme public key handling:
   - Current `CPubKey` is Falcon-512-only (`src/pubkey.h:36`), but PQHD targets
     Falcon-1024 and ML-DSA schemes with larger pubkeys (§2.1).
-  - We need to decide between:
-    - refactoring `CPubKey` to be scheme-aware/variable-length, or
-    - introducing a new PQ pubkey byte container type and migrating call sites.
+  - Decision: **refactor `CPubKey`** to be scheme-aware and variable-length
+    (store TidePubKey bytes, validate by SchemeId prefix, and remove fixed-size
+    assumptions throughout wallet/script/descriptor/PSBT/RPC).
 - Consensus/policy size limits vs scheme sizes:
   - Falcon-1024 / ML-DSA signatures and pubkeys exceed legacy Bitcoin script
     element sizes; we must ensure our consensus limits and mempool policy can
     accept transactions produced by future schemes (likely gated by height).
 - Wallet database schema for PQHD seed storage:
-  - Define how `master_seed`, `NodeSecret`, and `ChainCode` are stored encrypted
-    (and how backups/restore work), including versioning of PQHD seed records.
+  - Implement the frozen DB schema in §12.5 (seed records + policy defaults),
+    including encryption behavior and record versioning.
 - Deterministic keygen stability contract:
-  - PQHD v1 currently relies on “deterministic `randombytes()` stream + PQClean
-    keypair call”. Any PQClean upgrade that changes randomness consumption can
-    change derived keys unless we freeze code or define stable per-scheme
-    keygen-from-seed APIs.
+  - Implement PQHD v1 as versioned per-scheme `KeyGenFromSeed` wrappers (§7.5).
+  - Do not rely on PQClean’s internal randomness consumption pattern for wallet
+    restore; any incompatible keygen change must bump `pqhd_version`.
 
 ### 16.3 Tooling integration that must exist for a usable first release
 - Descriptors:
@@ -837,15 +1341,19 @@ large rework:
   locally valid but rejected by the network (funds “stuck” until hardfork).
 
 ### 17.3 Deterministic RNG scoping mistakes
-- A global/unguarded deterministic `randombytes()` override can accidentally
-  leak into signing/non-keygen code paths (catastrophic for security).
-- Must be strictly scoped (thread-local + RAII) and covered by tests.
+- A global/unguarded deterministic RNG hook (e.g. a `randombytes()` override)
+  can accidentally leak into signing/non-keygen code paths (catastrophic).
+- Preferred mitigation: avoid global hooks by using explicit seed/coins-based
+  `KeyGenFromSeed` wrappers.
+- If any legacy wrapper uses a scoped override, it must be strictly limited
+  (thread-local + RAII) and covered by tests.
 
 ### 17.4 PQClean upgrades and long-term restorability
-- If PQHD keygen depends on PQClean’s internal randomness consumption pattern,
-  updating PQClean can change derived keys for the same seed/path.
-- Mitigation: freeze PQClean code used for PQHD v1, or define explicit stable
-  “KeyGenFromSeed” wrappers and bump PQHD version when changing algorithms.
+- If PQHD keygen depends on PQClean internals, updating PQClean can change
+  derived keys for the same seed/path and break wallet restore.
+- Mitigation (selected): PQHD uses explicit, versioned per-scheme
+  `KeyGenFromSeed` wrappers (§7.5). Any behavior change requires bumping
+  `pqhd_version` and opting in with new seeds/descriptors.
 
 ### 17.5 Performance and UX
 - PQ keygen is significantly more expensive than secp derivation; keypool refill
