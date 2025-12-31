@@ -442,7 +442,7 @@ Task status legend:
 - Docs: progress tracker updates
 
 ### PR-6: PSBT PQHD_ORIGIN (inputs + outputs) + parsed RPC display
-- Status: [ ] not started
+- Status: [x] done
 - Tasks: Task 6
 - Tests: PSBT unit tests; `decodepsbt` unit tests if applicable
 - Docs: progress tracker updates

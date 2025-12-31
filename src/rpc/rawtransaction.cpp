@@ -857,6 +857,15 @@ const RPCResult decodepsbt_inputs{
                     {RPCResult::Type::STR, "path", "The path"},
                 }},
             }},
+            {RPCResult::Type::ARR, "pqhd_origins", /*optional=*/true, "Tidecoin PQHD origin metadata (\"tidecoin\" proprietary PSBT records with subtype 1).",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR_HEX, "pubkey", "The TidePubKey bytes (scheme prefix + scheme public key), hex-encoded."},
+                    {RPCResult::Type::STR_HEX, "seed_id", "The PQHD SeedID32 (hex)."},
+                    {RPCResult::Type::STR, "path", "The hardened-only PQHD derivation path (formatted like an HD keypath)."},
+                }},
+            }},
             {RPCResult::Type::OBJ, "final_scriptSig", /*optional=*/true, "",
             {
                 {RPCResult::Type::STR, "asm", "Disassembly of the final signature script"},
@@ -924,6 +933,15 @@ const RPCResult decodepsbt_outputs{
                     {RPCResult::Type::STR, "pubkey", "The public key this path corresponds to"},
                     {RPCResult::Type::STR, "master_fingerprint", "The fingerprint of the master key"},
                     {RPCResult::Type::STR, "path", "The path"},
+                }},
+            }},
+            {RPCResult::Type::ARR, "pqhd_origins", /*optional=*/true, "Tidecoin PQHD origin metadata (\"tidecoin\" proprietary PSBT records with subtype 1).",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR_HEX, "pubkey", "The TidePubKey bytes (scheme prefix + scheme public key), hex-encoded."},
+                    {RPCResult::Type::STR_HEX, "seed_id", "The PQHD SeedID32 (hex)."},
+                    {RPCResult::Type::STR, "path", "The hardened-only PQHD derivation path (formatted like an HD keypath)."},
                 }},
             }},
             {RPCResult::Type::OBJ_DYN, "unknown", /*optional=*/true, "The unknown output fields",
@@ -1130,6 +1148,23 @@ static RPCHelpMan decodepsbt()
             in.pushKV("bip32_derivs", std::move(keypaths));
         }
 
+        // PQHD origins (tidecoin subtype 1 proprietary records).
+        if (!input.m_proprietary.empty()) {
+            UniValue pqhd_origins(UniValue::VARR);
+            for (const auto& entry : input.m_proprietary) {
+                const auto origin = psbt::tidecoin::DecodePQHDOrigin(entry);
+                if (!origin) continue;
+                UniValue o(UniValue::VOBJ);
+                o.pushKV("pubkey", HexStr(std::span<const unsigned char>(origin->pubkey.data(), origin->pubkey.size())));
+                o.pushKV("seed_id", origin->seed_id.ToString());
+                o.pushKV("path", WriteHDKeypath(origin->path_hardened));
+                pqhd_origins.push_back(std::move(o));
+            }
+            if (!pqhd_origins.empty()) {
+                in.pushKV("pqhd_origins", std::move(pqhd_origins));
+            }
+        }
+
         // Final scriptSig and scriptwitness
         if (!input.final_script_sig.empty()) {
             UniValue scriptsig(UniValue::VOBJ);
@@ -1237,6 +1272,23 @@ static RPCHelpMan decodepsbt()
                 keypaths.push_back(std::move(keypath));
             }
             out.pushKV("bip32_derivs", std::move(keypaths));
+        }
+
+        // PQHD origins (tidecoin subtype 1 proprietary records).
+        if (!output.m_proprietary.empty()) {
+            UniValue pqhd_origins(UniValue::VARR);
+            for (const auto& entry : output.m_proprietary) {
+                const auto origin = psbt::tidecoin::DecodePQHDOrigin(entry);
+                if (!origin) continue;
+                UniValue o(UniValue::VOBJ);
+                o.pushKV("pubkey", HexStr(std::span<const unsigned char>(origin->pubkey.data(), origin->pubkey.size())));
+                o.pushKV("seed_id", origin->seed_id.ToString());
+                o.pushKV("path", WriteHDKeypath(origin->path_hardened));
+                pqhd_origins.push_back(std::move(o));
+            }
+            if (!pqhd_origins.empty()) {
+                out.pushKV("pqhd_origins", std::move(pqhd_origins));
+            }
         }
 
         // Proprietary

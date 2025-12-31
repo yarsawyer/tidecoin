@@ -652,7 +652,7 @@ We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
 - `decodepsbt`:
   - Continue to expose raw proprietary entries (already implemented).
   - Planned: add a parsed view (new JSON fields) for Tidecoin PQHD origin, e.g.:
-    - `pqhd_derivs`: list of `{ pubkey, seedid32, path }`
+    - `pqhd_origins`: list of `{ pubkey, seedid32, path }`
     - `path` formatted using `WriteHDKeypath(..., apostrophe=false)` so hardened
       elements use `h` markers.
 

@@ -42,6 +42,15 @@ Legend:
     - `src/wallet/wallet.h`, `src/wallet/wallet.cpp` (load hooks + in-memory storage)
   - Verify: `./build/bin/test_tidecoin -t walletdb_tests`
 - PQHD-REQ-0019 — PSBT is BIP174 and supports proprietary key/value records (`src/psbt.h`, `src/rpc/rawtransaction.cpp` raw proprietary display)
+- PQHD-REQ-0020 — `tidecoin/PQHD_ORIGIN` proprietary record encoding + parsing
+  - Touch-points:
+    - `src/psbt.h` (`psbt::tidecoin::{PROPRIETARY_IDENTIFIER,SUBTYPE_PQHD_ORIGIN,PQHDOrigin}`)
+    - `src/psbt.cpp` (`psbt::tidecoin::{MakeProprietaryKey,MakePQHDOriginValue,DecodePQHDOrigin,AddPQHDOrigin}`)
+    - `src/rpc/rawtransaction.cpp` (`decodepsbt` parsed display: `pqhd_origins`)
+    - `src/test/psbt_pqhd_origin_tests.cpp`
+  - Verify:
+    - `cmake --build build -j12 --target test_bitcoin`
+    - `./build/bin/test_tidecoin -t psbt_pqhd_origin_tests`
 - PQHD-REQ-0009 — PQHD path constants and semantics are fixed (`src/pq/pqhd_params.h` for purpose/coin_type; hardened-only enforcement in `src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`; vectors in `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0010 — NodeSecret/ChainCode derivation (hardened-only CKD) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0011 — Leaf key material derivation (HKDF-style) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
@@ -82,6 +91,9 @@ Legend:
 - PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation (documented; enforcement pending)
 - PQHD-REQ-0003 — Wallet policy decides scheme (vs `pq::ActiveScheme()`) (documented; enforcement pending)
 - PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin (wallet lock semantics exist; PQHD seed semantics pending)
+- PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
+  - Partial: `decodepsbt` reads and formats `tidecoin/PQHD_ORIGIN` into `pqhd_origins`.
+  - Missing: wallet emission during `walletprocesspsbt` / PSBT creation and analysis.
 
 ---
 
@@ -102,7 +114,7 @@ Legend:
   - Note: inherited upstream `descriptor_tests` vectors are secp256k1/WIF/BIP32-centric and are skipped in Tidecoin (PQ `CKey`). We still need a small PQ-native descriptor test suite for explicit pubkeys (raw hex `TidePubKey` bytes).
 
 ### PSBT + RPC/Qt Integration
-- PQHD-REQ-0020 — Define `tidecoin/PQHD_ORIGIN` proprietary record encoding
+- (implemented) PQHD-REQ-0020 — Define `tidecoin/PQHD_ORIGIN` proprietary record encoding
 - PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
 
 ### Migration + Tests
@@ -128,4 +140,6 @@ Legend:
 - [x] PR-5 — Descriptors: `pqhd(<SeedID32>)/...` parsing + canonical printing + tests
   - Touch-points: `src/script/descriptor.cpp`, `src/test/descriptor_tests.cpp`
   - Verify: `./build/bin/test_tidecoin -t descriptor_tests`
-- [ ] PR-6 — PSBT `PQHD_ORIGIN` (inputs + outputs) + RPC display
+- [x] PR-6 — PSBT `PQHD_ORIGIN` (inputs + outputs) + parsed RPC display
+  - Touch-points: `src/psbt.h`, `src/psbt.cpp`, `src/rpc/rawtransaction.cpp`, `src/test/psbt_pqhd_origin_tests.cpp`
+  - Verify: `./build/bin/test_tidecoin -t psbt_pqhd_origin_tests`

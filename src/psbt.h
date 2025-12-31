@@ -17,12 +17,51 @@
 #include <streams.h>
 
 #include <optional>
+#include <set>
+#include <string_view>
+
+struct PSBTProprietary;
 
 namespace node {
 enum class TransactionError;
 } // namespace node
 
 using common::PSBTError;
+
+namespace psbt::tidecoin {
+/** "tidecoin" proprietary PSBT record identifier (ASCII bytes). */
+inline constexpr std::string_view PROPRIETARY_IDENTIFIER = "tidecoin";
+
+/** Proprietary PSBT record subtype for PQHD origin metadata. */
+inline constexpr uint64_t SUBTYPE_PQHD_ORIGIN = 0x01;
+
+struct PQHDOrigin
+{
+    CPubKey pubkey;          //!< TidePubKey bytes (prefix+pk) as CPubKey.
+    uint256 seed_id;         //!< SeedID32 stored as uint256.
+    std::vector<uint32_t> path_hardened; //!< Hardened-only path elements (u32).
+};
+
+/** Build a PSBT proprietary record key for the given subtype and keydata. */
+std::vector<unsigned char> MakeProprietaryKey(uint8_t map_type,
+                                              std::span<const unsigned char> identifier,
+                                              uint64_t subtype,
+                                              std::span<const unsigned char> keydata);
+
+/** Build a PSBT proprietary record value for PQHD origin metadata. */
+std::vector<unsigned char> MakePQHDOriginValue(const uint256& seed_id,
+                                               std::span<const uint32_t> path_hardened);
+
+/** Try to parse a "tidecoin"/SUBTYPE_PQHD_ORIGIN proprietary record. */
+std::optional<PQHDOrigin> DecodePQHDOrigin(const PSBTProprietary& entry);
+
+/** Add a PQHD origin proprietary record to a set (returns false on duplicate). */
+[[nodiscard]] bool AddPQHDOrigin(std::set<PSBTProprietary>& set,
+                                 uint8_t map_type,
+                                 const CPubKey& pubkey,
+                                 const uint256& seed_id,
+                                 std::span<const uint32_t> path_hardened);
+} // namespace psbt::tidecoin
 
 // Magic bytes
 static constexpr uint8_t PSBT_MAGIC_BYTES[5] = {'p', 's', 'b', 't', 0xff};

@@ -3,6 +3,7 @@
 
 #include <pq/pq_scheme.h>
 #include <pq/pqhd_kdf.h>
+#include <pq/randombytes.h>
 #include <pq/ml-kem-512/api.h>
 
 #include <support/allocators/secure.h>
@@ -33,6 +34,13 @@ namespace pq {
 
 /** Secure byte container (locked + cleansed on deallocation). */
 using SecureKeyBytes = std::vector<uint8_t, secure_allocator<uint8_t>>;
+
+// Forward declarations (defined in `src/pq/pqhd_keygen.cpp`).
+[[nodiscard]] bool KeyGenFromSeed(uint32_t pqhd_version,
+                                  SchemeId scheme_id,
+                                  std::span<const uint8_t, 64> key_material,
+                                  std::vector<uint8_t>& pk_out,
+                                  SecureKeyBytes& sk_out);
 
 constexpr size_t MLKEM512_PUBLICKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_PUBLICKEYBYTES;
 constexpr size_t MLKEM512_SECRETKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_SECRETKEYBYTES;
@@ -267,20 +275,24 @@ inline bool GenerateKeyPair(const SchemeInfo& info,
     if (pk.size() != info.pubkey_bytes || sk.size() != info.seckey_bytes) {
         return false;
     }
-    switch (info.id) {
-    case SchemeId::FALCON_512:
-        return PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
-    case SchemeId::FALCON_1024:
-        return PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
-    case SchemeId::MLDSA_44:
-        return PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
-    case SchemeId::MLDSA_65:
-        return PQCLEAN_MLDSA65_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
-    case SchemeId::MLDSA_87:
-        return PQCLEAN_MLDSA87_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
-    default:
+
+    std::array<uint8_t, 64> key_material{};
+    randombytes(key_material.data(), key_material.size());
+
+    std::vector<uint8_t> pk_local;
+    SecureKeyBytes sk_local;
+    const bool ok = KeyGenFromSeed(/*pqhd_version=*/1, info.id,
+                                   std::span<const uint8_t, 64>{key_material.data(), key_material.size()},
+                                   pk_local, sk_local);
+    std::fill(key_material.begin(), key_material.end(), 0);
+
+    if (!ok || pk_local.size() != info.pubkey_bytes || sk_local.size() != info.seckey_bytes) {
         return false;
     }
+
+    std::copy(pk_local.begin(), pk_local.end(), pk.begin());
+    std::copy(sk_local.begin(), sk_local.end(), sk.begin());
+    return true;
 }
 
 inline bool Sign(const SchemeInfo& info,

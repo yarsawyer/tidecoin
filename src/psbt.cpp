@@ -11,7 +11,117 @@
 #include <util/check.h>
 #include <util/strencodings.h>
 
+#include <limits>
+
 using common::PSBTError;
+
+namespace psbt::tidecoin {
+std::vector<unsigned char> MakeProprietaryKey(uint8_t map_type,
+                                              std::span<const unsigned char> identifier,
+                                              uint64_t subtype,
+                                              std::span<const unsigned char> keydata)
+{
+    std::vector<unsigned char> key;
+    VectorWriter w{key, /*nPosIn=*/0};
+    w << CompactSizeWriter(map_type);
+    w << std::vector<unsigned char>(identifier.begin(), identifier.end());
+    w << CompactSizeWriter(subtype);
+    if (!keydata.empty()) w << keydata;
+    return key;
+}
+
+std::vector<unsigned char> MakePQHDOriginValue(const uint256& seed_id,
+                                               std::span<const uint32_t> path_hardened)
+{
+    std::vector<unsigned char> value;
+    VectorWriter w{value, /*nPosIn=*/0};
+    w << seed_id;
+    w << CompactSizeWriter(path_hardened.size());
+    for (uint32_t elem : path_hardened) {
+        w << elem;
+    }
+    return value;
+}
+
+static bool ParseProprietaryKeydata(const PSBTProprietary& entry, std::vector<unsigned char>& out_keydata)
+{
+    try {
+        if (entry.key.size() < 1) return false;
+        const auto type8 = entry.key[0];
+        if (type8 != PSBT_IN_PROPRIETARY && type8 != PSBT_OUT_PROPRIETARY && type8 != PSBT_GLOBAL_PROPRIETARY) return false;
+
+        const unsigned char* const start = entry.key.data() + 1;
+        const size_t total = entry.key.size() - 1;
+        SpanReader r{std::span<const unsigned char>(start, total)};
+        std::vector<unsigned char> identifier;
+        r >> identifier;
+        (void)ReadCompactSize(r); // subtype
+
+        const size_t consumed = total - r.size();
+        out_keydata.assign(start + consumed, start + total);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+std::optional<PQHDOrigin> DecodePQHDOrigin(const PSBTProprietary& entry)
+{
+    if (entry.identifier.size() != PROPRIETARY_IDENTIFIER.size()) return std::nullopt;
+    if (!std::equal(entry.identifier.begin(), entry.identifier.end(), PROPRIETARY_IDENTIFIER.begin())) return std::nullopt;
+    if (entry.subtype != SUBTYPE_PQHD_ORIGIN) return std::nullopt;
+
+    try {
+        std::vector<unsigned char> keydata;
+        if (!ParseProprietaryKeydata(entry, keydata)) return std::nullopt;
+        CPubKey pubkey{keydata};
+        if (!pubkey.IsValidNonHybrid()) return std::nullopt;
+
+        SpanReader v{entry.value};
+        uint256 seed_id;
+        v >> seed_id;
+        const uint64_t path_len = ReadCompactSize(v);
+        if (path_len < 3 || path_len > 256) return std::nullopt;
+        std::vector<uint32_t> path;
+        path.reserve(path_len);
+        for (uint64_t i = 0; i < path_len; ++i) {
+            uint32_t elem;
+            v >> elem;
+            if ((elem & 0x80000000U) == 0) return std::nullopt; // hardened-only
+            path.push_back(elem);
+        }
+        if (!v.empty()) return std::nullopt;
+
+        const uint32_t scheme_u32 = path[2] & 0x7FFFFFFFU;
+        if (scheme_u32 > std::numeric_limits<uint8_t>::max()) return std::nullopt;
+        const auto scheme_u8 = static_cast<uint8_t>(scheme_u32);
+        if (::pq::SchemeFromPrefix(scheme_u8) == nullptr) return std::nullopt;
+        if (pubkey.size() == 0 || pubkey[0] != scheme_u8) return std::nullopt;
+
+        return PQHDOrigin{std::move(pubkey), seed_id, std::move(path)};
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+bool AddPQHDOrigin(std::set<PSBTProprietary>& set,
+                   uint8_t map_type,
+                   const CPubKey& pubkey,
+                   const uint256& seed_id,
+                   std::span<const uint32_t> path_hardened)
+{
+    PSBTProprietary entry;
+    entry.identifier.assign(PROPRIETARY_IDENTIFIER.begin(), PROPRIETARY_IDENTIFIER.end());
+    entry.subtype = SUBTYPE_PQHD_ORIGIN;
+
+    entry.key = MakeProprietaryKey(map_type, entry.identifier, entry.subtype, std::span{pubkey});
+    entry.value = MakePQHDOriginValue(seed_id, path_hardened);
+
+    if (set.count(entry) > 0) return false;
+    set.insert(std::move(entry));
+    return true;
+}
+} // namespace psbt::tidecoin
 
 PartiallySignedTransaction::PartiallySignedTransaction(const CMutableTransaction& tx) : tx(tx)
 {
