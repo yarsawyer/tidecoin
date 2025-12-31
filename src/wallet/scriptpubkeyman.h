@@ -22,6 +22,8 @@
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
 
+#include <array>
+
 #include <boost/signals2/signal.hpp>
 
 #include <functional>
@@ -51,6 +53,8 @@ public:
     virtual bool WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb) const = 0;
     virtual bool HasEncryptionKeys() const = 0;
     virtual bool IsLocked() const = 0;
+    virtual bool HasPQHDSeeds() const = 0;
+    virtual bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& master_seed) const = 0;
     //! Callback function for after TopUp completes containing any scripts that were added by a SPKMan
     virtual void TopUpCallback(const std::set<CScript>&, ScriptPubKeyMan*) = 0;
 };
@@ -344,6 +348,10 @@ public:
 
     //! Setup descriptors based on the given CExtkey
     bool SetupDescriptorGeneration(WalletBatch& batch, const CExtKey& master_key, OutputType addr_type, bool internal);
+
+    //! Setup a descriptor without relying on BIP32/xpub master keys (e.g. PQHD descriptors).
+    //! This assumes the descriptor itself can derive its keys/scripts from the provided wallet storage.
+    bool SetupDescriptor(WalletBatch& batch, WalletDescriptor&& descriptor);
 
     bool HavePrivateKeys() const override;
     bool HasPrivKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);

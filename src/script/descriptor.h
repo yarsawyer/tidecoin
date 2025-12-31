@@ -14,12 +14,15 @@
 #include <vector>
 
 using ExtPubKeyMap = std::unordered_map<uint32_t, CExtPubKey>;
+using PubKeyMap = std::unordered_map<uint32_t, CPubKey>;
 
 /** Cache for single descriptor's derived extended pubkeys */
 class DescriptorCache {
 private:
     /** Map key expression index -> map of (key derivation index -> xpub) */
     std::unordered_map<uint32_t, ExtPubKeyMap> m_derived_xpubs;
+    /** Map key expression index -> map of (key derivation index -> pubkey) */
+    std::unordered_map<uint32_t, PubKeyMap> m_derived_pubkeys;
     /** Map key expression index -> parent xpub */
     ExtPubKeyMap m_parent_xpubs;
     /** Map key expression index -> last hardened xpub */
@@ -52,6 +55,20 @@ public:
      * @param[out] xpub The CExtPubKey to get from cache
      */
     bool GetCachedDerivedExtPubKey(uint32_t key_exp_pos, uint32_t der_index, CExtPubKey& xpub) const;
+    /** Cache a derived pubkey (for non-BIP32 derivation, e.g. PQHD).
+     *
+     * @param[in] key_exp_pos Position of the key expression within the descriptor
+     * @param[in] der_index Derivation index of the pubkey
+     * @param[in] pubkey The CPubKey to cache
+     */
+    void CacheDerivedPubKey(uint32_t key_exp_pos, uint32_t der_index, const CPubKey& pubkey);
+    /** Retrieve a cached derived pubkey
+     *
+     * @param[in] key_exp_pos Position of the key expression within the descriptor
+     * @param[in] der_index Derivation index of the pubkey
+     * @param[out] pubkey The CPubKey to get from cache
+     */
+    bool GetCachedDerivedPubKey(uint32_t key_exp_pos, uint32_t der_index, CPubKey& pubkey) const;
     /** Cache a last hardened xpub
      *
      * @param[in] key_exp_pos Position of the key expression within the descriptor
@@ -69,6 +86,8 @@ public:
     ExtPubKeyMap GetCachedParentExtPubKeys() const;
     /** Retrieve all cached derived xpubs */
     std::unordered_map<uint32_t, ExtPubKeyMap> GetCachedDerivedExtPubKeys() const;
+    /** Retrieve all cached derived pubkeys */
+    std::unordered_map<uint32_t, PubKeyMap> GetCachedDerivedPubKeys() const;
     /** Retrieve all cached last hardened xpubs */
     ExtPubKeyMap GetCachedLastHardenedExtPubKeys() const;
 

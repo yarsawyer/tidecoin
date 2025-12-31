@@ -46,7 +46,7 @@ struct SchemeInfo {
     const char* name;
 };
 
-constexpr SchemeInfo kFalcon512Info{
+inline constexpr SchemeInfo kFalcon512Info{
     SchemeId::FALCON_512,
     kSchemePrefixFalcon512,
     PQCLEAN_FALCON512_CLEAN_CRYPTO_PUBLICKEYBYTES,
@@ -56,7 +56,7 @@ constexpr SchemeInfo kFalcon512Info{
     "Falcon-512",
 };
 
-constexpr SchemeInfo kFalcon1024Info{
+inline constexpr SchemeInfo kFalcon1024Info{
     SchemeId::FALCON_1024,
     kSchemePrefixFalcon1024,
     PQCLEAN_FALCON1024_CLEAN_CRYPTO_PUBLICKEYBYTES,
@@ -66,7 +66,7 @@ constexpr SchemeInfo kFalcon1024Info{
     "Falcon-1024",
 };
 
-constexpr SchemeInfo kMLDSA44Info{
+inline constexpr SchemeInfo kMLDSA44Info{
     SchemeId::MLDSA_44,
     kSchemePrefixMLDSA44,
     PQCLEAN_MLDSA44_CLEAN_CRYPTO_PUBLICKEYBYTES,
@@ -76,7 +76,7 @@ constexpr SchemeInfo kMLDSA44Info{
     "ML-DSA-44",
 };
 
-constexpr SchemeInfo kMLDSA65Info{
+inline constexpr SchemeInfo kMLDSA65Info{
     SchemeId::MLDSA_65,
     kSchemePrefixMLDSA65,
     PQCLEAN_MLDSA65_CLEAN_CRYPTO_PUBLICKEYBYTES,
@@ -86,7 +86,7 @@ constexpr SchemeInfo kMLDSA65Info{
     "ML-DSA-65",
 };
 
-constexpr SchemeInfo kMLDSA87Info{
+inline constexpr SchemeInfo kMLDSA87Info{
     SchemeId::MLDSA_87,
     kSchemePrefixMLDSA87,
     PQCLEAN_MLDSA87_CLEAN_CRYPTO_PUBLICKEYBYTES,

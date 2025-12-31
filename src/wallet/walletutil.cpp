@@ -8,6 +8,8 @@
 #include <common/args.h>
 #include <key_io.h>
 #include <logging.h>
+#include <pq/pqhd_params.h>
+#include <pq/pq_scheme.h>
 
 namespace wallet {
 fs::path GetWalletDir()
@@ -77,6 +79,49 @@ WalletDescriptor GenerateWalletDescriptor(const CExtPubKey& master_key, const Ou
     FlatSigningProvider keys;
     std::string error;
     std::vector<std::unique_ptr<Descriptor>> desc = Parse(desc_str, keys, error, false);
+    WalletDescriptor w_desc(std::move(desc.at(0)), creation_time, 0, 0, 0);
+    return w_desc;
+}
+
+WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id, uint8_t scheme_prefix, const OutputType& addr_type, bool internal)
+{
+    int64_t creation_time = GetTime();
+
+    // pqhd(SEEDID32)/purposeh/cointypeh/schemeh/accounth/changeh/*h
+    const uint32_t scheme_u32{scheme_prefix};
+    std::string key_expr = strprintf("pqhd(%s)/%uh/%uh/%uh/0h/%uh/*h",
+                                     seed_id.ToString(),
+                                     pqhd::PURPOSE,
+                                     pqhd::COIN_TYPE,
+                                     scheme_u32,
+                                     internal ? 1U : 0U);
+
+    std::string desc_str;
+    switch (addr_type) {
+    case OutputType::LEGACY: {
+        desc_str = "pkh(" + key_expr + ")";
+        break;
+    }
+    case OutputType::P2SH_SEGWIT: {
+        desc_str = "sh(wpkh(" + key_expr + "))";
+        break;
+    }
+    case OutputType::BECH32: {
+        desc_str = "wpkh(" + key_expr + ")";
+        break;
+    }
+    case OutputType::UNKNOWN: {
+        assert(false);
+    }
+    }
+
+    // Make the descriptor.
+    FlatSigningProvider keys;
+    std::string error;
+    std::vector<std::unique_ptr<Descriptor>> desc = Parse(desc_str, keys, error, /*require_checksum=*/false);
+    if (desc.empty()) {
+        throw std::runtime_error(strprintf("Invalid PQHD wallet descriptor: %s", error));
+    }
     WalletDescriptor w_desc(std::move(desc.at(0)), creation_time, 0, 0, 0);
     return w_desc;
 }

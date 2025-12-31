@@ -61,8 +61,11 @@ static void AddKey(CWallet& wallet, const CKey& key)
 {
     LOCK(wallet.cs_wallet);
     FlatSigningProvider provider;
+    // Descriptor strings use public keys; private keys live in the provider (Bitcoin descriptor wallet model).
+    const CPubKey pubkey{key.GetPubKey()};
+    provider.keys.emplace(pubkey.GetID(), key);
     std::string error;
-    auto descs = Parse("combo(" + EncodeSecret(key) + ")", provider, error, /* require_checksum=*/ false);
+    auto descs = Parse("combo(" + HexStr(pubkey) + ")", provider, error, /* require_checksum=*/ false);
     assert(descs.size() == 1);
     auto& desc = descs.at(0);
     WalletDescriptor w_desc(std::move(desc), 0, 0, 1, 1);
@@ -76,8 +79,10 @@ BOOST_FIXTURE_TEST_CASE(update_non_range_descriptor, TestingSetup)
         LOCK(wallet.cs_wallet);
         wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
         auto key{GenerateRandomKey()};
-        auto desc_str{"combo(" + EncodeSecret(key) + ")"};
+        const CPubKey pubkey{key.GetPubKey()};
         FlatSigningProvider provider;
+        provider.keys.emplace(pubkey.GetID(), key);
+        auto desc_str{"combo(" + HexStr(pubkey) + ")"};
         std::string error;
         auto descs{Parse(desc_str, provider, error, /* require_checksum=*/ false)};
         auto& desc{descs.at(0)};

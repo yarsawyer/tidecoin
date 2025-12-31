@@ -30,6 +30,7 @@
 #include <noui.h>
 #include <policy/fees.h>
 #include <pow.h>
+#include <pq/pq_api.h>
 #include <random.h>
 #include <rpc/blockchain.h>
 #include <rpc/register.h>
@@ -370,19 +371,45 @@ TestChain100Setup::TestChain100Setup(
     TestOpts opts)
     : TestingSetup{ChainType::REGTEST, opts}
 {
-    SetMockTime(1598887952);
-    constexpr std::array<unsigned char, 32> vchKey = {
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}};
-    coinbaseKey.Set(vchKey.begin(), vchKey.end());
+    // Ensure block timestamps are not "too new" relative to mock time. Tidecoin
+    // regtest genesis has a relatively recent timestamp, so use it as the base.
+    SetMockTime(Params().GenesisBlock().nTime);
+    // Deterministic PQ coinbase key for tests.
+    constexpr std::array<uint8_t, 64> key_material = [] {
+        std::array<uint8_t, 64> out{};
+        out[63] = 1;
+        return out;
+    }();
+    std::vector<uint8_t> pk_raw;
+    pq::SecureKeyBytes sk_raw;
+    const bool ok = pq::KeyGenFromSeed(/*pqhd_version=*/1,
+                                       pq::SchemeId::FALCON_512,
+                                       std::span<const uint8_t, 64>(key_material),
+                                       pk_raw,
+                                       sk_raw);
+    Assert(ok);
+    Assert(pk_raw.size() == pq::kFalcon512Info.pubkey_bytes);
+    Assert(sk_raw.size() == pq::kFalcon512Info.seckey_bytes);
+
+    std::vector<uint8_t> prefixed(pk_raw.size() + 1);
+    prefixed[0] = pq::kFalcon512Info.prefix;
+    std::copy(pk_raw.begin(), pk_raw.end(), prefixed.begin() + 1);
+    const CPubKey pubkey{std::span<const uint8_t>{prefixed}};
+    Assert(pubkey.IsValid());
+
+    coinbaseKey.Set(sk_raw.begin(), sk_raw.end(), pubkey);
+    Assert(coinbaseKey.IsValid());
 
     // Generate a 100-block chain:
     this->mineBlocks(COINBASE_MATURITY);
 
     {
         LOCK(::cs_main);
-        assert(
-            m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString() ==
-            "0c8c5f79505775a0f6aed6aca2350718ceb9c6f2c878667864d5c7a6d8ffa2a6");
+        const std::string tip_hash{m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString()};
+        const std::string expected{"c774aa42fe876a41ab201e90b100029b5a8aeccdd77cf86a924f201fed161fa0"};
+        if (tip_hash != expected) {
+            throw std::runtime_error(strprintf("TestChain100Setup unexpected tip hash (expected=%s actual=%s)", expected, tip_hash));
+        }
     }
 }
 

@@ -99,6 +99,10 @@ public:
 };
 
 WalletDescriptor GenerateWalletDescriptor(const CExtPubKey& master_key, const OutputType& output_type, bool internal);
+
+//! Generate a ranged wallet descriptor backed by PQHD (pqhd(SEEDID32)/.../*h).
+//! This does not rely on BIP32/xpub and instead uses the pqhd() key expression.
+WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id, uint8_t scheme_prefix, const OutputType& output_type, bool internal);
 } // namespace wallet
 
 #endif // BITCOIN_WALLET_WALLETUTIL_H

@@ -15,6 +15,9 @@
 #include <wallet/walletdb.h>
 
 #include <memory>
+#include <stdexcept>
+
+#include <tinyformat.h>
 
 namespace wallet {
 std::unique_ptr<CWallet> CreateSyncedWallet(interfaces::Chain& chain, CChain& cchain, const CKey& key)
@@ -30,8 +33,10 @@ std::unique_ptr<CWallet> CreateSyncedWallet(interfaces::Chain& chain, CChain& cc
         wallet->SetupDescriptorScriptPubKeyMans();
 
         FlatSigningProvider provider;
+        const CPubKey pubkey{key.GetPubKey()};
+        provider.keys.emplace(pubkey.GetID(), key);
         std::string error;
-        auto descs = Parse("combo(" + EncodeSecret(key) + ")", provider, error, /* require_checksum=*/ false);
+        auto descs = Parse("combo(" + HexStr(pubkey) + ")", provider, error, /* require_checksum=*/ false);
         assert(descs.size() == 1);
         auto& desc = descs.at(0);
         WalletDescriptor w_desc(std::move(desc), 0, 0, 1, 1);
@@ -52,6 +57,13 @@ std::shared_ptr<CWallet> TestLoadWallet(std::unique_ptr<WalletDatabase> database
     bilingual_str error;
     std::vector<bilingual_str> warnings;
     auto wallet = CWallet::Create(context, "", std::move(database), create_flags, error, warnings);
+    if (!wallet) {
+        std::string warning_str;
+        for (const auto& w : warnings) {
+            warning_str += w.original + "\n";
+        }
+        throw std::runtime_error(strprintf("TestLoadWallet failed: %s\n%s", error.original, warning_str));
+    }
     NotifyWalletLoaded(context, wallet);
     if (context.chain) {
         wallet->postInitProcess();

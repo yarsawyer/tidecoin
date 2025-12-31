@@ -44,6 +44,12 @@ bool HidingSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& inf
     return m_provider->GetKeyOrigin(keyid, info);
 }
 
+bool HidingSigningProvider::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const
+{
+    if (m_hide_secret) return false;
+    return m_provider->GetPQHDSeed(seed_id, seed);
+}
+
 bool FlatSigningProvider::GetCScript(const CScriptID& scriptid, CScript& script) const { return LookupHelper(scripts, scriptid, script); }
 bool FlatSigningProvider::GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const { return LookupHelper(pubkeys, keyid, pubkey); }
 bool FlatSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
@@ -233,6 +239,14 @@ bool MultiSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
 {
     for (const auto& provider: m_providers) {
         if (provider->GetKey(keyid, key)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const
+{
+    for (const auto& provider : m_providers) {
+        if (provider->GetPQHDSeed(seed_id, seed)) return true;
     }
     return false;
 }

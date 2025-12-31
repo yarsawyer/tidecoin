@@ -36,6 +36,7 @@
 #include <wallet/types.h>
 #include <wallet/walletutil.h>
 
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -992,6 +993,8 @@ public:
 
     bool HasEncryptionKeys() const override;
     bool HaveCryptedKeys() const;
+    bool HasPQHDSeeds() const override;
+    bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& master_seed) const override;
 
     /** Get last block processed height */
     int GetLastBlockHeight() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet)

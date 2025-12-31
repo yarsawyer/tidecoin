@@ -37,6 +37,7 @@
 #include <primitives/transaction.h>
 #include <psbt.h>
 #include <pubkey.h>
+#include <pq/pqhd_kdf.h>
 #include <pq/pq_scheme.h>
 #include <random.h>
 #include <script/descriptor.h>
@@ -3544,6 +3545,36 @@ bool CWallet::HasEncryptionKeys() const
     return !mapMasterKeys.empty();
 }
 
+bool CWallet::HasPQHDSeeds() const
+{
+    LOCK(cs_wallet);
+    return !m_pqhd_seeds.empty();
+}
+
+bool CWallet::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& master_seed) const
+{
+    LOCK(cs_wallet);
+    const auto it = m_pqhd_seeds.find(seed_id);
+    if (it == m_pqhd_seeds.end()) return false;
+
+    const PQHDSeedState& state = it->second;
+    if (!state.encrypted) {
+        if (state.seed.size() != master_seed.size()) return false;
+        std::copy_n(state.seed.begin(), master_seed.size(), master_seed.begin());
+        return true;
+    }
+
+    if (IsLocked()) return false;
+
+    CKeyingMaterial plaintext;
+    if (!DecryptSecret(vMasterKey, state.crypted_seed, seed_id, plaintext)) {
+        return false;
+    }
+    if (plaintext.size() != master_seed.size()) return false;
+    std::copy_n(plaintext.begin(), master_seed.size(), master_seed.begin());
+    return true;
+}
+
 bool CWallet::HaveCryptedKeys() const
 {
     for (const auto& spkm : GetAllScriptPubKeyMans()) {
@@ -3606,16 +3637,57 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
 {
     AssertLockHeld(cs_wallet);
     assert(!IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER));
-    // Make a seed
-    CKey seed_key = GenerateRandomKey();
-    CPubKey seed = seed_key.GetPubKey();
-    assert(seed_key.VerifyPubKey(seed));
 
-    // Get the extended key
-    CExtKey master_key;
-    master_key.SetSeed(seed_key);
+    // Create a PQHD seed and default policy for descriptor wallets.
+    std::array<unsigned char, 32> master_seed{};
+    GetStrongRandBytes(master_seed);
 
-    SetupDescriptorScriptPubKeyMans(batch, master_key);
+    // Store SeedID32 as a uint256 using the standard uint256 hex representation.
+    // The uint256 string representation reverses bytes; reverse here so seed_id.ToString()
+    // matches the canonical SeedID32 hex shown in pqhd test vectors.
+    const pqhd::SeedID32 seedid_be =
+        pqhd::ComputeSeedID32(std::span<const uint8_t, 32>(reinterpret_cast<const uint8_t*>(master_seed.data()), master_seed.size()));
+    std::array<unsigned char, 32> seedid_le{};
+    std::reverse_copy(seedid_be.begin(), seedid_be.end(), seedid_le.begin());
+    const uint256 seed_id{std::span<const unsigned char>(seedid_le)};
+
+    PQHDSeed seed_record;
+    seed_record.nCreateTime = GetTime();
+    seed_record.seed.assign(master_seed.begin(), master_seed.end());
+    if (!batch.WritePQHDSeed(seed_id, seed_record)) {
+        throw std::runtime_error(std::string(__func__) + ": writing PQHD seed failed");
+    }
+    LoadPQHDSeed(seed_id, PQHDSeed(seed_record));
+
+    PQHDPolicy policy;
+    policy.default_receive_scheme = static_cast<uint8_t>(pq::SchemeId::FALCON_512);
+    policy.default_change_scheme = policy.default_receive_scheme;
+    policy.default_seed_id = seed_id;
+    policy.default_change_seed_id = seed_id;
+    if (!batch.WritePQHDPolicy(policy)) {
+        throw std::runtime_error(std::string(__func__) + ": writing PQHD policy failed");
+    }
+    LoadPQHDPolicy(PQHDPolicy(policy));
+
+    // Setup default ScriptPubKeyMans backed by PQHD descriptors (only Falcon-512 before auxpow).
+    for (bool internal : {false, true}) {
+        for (OutputType t : OUTPUT_TYPES) {
+            WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_id, policy.default_receive_scheme, t, internal);
+            auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
+            if (IsCrypted()) {
+                if (IsLocked()) {
+                    throw std::runtime_error(std::string(__func__) + ": Wallet is locked, cannot setup new descriptors");
+                }
+                if (!spk_manager->CheckDecryptionKey(vMasterKey) && !spk_manager->Encrypt(vMasterKey, &batch)) {
+                    throw std::runtime_error(std::string(__func__) + ": Could not encrypt new descriptors");
+                }
+            }
+            spk_manager->SetupDescriptor(batch, std::move(w_desc));
+            uint256 id = spk_manager->GetID();
+            AddScriptPubKeyMan(id, std::move(spk_manager));
+            AddActiveScriptPubKeyManWithDb(batch, id, t, internal);
+        }
+    }
 }
 
 void CWallet::SetupDescriptorScriptPubKeyMans()

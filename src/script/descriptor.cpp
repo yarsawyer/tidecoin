@@ -7,7 +7,9 @@
 #include <hash.h>
 #include <key_io.h>
 #include <pubkey.h>
+#include <pq/pq_api.h>
 #include <pq/pq_scheme.h>
+#include <pq/pqhd_kdf.h>
 #include <pq/pqhd_params.h>
 #include <script/miniscript.h>
 #include <script/parsing.h>
@@ -614,10 +616,64 @@ public:
     }
     bool IsBIP32() const override { return false; }
 
-    std::optional<CPubKey> GetPubKey(int, const SigningProvider&, FlatSigningProvider&, const DescriptorCache*, DescriptorCache*) const override
+    std::optional<CPubKey> GetPubKey(int pos, const SigningProvider& arg, FlatSigningProvider& out, const DescriptorCache* read_cache, DescriptorCache* write_cache) const override
     {
-        // pqhd() key expressions require wallet-local seed material; descriptor parsing exists before wallet integration.
-        return std::nullopt;
+        const uint32_t der_index = (m_derive == DeriveType::NO) ? 0U : static_cast<uint32_t>(pos);
+
+        if (read_cache) {
+            CPubKey cached;
+            if (!read_cache->GetCachedDerivedPubKey(m_expr_index, der_index, cached)) {
+                return std::nullopt;
+            }
+            out.pubkeys.emplace(cached.GetID(), cached);
+            return cached;
+        }
+
+        if (!write_cache) return std::nullopt;
+
+        std::array<uint8_t, 32> master_seed{};
+        if (!arg.GetPQHDSeed(m_seed_id, master_seed)) {
+            return std::nullopt;
+        }
+
+        // Build the full hardened leaf path.
+        std::array<uint32_t, 6> leaf_path{};
+        if (m_derive == DeriveType::HARDENED) {
+            if (m_path.size() != 5) return std::nullopt;
+            std::copy_n(m_path.begin(), 5, leaf_path.begin());
+            leaf_path[5] = static_cast<uint32_t>(pos) | 0x80000000UL;
+        } else {
+            if (m_path.size() != 6) return std::nullopt;
+            std::copy_n(m_path.begin(), 6, leaf_path.begin());
+        }
+
+        if (!pqhd::ValidateV1LeafPath(leaf_path)) {
+            return std::nullopt;
+        }
+
+        const pqhd::Node master = pqhd::MakeMasterNode(master_seed);
+        const auto leaf_node_opt = pqhd::DerivePath(master, leaf_path);
+        if (!leaf_node_opt) return std::nullopt;
+
+        const auto leaf_material_opt = pqhd::DeriveLeafMaterialV1((*leaf_node_opt).node_secret, leaf_path);
+        if (!leaf_material_opt) return std::nullopt;
+
+        std::vector<uint8_t> pk_raw;
+        pq::SecureKeyBytes sk_raw;
+        if (!pq::KeyGenFromLeafMaterial(/*pqhd_version=*/1, *leaf_material_opt, pk_raw, sk_raw)) {
+            return std::nullopt;
+        }
+
+        std::vector<uint8_t> prefixed(pk_raw.size() + 1);
+        prefixed[0] = m_scheme_prefix;
+        std::copy(pk_raw.begin(), pk_raw.end(), prefixed.begin() + 1);
+
+        const CPubKey pubkey{std::span<const uint8_t>{prefixed}};
+        if (!pubkey.IsFullyValid()) return std::nullopt;
+
+        out.pubkeys.emplace(pubkey.GetID(), pubkey);
+        write_cache->CacheDerivedPubKey(m_expr_index, der_index, pubkey);
+        return pubkey;
     }
 
     std::string ToString(StringType) const override
@@ -640,7 +696,54 @@ public:
         return true;
     }
 
-    void GetPrivKey(int, const SigningProvider&, FlatSigningProvider&) const override {}
+    void GetPrivKey(int pos, const SigningProvider& arg, FlatSigningProvider& out) const override
+    {
+        std::array<uint8_t, 32> master_seed{};
+        if (!arg.GetPQHDSeed(m_seed_id, master_seed)) {
+            return;
+        }
+
+        // Build the full hardened leaf path.
+        std::array<uint32_t, 6> leaf_path{};
+        if (m_derive == DeriveType::HARDENED) {
+            if (m_path.size() != 5) return;
+            std::copy_n(m_path.begin(), 5, leaf_path.begin());
+            leaf_path[5] = static_cast<uint32_t>(pos) | 0x80000000UL;
+        } else {
+            if (m_path.size() != 6) return;
+            std::copy_n(m_path.begin(), 6, leaf_path.begin());
+        }
+
+        if (!pqhd::ValidateV1LeafPath(leaf_path)) {
+            return;
+        }
+
+        const pqhd::Node master = pqhd::MakeMasterNode(master_seed);
+        const auto leaf_node_opt = pqhd::DerivePath(master, leaf_path);
+        if (!leaf_node_opt) return;
+
+        const auto leaf_material_opt = pqhd::DeriveLeafMaterialV1((*leaf_node_opt).node_secret, leaf_path);
+        if (!leaf_material_opt) return;
+
+        std::vector<uint8_t> pk_raw;
+        pq::SecureKeyBytes sk_raw;
+        if (!pq::KeyGenFromLeafMaterial(/*pqhd_version=*/1, *leaf_material_opt, pk_raw, sk_raw)) {
+            return;
+        }
+
+        std::vector<uint8_t> prefixed(pk_raw.size() + 1);
+        prefixed[0] = m_scheme_prefix;
+        std::copy(pk_raw.begin(), pk_raw.end(), prefixed.begin() + 1);
+        const CPubKey pubkey{std::span<const uint8_t>{prefixed}};
+        if (!pubkey.IsFullyValid()) return;
+
+        CKey key;
+        key.Set(sk_raw.begin(), sk_raw.end(), pubkey);
+        if (!key.IsValid()) return;
+
+        out.pubkeys.emplace(pubkey.GetID(), pubkey);
+        out.keys.emplace(pubkey.GetID(), key);
+    }
     std::optional<CPubKey> GetRootPubKey() const override { return std::nullopt; }
     std::optional<CExtPubKey> GetRootExtPubKey() const override { return std::nullopt; }
     std::unique_ptr<PubkeyProvider> Clone() const override
@@ -2185,6 +2288,22 @@ bool DescriptorCache::GetCachedDerivedExtPubKey(uint32_t key_exp_pos, uint32_t d
     return true;
 }
 
+void DescriptorCache::CacheDerivedPubKey(uint32_t key_exp_pos, uint32_t der_index, const CPubKey& pubkey)
+{
+    auto& pubkeys = m_derived_pubkeys[key_exp_pos];
+    pubkeys[der_index] = pubkey;
+}
+
+bool DescriptorCache::GetCachedDerivedPubKey(uint32_t key_exp_pos, uint32_t der_index, CPubKey& pubkey) const
+{
+    const auto& key_exp_it = m_derived_pubkeys.find(key_exp_pos);
+    if (key_exp_it == m_derived_pubkeys.end()) return false;
+    const auto& der_it = key_exp_it->second.find(der_index);
+    if (der_it == key_exp_it->second.end()) return false;
+    pubkey = der_it->second;
+    return true;
+}
+
 bool DescriptorCache::GetCachedLastHardenedExtPubKey(uint32_t key_exp_pos, CExtPubKey& xpub) const
 {
     const auto& it = m_last_hardened_xpubs.find(key_exp_pos);
@@ -2220,6 +2339,19 @@ DescriptorCache DescriptorCache::MergeAndDiff(const DescriptorCache& other)
             diff.CacheDerivedExtPubKey(derived_xpub_map_pair.first, derived_xpub_pair.first, derived_xpub_pair.second);
         }
     }
+    for (const auto& derived_pubkey_map_pair : other.GetCachedDerivedPubKeys()) {
+        for (const auto& derived_pubkey_pair : derived_pubkey_map_pair.second) {
+            CPubKey pubkey;
+            if (GetCachedDerivedPubKey(derived_pubkey_map_pair.first, derived_pubkey_pair.first, pubkey)) {
+                if (pubkey != derived_pubkey_pair.second) {
+                    throw std::runtime_error(std::string(__func__) + ": New cached derived pubkey does not match already cached derived pubkey");
+                }
+                continue;
+            }
+            CacheDerivedPubKey(derived_pubkey_map_pair.first, derived_pubkey_pair.first, derived_pubkey_pair.second);
+            diff.CacheDerivedPubKey(derived_pubkey_map_pair.first, derived_pubkey_pair.first, derived_pubkey_pair.second);
+        }
+    }
     for (const auto& lh_xpub_pair : other.GetCachedLastHardenedExtPubKeys()) {
         CExtPubKey xpub;
         if (GetCachedLastHardenedExtPubKey(lh_xpub_pair.first, xpub)) {
@@ -2242,6 +2374,11 @@ ExtPubKeyMap DescriptorCache::GetCachedParentExtPubKeys() const
 std::unordered_map<uint32_t, ExtPubKeyMap> DescriptorCache::GetCachedDerivedExtPubKeys() const
 {
     return m_derived_xpubs;
+}
+
+std::unordered_map<uint32_t, PubKeyMap> DescriptorCache::GetCachedDerivedPubKeys() const
+{
+    return m_derived_pubkeys;
 }
 
 ExtPubKeyMap DescriptorCache::GetCachedLastHardenedExtPubKeys() const

@@ -1017,8 +1017,22 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
         m_wallet_descriptor.range_start = 0;
     }
 
-    FlatSigningProvider provider;
-    provider.keys = GetKeys();
+    FlatSigningProvider base_provider;
+    base_provider.keys = GetKeys();
+    struct PQHDWalletSigningProvider final : public SigningProvider {
+        const WalletStorage& storage;
+        const FlatSigningProvider& base;
+        explicit PQHDWalletSigningProvider(const WalletStorage& storage_in, const FlatSigningProvider& base_in) : storage(storage_in), base(base_in) {}
+
+        bool GetCScript(const CScriptID& scriptid, CScript& script) const override { return base.GetCScript(scriptid, script); }
+        bool HaveCScript(const CScriptID& scriptid) const override { return base.scripts.find(scriptid) != base.scripts.end(); }
+        bool GetPubKey(const CKeyID& address, CPubKey& pubkey) const override { return base.GetPubKey(address, pubkey); }
+        bool GetKey(const CKeyID& address, CKey& key) const override { return base.GetKey(address, key); }
+        bool HaveKey(const CKeyID& address) const override { return base.keys.find(address) != base.keys.end(); }
+        bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override { return base.GetKeyOrigin(keyid, info); }
+        bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const override { return storage.GetPQHDSeed(seed_id, seed); }
+    };
+    const PQHDWalletSigningProvider provider{m_storage, base_provider};
 
     uint256 id = GetID();
     for (int32_t i = m_max_cached_index + 1; i < new_range_end; ++i) {
@@ -1157,6 +1171,29 @@ bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(WalletBatch& batch, co
     return true;
 }
 
+bool DescriptorScriptPubKeyMan::SetupDescriptor(WalletBatch& batch, WalletDescriptor&& descriptor)
+{
+    LOCK(cs_desc_man);
+    assert(m_storage.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
+
+    // Ignore when there is already a descriptor.
+    if (m_wallet_descriptor.descriptor) {
+        return false;
+    }
+
+    m_wallet_descriptor = std::move(descriptor);
+
+    if (!batch.WriteDescriptor(GetID(), m_wallet_descriptor)) {
+        throw std::runtime_error(std::string(__func__) + ": writing descriptor failed");
+    }
+
+    // TopUp
+    TopUpWithDB(batch);
+
+    m_storage.UnsetBlankWalletFlag(batch);
+    return true;
+}
+
 bool DescriptorScriptPubKeyMan::IsHDEnabled() const
 {
     LOCK(cs_desc_man);
@@ -1176,7 +1213,7 @@ bool DescriptorScriptPubKeyMan::CanGetAddresses(bool internal) const
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
 {
     LOCK(cs_desc_man);
-    return m_map_keys.size() > 0 || m_map_crypted_keys.size() > 0;
+    return m_map_keys.size() > 0 || m_map_crypted_keys.size() > 0 || m_storage.HasPQHDSeeds();
 }
 
 bool DescriptorScriptPubKeyMan::HaveCryptedKeys() const

@@ -38,9 +38,11 @@ Legend:
   - Touch-points:
     - `src/wallet/pqhd.h` (`PQHDSeed`, `PQHDCryptedSeed`, `PQHDPolicy`)
     - `src/wallet/walletdb.h` (`wallet::DBKeys::PQHD_*`, `WalletBatch::Write*PQHD*`)
-    - `src/wallet/walletdb.cpp` (DB key strings, write helpers, `LoadPQHDWalletRecords()`)
+    - `src/wallet/walletdb.cpp` (DB key strings, write helpers, `LoadPQHDWalletRecords()`, `walletdescriptorpubkeycache` for PQHD descriptor cache)
     - `src/wallet/wallet.h`, `src/wallet/wallet.cpp` (load hooks + in-memory storage)
-  - Verify: `./build/bin/test_tidecoin -t walletdb_tests`
+  - Verify:
+    - `./build/bin/test_tidecoin -t walletdb_tests`
+    - `./build/bin/test_tidecoin -t wallet_tests/CreateWallet` (ensures PQHD descriptor cache persists and reloads)
 - PQHD-REQ-0019 — PSBT is BIP174 and supports proprietary key/value records (`src/psbt.h`, `src/rpc/rawtransaction.cpp` raw proprietary display)
 - PQHD-REQ-0020 — `tidecoin/PQHD_ORIGIN` proprietary record encoding + parsing
   - Touch-points:

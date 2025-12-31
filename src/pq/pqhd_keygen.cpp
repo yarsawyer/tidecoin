@@ -41,63 +41,78 @@ bool KeyGenFromSeed(uint32_t pqhd_version,
         return false;
     }
 
-    pqhd::KeygenStreamBlock64 block0 = pqhd::DeriveKeygenStreamBlock(key_material, /*ctr=*/0);
-
     std::vector<uint8_t> pk_local(info->pubkey_bytes);
     SecureKeyBytes sk_local(info->seckey_bytes);
 
-    int rc = -1;
-    bool supported_scheme{true};
+    size_t seed_len{0};
     switch (scheme_id) {
-    case SchemeId::FALCON_512: {
-        std::array<uint8_t, 48> seed{};
-        std::copy_n(block0.begin(), seed.size(), seed.begin());
-        rc = PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair_deterministic(
-            pk_local.data(), sk_local.data(), seed.data(), seed.size());
-        memory_cleanse(seed.data(), seed.size());
+    case SchemeId::FALCON_512:
+    case SchemeId::FALCON_1024:
+        seed_len = 48;
         break;
-    }
-    case SchemeId::FALCON_1024: {
-        std::array<uint8_t, 48> seed{};
-        std::copy_n(block0.begin(), seed.size(), seed.begin());
-        rc = PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair_deterministic(
-            pk_local.data(), sk_local.data(), seed.data(), seed.size());
-        memory_cleanse(seed.data(), seed.size());
+    case SchemeId::MLDSA_44:
+    case SchemeId::MLDSA_65:
+    case SchemeId::MLDSA_87:
+        seed_len = 32;
         break;
-    }
-    case SchemeId::MLDSA_44: {
-        std::array<uint8_t, 32> seed{};
-        std::copy_n(block0.begin(), seed.size(), seed.begin());
-        rc = PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair_deterministic(
-            pk_local.data(), sk_local.data(), seed.data(), seed.size());
-        memory_cleanse(seed.data(), seed.size());
-        break;
-    }
-    case SchemeId::MLDSA_65: {
-        std::array<uint8_t, 32> seed{};
-        std::copy_n(block0.begin(), seed.size(), seed.begin());
-        rc = PQCLEAN_MLDSA65_CLEAN_crypto_sign_keypair_deterministic(
-            pk_local.data(), sk_local.data(), seed.data(), seed.size());
-        memory_cleanse(seed.data(), seed.size());
-        break;
-    }
-    case SchemeId::MLDSA_87: {
-        std::array<uint8_t, 32> seed{};
-        std::copy_n(block0.begin(), seed.size(), seed.begin());
-        rc = PQCLEAN_MLDSA87_CLEAN_crypto_sign_keypair_deterministic(
-            pk_local.data(), sk_local.data(), seed.data(), seed.size());
-        memory_cleanse(seed.data(), seed.size());
-        break;
-    }
     default:
-        supported_scheme = false;
-        break;
-    }
-
-    memory_cleanse(block0.data(), block0.size());
-    if (!supported_scheme) {
         memory_cleanse(sk_local.data(), sk_local.size());
         return false;
+    }
+
+    // Deterministic keypair generation can fail if the internal encoding does not fit in the
+    // fixed-size secret key buffers (rare). To make PQHD key generation total and stable,
+    // retry deterministically with subsequent stream blocks.
+    //
+    // This does not change outputs for inputs that already succeeded on the first try.
+    constexpr uint32_t MAX_DETERMINISTIC_ATTEMPTS{1024};
+    int rc = -1;
+    for (uint32_t ctr = 0; ctr < MAX_DETERMINISTIC_ATTEMPTS; ++ctr) {
+        pqhd::KeygenStreamBlock64 block = pqhd::DeriveKeygenStreamBlock(key_material, ctr);
+
+        // Seed is the first seed_len bytes of the stream block.
+        std::array<uint8_t, 48> seed48{};
+        std::array<uint8_t, 32> seed32{};
+        const uint8_t* seed_ptr{nullptr};
+        if (seed_len == seed48.size()) {
+            std::copy_n(block.begin(), seed48.size(), seed48.begin());
+            seed_ptr = seed48.data();
+        } else {
+            std::copy_n(block.begin(), seed32.size(), seed32.begin());
+            seed_ptr = seed32.data();
+        }
+
+        switch (scheme_id) {
+        case SchemeId::FALCON_512:
+            rc = PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair_deterministic(
+                pk_local.data(), sk_local.data(), seed_ptr, seed_len);
+            break;
+        case SchemeId::FALCON_1024:
+            rc = PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair_deterministic(
+                pk_local.data(), sk_local.data(), seed_ptr, seed_len);
+            break;
+        case SchemeId::MLDSA_44:
+            rc = PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair_deterministic(
+                pk_local.data(), sk_local.data(), seed_ptr, seed_len);
+            break;
+        case SchemeId::MLDSA_65:
+            rc = PQCLEAN_MLDSA65_CLEAN_crypto_sign_keypair_deterministic(
+                pk_local.data(), sk_local.data(), seed_ptr, seed_len);
+            break;
+        case SchemeId::MLDSA_87:
+            rc = PQCLEAN_MLDSA87_CLEAN_crypto_sign_keypair_deterministic(
+                pk_local.data(), sk_local.data(), seed_ptr, seed_len);
+            break;
+        default:
+            rc = -1;
+            break;
+        }
+
+        memory_cleanse(seed48.data(), seed48.size());
+        memory_cleanse(seed32.data(), seed32.size());
+        memory_cleanse(block.data(), block.size());
+
+        if (rc == 0) break;
     }
     if (rc != 0) {
         memory_cleanse(sk_local.data(), sk_local.size());

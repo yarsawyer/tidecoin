@@ -43,7 +43,9 @@ static bool MatchPayToPubkey(const CScript& script, valtype& pubkey)
 
     // Expect exactly: <pubkey> OP_CHECKSIG
     if (!script.GetOp(it, opcode) || opcode != OP_CHECKSIG) return false;
-    return it == script.end();
+    if (it != script.end()) return false;
+    pubkey = std::move(data);
+    return true;
 }
 
 static bool MatchPayToPubkeyHash(const CScript& script, valtype& pubkeyhash)

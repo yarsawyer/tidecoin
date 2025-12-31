@@ -276,23 +276,22 @@ inline bool GenerateKeyPair(const SchemeInfo& info,
         return false;
     }
 
-    std::array<uint8_t, 64> key_material{};
-    randombytes(key_material.data(), key_material.size());
-
-    std::vector<uint8_t> pk_local;
-    SecureKeyBytes sk_local;
-    const bool ok = KeyGenFromSeed(/*pqhd_version=*/1, info.id,
-                                   std::span<const uint8_t, 64>{key_material.data(), key_material.size()},
-                                   pk_local, sk_local);
-    std::fill(key_material.begin(), key_material.end(), 0);
-
-    if (!ok || pk_local.size() != info.pubkey_bytes || sk_local.size() != info.seckey_bytes) {
+    // Non-deterministic key generation for ad-hoc keys (e.g. tests, legacy flows).
+    // PQHD deterministic wallets must use `KeyGenFromSeed()` on PQHD-derived material.
+    switch (info.id) {
+    case SchemeId::FALCON_512:
+        return PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+    case SchemeId::FALCON_1024:
+        return PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+    case SchemeId::MLDSA_44:
+        return PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+    case SchemeId::MLDSA_65:
+        return PQCLEAN_MLDSA65_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+    case SchemeId::MLDSA_87:
+        return PQCLEAN_MLDSA87_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+    default:
         return false;
     }
-
-    std::copy(pk_local.begin(), pk_local.end(), pk.begin());
-    std::copy(sk_local.begin(), sk_local.end(), sk.begin());
-    return true;
 }
 
 inline bool Sign(const SchemeInfo& info,
