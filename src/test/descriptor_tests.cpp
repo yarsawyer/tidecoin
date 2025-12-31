@@ -65,6 +65,43 @@ bool EqualDescriptor(std::string a, std::string b)
     return a == b;
 }
 
+BOOST_AUTO_TEST_CASE(descriptor_pqhd_key_expression_parsing)
+{
+    FlatSigningProvider out;
+    std::string error;
+
+    const std::string seedid{"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"};
+
+    const std::string ranged{"wpkh(pqhd(" + seedid + ")/10007h/6868h/7h/0h/0h/*h)"};
+    auto parsed_ranged = Parse(ranged, out, error);
+    BOOST_REQUIRE_MESSAGE(!parsed_ranged.empty(), error);
+    BOOST_CHECK_MESSAGE(EqualDescriptor(ranged, parsed_ranged.at(0)->ToString()), parsed_ranged.at(0)->ToString());
+    BOOST_CHECK(parsed_ranged.at(0)->IsRange());
+    BOOST_CHECK(out.keys.empty());
+
+    const std::string fixed{"wpkh(pqhd(" + seedid + ")/10007h/6868h/7h/0h/0h/0h)"};
+    out = FlatSigningProvider{};
+    auto parsed_fixed = Parse(fixed, out, error);
+    BOOST_REQUIRE_MESSAGE(!parsed_fixed.empty(), error);
+    BOOST_CHECK_MESSAGE(EqualDescriptor(fixed, parsed_fixed.at(0)->ToString()), parsed_fixed.at(0)->ToString());
+    BOOST_CHECK(!parsed_fixed.at(0)->IsRange());
+    BOOST_CHECK(out.keys.empty());
+
+    const auto must_fail = [&](const std::string& s, const std::string& needle) {
+        out = FlatSigningProvider{};
+        error.clear();
+        auto parsed = Parse(s, out, error);
+        BOOST_CHECK(parsed.empty());
+        BOOST_CHECK_MESSAGE(error.find(needle) != std::string::npos, error);
+    };
+
+    must_fail("wpkh(pqhd(" + seedid + ")/10007/6868h/7h/0h/0h/*h)", "hardened-only");
+    must_fail("wpkh(pqhd(" + seedid + ")/10007h/6868h/7h/0h/0h/*)", "*h");
+    must_fail("wpkh(pqhd(" + seedid + ")/10008h/6868h/7h/0h/0h/*h)", "purpose");
+    must_fail("wpkh(pqhd(" + seedid + ")/10007h/6868h/6h/0h/0h/*h)", "not recognized");
+    must_fail("wpkh(pqhd(" + seedid.substr(0, 10) + ")/10007h/6868h/7h/0h/0h/*h)", "pqhd() seed id");
+}
+
 bool EqualSigningProviders(const FlatSigningProvider& a, const FlatSigningProvider& b)
 {
     return a.scripts == b.scripts
@@ -172,12 +209,12 @@ void DoCheck(std::string prv, std::string pub, const std::string& norm_pub, int 
         prv = UseHInsteadOfApostrophe(prv);
     }
     parse_privs = Parse(prv, keys_priv, error);
-    BOOST_CHECK_MESSAGE(!parse_privs.empty(), error);
+    BOOST_REQUIRE_MESSAGE(!parse_privs.empty(), error);
     if (replace_apostrophe_with_h_in_pub) {
         pub = UseHInsteadOfApostrophe(pub);
     }
     parse_pubs = Parse(pub, keys_pub, error);
-    BOOST_CHECK_MESSAGE(!parse_pubs.empty(), error);
+    BOOST_REQUIRE_MESSAGE(!parse_pubs.empty(), error);
 
     auto& parse_priv = parse_privs.at(desc_index);
     auto& parse_pub = parse_pubs.at(desc_index);
@@ -536,6 +573,13 @@ BOOST_FIXTURE_TEST_SUITE(descriptor_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(descriptor_test)
 {
+    // This test suite is inherited from Bitcoin Core and heavily relies on
+    // secp256k1/BIP32/WIF key material. Tidecoin has transitioned `CKey` to
+    // post-quantum keys, so these vectors are not applicable.
+    if (CKey::SIZE != 32) {
+        BOOST_TEST_MESSAGE("Skipping legacy secp256k1 descriptor vectors (CKey::SIZE != 32).");
+        return;
+    }
     // Basic single-key compressed
     Check("combo(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)", "combo(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)", "combo(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)", SIGNABLE, {{"2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac","76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac","00149a1c78a507689f6f54b847ad1cef1e614ee23f1e","a91484ab21b1b2fd065d4504ff693d832434b6108d7b87"}}, std::nullopt, /*op_desc_id=*/uint256{"8ef71f7b6ac0918663f6706be469d6109f6922e21f484009d7ab49d77da36e8b"});
     Check("pk(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)", "pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)", "pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)", SIGNABLE, {{"2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac"}}, std::nullopt, /*op_desc_id=*/uint256{"5fe175b43c58ac2cdde40521dc7d1dbc607f3dd795d00770206f4fdefb42229e"});

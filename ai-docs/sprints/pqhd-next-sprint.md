@@ -9,6 +9,10 @@ Hard rules for this sprint plan:
 
 Primary spec: `ai-docs/pqhd.md`
 
+Progress tracking:
+- Implementation status (by `PQHD-REQ-xxxx`) is tracked in `ai-docs/pqhd-integration-progress.md`.
+- After landing a PR slice below, update `ai-docs/pqhd-integration-progress.md` and optionally tick the PR “Status” line in §4.
+
 ---
 
 ## 1) Spec Requirements Index
@@ -109,17 +113,23 @@ Primary spec: `ai-docs/pqhd.md`
 - Source: `pqhd.md` §12.3, §10.3, §16.4
 - Why: enforce expected user-facing semantics across RPC flows.
 
+### PQHD-REQ-0025 — Store PQHD origin in `CKeyMetadata` (SeedID32 + hardened path)
+- Source: `pqhd.md` §12.5.4
+- Why: PSBT origin export and wallet UX require a canonical per-key origin record without relying on BIP32/xpub semantics.
+
 ---
 
 ## 2) Gap List (Missing / Partially Implemented)
 
-### GAP-01 — `CPubKey` is Falcon-512-only; fixed-size assumptions everywhere
+Note: entries marked “(resolved)” are kept as historical context because they drove the PR slicing order.
+
+### GAP-01 (resolved) — `CPubKey` is Falcon-512-only; fixed-size assumptions everywhere
 - REQs: PQHD-REQ-0014, PQHD-REQ-0015, PQHD-REQ-0016, PQHD-REQ-0019
+- Status: resolved by PR-3 (`CPubKey` variable-length + scheme-aware)
 - Evidence:
   - Spec: `pqhd.md` §0.1, §16.2
-  - Repo: `src/pubkey.h` (`CPubKey::SIZE`, `CPubKey::GetLen()` recognizes only `0x07`)
-  - Repo: `src/psbt.h` `DeserializeHDKeypaths(...)` key-size checks use `CPubKey::SIZE`
-- Impact: multi-scheme wallets/PSBT/descriptor parsing will fail or be impossible beyond Falcon-512.
+  - Repo: see `ai-docs/pqhd-integration-progress.md` “Implemented” for PR-3 touch-points/tests
+- Impact (historical): multi-scheme wallets/PSBT/descriptor parsing were blocked beyond Falcon-512.
 
 ### GAP-02 — No PQHD seed identity rules in storage/RPC
 - REQs: PQHD-REQ-0004, PQHD-REQ-0005, PQHD-REQ-0008
@@ -128,22 +138,28 @@ Primary spec: `ai-docs/pqhd.md`
   - Repo: `src/wallet/walletdb.h` uses `CHDChain::seed_id` (`CKeyID` hash160), no SeedID32 records
 - Impact: cannot store/import/dedup PQHD seeds; cannot reference a seed from descriptors/PSBT.
 
-### GAP-03 — No PQHD derivation primitives implemented (NodeSecret/ChainCode, HKDF)
+### GAP-03 (resolved) — No PQHD derivation primitives implemented (NodeSecret/ChainCode, HKDF)
 - REQs: PQHD-REQ-0010, PQHD-REQ-0011, PQHD-REQ-0023
-- Evidence: spec §7.2–§7.4; repo has no PQHD module; only existing BIP32-like HMAC in `src/hash.cpp`
-- Impact: cannot derive deterministic leaf material; cannot build PQHD keygen/restore.
+- Status: resolved by PR-1 (PQHD KDF primitives + vectors)
+- Evidence:
+  - Spec: `pqhd.md` §7.2–§7.4
+  - Repo: see `ai-docs/pqhd-integration-progress.md` “Implemented” for PR-1 touch-points/tests
+- Impact (historical): deterministic leaf material derivation was missing; PQHD keygen/restore was blocked.
 
-### GAP-04 — No versioned `KeyGenFromSeed` contract implemented
+### GAP-04 (resolved) — No versioned `KeyGenFromSeed` contract implemented
 - REQs: PQHD-REQ-0012, PQHD-REQ-0013, PQHD-REQ-0023
-- Evidence: spec §7.5; repo currently uses PQClean keygen paths without a PQHD version pin
-- Impact: restorability across upgrades is not guaranteed; cannot safely deploy PQHD.
+- Status: resolved by PR-2 (versioned `KeyGenFromSeed` wrappers + determinism tests for all schemes)
+- Evidence:
+  - Spec: `pqhd.md` §7.5
+  - Repo: see `ai-docs/pqhd-integration-progress.md` “Implemented” for PR-2 touch-points/tests
+- Impact (historical): restorability across upgrades was not guaranteed; PQHD could not be safely deployed.
 
-### GAP-05 — Descriptor support missing for `pqhd(<SeedID32>)/...` / `pkpq(...)`
+### GAP-05 — Descriptor support missing for `pqhd(<SeedID32>)/...` + explicit TidePubKey validation
 - REQs: PQHD-REQ-0016, PQHD-REQ-0017, PQHD-REQ-0018
 - Evidence:
   - Spec: `pqhd.md` §9.1–§9.2
-  - Repo: `src/script/descriptor.cpp` has pubkey parsers for hex/BIP32 paths only; no `pqhd()` / `pkpq()` provider
-- Impact: cannot represent PQHD key sources in descriptor wallets; cannot top-up keypool from PQHD.
+  - Repo: `src/script/descriptor.cpp` has no `pqhd()` provider; and existing pubkey parsing historically assumes secp-like sizes without scheme-aware length validation.
+- Impact: cannot represent PQHD key sources in descriptor wallets; explicit PQ pubkeys (raw hex TidePubKey) may be rejected or mis-validated without TidePubKey length checks.
 
 ### GAP-06 — PSBT PQHD origin metadata not implemented
 - REQs: PQHD-REQ-0019, PQHD-REQ-0020, PQHD-REQ-0021
@@ -173,7 +189,12 @@ Primary spec: `ai-docs/pqhd.md`
 
 This sprint is ordered by dependency: determinism primitives → determinism keygen (all schemes) → key container refactor (unblocks everything else) → wallet persistence/policy → descriptors → PSBT → migration notes.
 
-### Task 1 — Implement PQHD derivation primitives + vectors (KDF-only, no wallet integration)
+Task status legend:
+- `[x]` done (landed + verified)
+- `[ ]` not started
+- `[~]` in progress (partially landed)
+
+### [x] Task 1 — Implement PQHD derivation primitives + vectors (KDF-only, no wallet integration)
 - Problem: PQHD needs hardened-only derivation and leaf material derivation before any wallet feature can exist.
 - Requirements: PQHD-REQ-0004, PQHD-REQ-0009, PQHD-REQ-0010, PQHD-REQ-0011, PQHD-REQ-0023
 - Touch-points:
@@ -195,7 +216,7 @@ This sprint is ordered by dependency: determinism primitives → determinism key
   - No behavior changes; library-only.
 - Size: M.
 
-### Task 2 — Implement `KeyGenFromSeed` v1 for all PQ signature schemes (pinned by `pqhd_version`)
+### [x] Task 2 — Implement `KeyGenFromSeed` v1 for all PQ signature schemes (pinned by `pqhd_version`)
 - Problem: wallet restore must be stable across Tidecoin/PQClean upgrades and must cover all supported schemes (not just Falcon-512).
 - Requirements: PQHD-REQ-0012, PQHD-REQ-0013, PQHD-REQ-0023
 - Touch-points:
@@ -226,7 +247,7 @@ This sprint is ordered by dependency: determinism primitives → determinism key
   - No wallet behavior changes; used later by PQHD keypool/descriptor integration.
 - Size: L.
 
-### Task 3 — Refactor `CPubKey` to be scheme-aware and variable-length (and remove fixed-size assumptions)
+### [x] Task 3 — Refactor `CPubKey` to be scheme-aware and variable-length (and remove fixed-size assumptions)
 - Problem: multi-scheme wallet + descriptors + PSBT cannot work while `CPubKey` is Falcon-512-only and `CPubKey::SIZE` is assumed across subsystems.
 - Requirements: PQHD-REQ-0014, PQHD-REQ-0015
 - Touch-points (blast radius):
@@ -252,17 +273,20 @@ This sprint is ordered by dependency: determinism primitives → determinism key
   - Codebase compiles with variable-length `CPubKey` and accepts the 5 current schemes as valid pubkey sizes.
   - No remaining hard dependency on `CPubKey::SIZE` in descriptor/PSBT parsing.
 - Tests required:
-  - Unit: extend `descriptor_tests`; add PSBT parsing tests that include multiple pubkey sizes.
+  - Unit: `./build/bin/test_tidecoin -t pq_pubkey_container_tests`
+  - Unit: `./build/bin/test_tidecoin -t psbt_pq_keypaths_tests`
+  - Build: `cmake --build build -j12 --target test_bitcoin`
 - Rollout/safety:
   - Isolate as its own PR; do not include wallet DB schema or descriptor feature work here.
 - Size: L.
 
-### Task 4 — Add PQHD wallet DB seed/policy records + scheme gating policy (Falcon-512-only pre-auxpow)
+### [x] Task 4 — Add PQHD wallet DB seed/policy records + scheme gating policy (Falcon-512-only pre-auxpow)
 - Problem: PQHD needs persistable encrypted seed material (SeedID32) and a wallet-local scheme policy; wallet must not create outputs for schemes that are not activated yet.
-- Requirements: PQHD-REQ-0002, PQHD-REQ-0003, PQHD-REQ-0004, PQHD-REQ-0005, PQHD-REQ-0006, PQHD-REQ-0007, PQHD-REQ-0008, PQHD-REQ-0024
+- Requirements: PQHD-REQ-0002, PQHD-REQ-0003, PQHD-REQ-0004, PQHD-REQ-0005, PQHD-REQ-0006, PQHD-REQ-0007, PQHD-REQ-0008, PQHD-REQ-0024, PQHD-REQ-0025
 - Touch-points:
   - Wallet DB:
     - `src/wallet/walletdb.h`, `src/wallet/walletdb.cpp` (new DB keys + record structs)
+    - `src/wallet/walletdb.h` (`CKeyMetadata` PQHD origin fields + serialization)
   - Wallet feature flags/versioning:
     - `src/wallet/walletutil.h`, `src/wallet/wallet.h`
   - Wallet policy + enforcement hooks:
@@ -279,33 +303,37 @@ This sprint is ordered by dependency: determinism primitives → determinism key
     - default change scheme id,
     - optional per-scheme seed override mapping (multi-root support).
   - Enforce idempotent seed import (SeedID32 de-dup).
+  - Extend `CKeyMetadata` to carry PQHD origin:
+    - `SeedID32` (32 bytes) + full hardened path (`vector<uint32_t>`)
+    - version-gated serialization upgrade (Bitcoin walletdb patterns)
   - Add an internal policy predicate:
     - pre-auxpow: only Falcon-512 is allowed for new outputs/change,
     - post-auxpow: other schemes allowed.
   - Keep seed lifecycle RPC/Qt UX deferred; this task is storage + policy semantics only.
 - Acceptance criteria:
   - Wallet DB round-trips PQHD seed/policy records.
-  - Policy gating is test-covered and defaults to Falcon-512 pre-auxpow.
+  - Wallet policy load clamps default schemes to Falcon-512 pre-auxpow (enforcement at output-generation sites remains a follow-up requirement).
   - Existing wallets are unaffected unless PQHD wallet flag is enabled.
 - Tests required:
   - Unit: walletdb serialization tests for PQHD seed/policy.
-  - Unit: policy gating tests for a few heights and schemes.
+  - (Optional follow-up) Unit: policy gating tests for a few heights and schemes.
 - Rollout/safety:
   - Feature-flagged via wallet flag; default behavior remains Falcon-512.
 - Size: M.
 
-### Task 5 — Add descriptor parsing + canonical printing for `pkpq(...)` and `pqhd(<SeedID32>)/...` (parsing-only)
-- Problem: descriptor wallets are the target architecture; we need a way to represent PQHD key sources and explicit PQ pubkeys in descriptors.
+### [x] Task 5 — Add descriptor parsing + canonical printing for `pqhd(<SeedID32>)/...` and validate explicit TidePubKey hex keys (parsing-only)
+- Problem: descriptor wallets are the target architecture; we need a PQHD key source (`pqhd()`) and we must ensure explicit PQ pubkeys (raw hex TidePubKey) are accepted and validated correctly.
 - Requirements: PQHD-REQ-0016, PQHD-REQ-0017, PQHD-REQ-0018
 - Touch-points:
   - `src/script/descriptor.cpp`:
     - `ParsePubkeyInner(...)`, `ParseKeyPath(...)`, `PubkeyProvider` subclasses
   - `src/script/descriptor.h` (descriptor interfaces for normalized/private strings)
-  - Tests: `src/test/descriptor_tests.cpp`
+- Tests: `src/test/descriptor_tests.cpp`
 - Implementation outline:
-  - Add `pkpq(<hex_prefixed_pubkey>)`:
-    - parses TidePubKey bytes (prefix + pubkey bytes),
-    - validates scheme id and pubkey length via `src/pq/pq_scheme.h`.
+  - Explicit pubkeys stay raw hex:
+    - accept variable-length TidePubKey bytes (prefix + scheme pubkey),
+    - validate scheme id and pubkey length via `src/pq/pq_scheme.h`,
+    - remove any implicit 33/65-byte secp pubkey assumptions for these keys.
   - Add `pqhd(<SeedID32>)/...` key expression with strict restrictions:
     - SeedID32 only (exactly 32 bytes hex),
     - hardened-only path elements, `*h` only, no multipath,
@@ -321,7 +349,7 @@ This sprint is ordered by dependency: determinism primitives → determinism key
   - Parsing-only; no wallet derivation integration in this sprint.
 - Size: M.
 
-### Task 6 — Implement PSBT `tidecoin/PQHD_ORIGIN` proprietary records (inputs + outputs) + RPC/Qt parsed view
+### [ ] Task 6 — Implement PSBT `tidecoin/PQHD_ORIGIN` proprietary records (inputs + outputs) + RPC/Qt parsed view
 - Problem: Tidecoin needs PQHD origin metadata in PSBT without BIP32/xpubs; we also need `decodepsbt` / Qt to display it cleanly.
 - Requirements: PQHD-REQ-0019, PQHD-REQ-0020, PQHD-REQ-0021
 - Touch-points:
@@ -344,7 +372,9 @@ This sprint is ordered by dependency: determinism primitives → determinism key
     - value: `SeedID32 || CompactSize(path_len) || path elements (u32 little-endian)`
   - Write rules:
     - Inputs: annotate any pubkey the wallet recognizes in the spend path.
-    - Outputs: annotate wallet-owned outputs where origin is known (at minimum: change outputs).
+    - Outputs: “Bitcoin way”:
+      - annotate wallet-owned outputs where origin is known (including change, and also wallet-owned multisig outputs where applicable),
+      - never annotate outputs that are *not* wallet-owned (do not leak internal origin metadata to recipients).
   - Display rules:
     - `decodepsbt` adds a parsed view for PQHD_ORIGIN while keeping the raw proprietary list unchanged.
 - Acceptance criteria:
@@ -356,7 +386,7 @@ This sprint is ordered by dependency: determinism primitives → determinism key
   - No consensus impact; only PSBT metadata.
 - Size: M.
 
-### Task 7 — Document oldtidecoin legacy wallet migration mapping (no code yet)
+### [ ] Task 7 — Document oldtidecoin legacy wallet migration mapping (no code yet)
 - Problem: oldtidecoin wallets are legacy (BDB) and non-HD; migration is “import legacy entries”, not “import HD seeds”.
 - Requirements: PQHD-REQ-0022
 - Touch-points (reference analysis):
@@ -382,31 +412,37 @@ This sprint is ordered by dependency: determinism primitives → determinism key
 ## 4) PR Breakdown Plan (3–6 slices)
 
 ### PR-1: PQHD KDF primitives + vectors
+- Status: [x] implemented (see `ai-docs/pqhd-integration-progress.md`)
 - Tasks: Task 1
 - Tests: new PQHD KDF unit tests
 - Docs: update `ai-docs/pqhd-integration-progress.md` statuses
 
 ### PR-2: `KeyGenFromSeed` v1 (all schemes) + determinism tests
+- Status: [x] implemented (see `ai-docs/pqhd-integration-progress.md`)
 - Tasks: Task 2
 - Tests: new PQHD keygen unit tests; run `test_tidecoin` subset locally
 - Docs: note `pqhd_version` pinning in progress tracker
 
 ### PR-3: `CPubKey` variable-length refactor (scheme-aware)
+- Status: [x] implemented (see `ai-docs/pqhd-integration-progress.md`)
 - Tasks: Task 3
-- Tests: `descriptor_tests`, PSBT parsing tests, and a full build
+- Tests: `./build/bin/test_tidecoin -t pq_pubkey_container_tests` and `./build/bin/test_tidecoin -t psbt_pq_keypaths_tests` (plus a full build)
 - Docs: progress tracker updates
 
 ### PR-4: Wallet DB PQHD seed/policy records + auxpow scheme gating semantics
+- Status: [x] implemented (see `ai-docs/pqhd-integration-progress.md`)
 - Tasks: Task 4
-- Tests: walletdb unit tests; policy gating unit tests
+- Tests: walletdb unit tests (policy gating tests optional follow-up)
 - Docs: progress tracker updates
 
-### PR-5: Descriptor parsing: `pkpq(...)` and `pqhd(<SeedID32>)/...` + canonical printing
+### PR-5: Descriptor parsing: `pqhd(<SeedID32>)/...` + explicit TidePubKey (raw hex) validation + canonical printing
+- Status: [x] implemented (see `ai-docs/pqhd-integration-progress.md`)
 - Tasks: Task 5
-- Tests: `descriptor_tests`
+- Tests: `./build/bin/test_tidecoin -t descriptor_tests`
 - Docs: progress tracker updates
 
 ### PR-6: PSBT PQHD_ORIGIN (inputs + outputs) + parsed RPC display
+- Status: [ ] not started
 - Tasks: Task 6
 - Tests: PSBT unit tests; `decodepsbt` unit tests if applicable
 - Docs: progress tracker updates

@@ -758,7 +758,7 @@ class TestNode():
         An inbound connection is made from TestNode <------ P2PConnection
         - if TestNode doesn't advertise NODE_P2P_V2 service, P2PConnection sends version message and v1 P2P is followed
         - if TestNode advertises NODE_P2P_V2 service, (and if P2PConnections supports v2 P2P)
-                P2PConnection sends ellswift bytes and v2 P2P is followed
+                P2PConnection sends v2 handshake bytes and v2 P2P is followed
         """
         if 'dstport' not in kwargs:
             kwargs['dstport'] = p2p_port(self.index)
@@ -823,9 +823,9 @@ class TestNode():
 
         An outbound connection is made from TestNode -------> P2PConnection
             - if P2PConnection doesn't advertise_v2_p2p, TestNode sends version message and v1 P2P is followed
-            - if P2PConnection both supports_v2_p2p and advertise_v2_p2p, TestNode sends ellswift bytes and v2 P2P is followed
+            - if P2PConnection both supports_v2_p2p and advertise_v2_p2p, TestNode sends v2 handshake bytes and v2 P2P is followed
             - if P2PConnection doesn't supports_v2_p2p but advertise_v2_p2p,
-                TestNode sends ellswift bytes and P2PConnection disconnects,
+                TestNode sends v2 handshake bytes and P2PConnection disconnects,
                 TestNode reconnects by sending version message and v1 P2P is followed
         """
 
@@ -845,7 +845,7 @@ class TestNode():
         # if P2PConnection is advertised to support v2 P2P when it doesn't actually support v2 P2P,
         # reconnection needs to be attempted using v1 P2P by sending version message
         reconnect = advertise_v2_p2p and not supports_v2_p2p
-        # P2PConnection needs to be advertised to support v2 P2P so that ellswift bytes are sent instead of msg_version
+        # P2PConnection needs to be advertised to support v2 P2P so that v2 handshake bytes are sent instead of msg_version
         supports_v2_p2p = supports_v2_p2p and advertise_v2_p2p
         p2p_conn.peer_accept_connection(connect_cb=addconnection_callback, connect_id=p2p_idx + 1, net=self.chain, timeout_factor=self.timeout_factor, supports_v2_p2p=supports_v2_p2p, reconnect=reconnect, **kwargs)()
 

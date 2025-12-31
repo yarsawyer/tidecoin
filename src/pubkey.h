@@ -33,9 +33,13 @@ typedef uint256 ChainCode;
 class CPubKey
 {
 public:
-    static constexpr unsigned int SIZE = pq::kFalcon512Info.pubkey_bytes + 1;
-    static constexpr unsigned int SIGNATURE_SIZE = pq::kFalcon512Info.sig_bytes_max;
-    static constexpr unsigned int COMPACT_SIGNATURE_SIZE = pq::kFalcon512Info.sig_bytes_max;
+    // Historical Bitcoin constants (kept because they are used by legacy secp256k1/BIP32 code paths).
+    static constexpr unsigned int COMPRESSED_SIZE = 33;
+    static constexpr unsigned int UNCOMPRESSED_SIZE = 65;
+
+    // Maximum serialized pubkey size (supports all currently defined PQ schemes).
+    static constexpr unsigned int SIZE = pq::kMLDSA87Info.pubkey_bytes + 1;
+    static_assert(SIZE >= UNCOMPRESSED_SIZE);
 
 private:
 
@@ -48,8 +52,17 @@ private:
     //! Compute the length of a pubkey with a given first byte.
     unsigned int static GetLen(unsigned char chHeader)
     {
-        if (chHeader == pq::kFalcon512Info.prefix) {
-            return SIZE;
+        // Legacy secp256k1 encodings (compressed/uncompressed).
+        if (chHeader == 2 || chHeader == 3) {
+            return COMPRESSED_SIZE;
+        }
+        if (chHeader == 4) {
+            return UNCOMPRESSED_SIZE;
+        }
+
+        // PQ scheme-prefixed keys.
+        if (const auto* scheme = pq::SchemeFromPrefix(chHeader)) {
+            return scheme->pubkey_bytes + 1;
         }
         return 0;
     }
@@ -182,7 +195,10 @@ public:
     /** Check if a public key is a syntactically valid compressed or uncompressed key. */
     bool IsValidNonHybrid() const noexcept
     {
-        return size() > 0 && vch[0] == pq::kFalcon512Info.prefix;
+        if (!IsValid()) return false;
+        // Avoid hybrid secp256k1 pubkeys (0x06/0x07) as 0x07 is reserved for Falcon-512.
+        if (vch[0] == 2 || vch[0] == 3 || vch[0] == 4) return true;
+        return pq::SchemeFromPrefix(vch[0]) != nullptr;
     }
 
     //! fully validate whether this is a valid public key (more expensive than IsValid())
@@ -201,40 +217,6 @@ public:
 
     //! Derive BIP32 child pubkey.
     [[nodiscard]] bool Derive(CPubKey& pubkeyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;
-};
-
-/** An ElligatorSwift-encoded public key. */
-struct EllSwiftPubKey
-{
-private:
-    static constexpr size_t SIZE = 64;
-    std::array<std::byte, SIZE> m_pubkey;
-
-public:
-    /** Default constructor creates all-zero pubkey (which is valid). */
-    EllSwiftPubKey() noexcept = default;
-
-    /** Construct a new ellswift public key from a given serialization. */
-    EllSwiftPubKey(std::span<const std::byte> ellswift) noexcept;
-
-    /** Decode to normal compressed CPubKey (for debugging purposes). */
-    CPubKey Decode() const;
-
-    // Read-only access for serialization.
-    const std::byte* data() const { return m_pubkey.data(); }
-    static constexpr size_t size() { return SIZE; }
-    auto begin() const { return m_pubkey.cbegin(); }
-    auto end() const { return m_pubkey.cend(); }
-
-    bool friend operator==(const EllSwiftPubKey& a, const EllSwiftPubKey& b)
-    {
-        return a.m_pubkey == b.m_pubkey;
-    }
-
-    bool friend operator!=(const EllSwiftPubKey& a, const EllSwiftPubKey& b)
-    {
-        return a.m_pubkey != b.m_pubkey;
-    }
 };
 
 struct CExtPubKey {

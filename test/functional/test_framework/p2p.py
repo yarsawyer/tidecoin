@@ -262,8 +262,8 @@ class P2PConnection(asyncio.Protocol):
         """
         if not self.v2_state.peer:
             if not self.v2_state.initiating and not self.v2_state.sent_garbage:
-                # if the responder hasn't sent garbage yet, the responder is still reading ellswift bytes
-                # reads ellswift bytes till the first mismatch from 12 bytes V1_PREFIX
+                # If the responder hasn't sent garbage yet, the responder is still reading v2 handshake bytes.
+                # Reads bytes until the first mismatch from 12 bytes V1_PREFIX.
                 length, send_handshake_bytes = self.v2_state.respond_v2_handshake(BytesIO(self.recvbuf))
                 self.recvbuf = self.recvbuf[length:]
                 if send_handshake_bytes == -1:
@@ -275,8 +275,8 @@ class P2PConnection(asyncio.Protocol):
                 elif send_handshake_bytes == b"":
                     return  # only after send_handshake_bytes are sent can `complete_handshake()` be done
 
-            # `complete_handshake()` reads the remaining ellswift bytes from recvbuf
-            # and sends response after deriving shared ECDH secret using received ellswift bytes
+            # `complete_handshake()` reads the remaining v2 handshake bytes from recvbuf
+            # and sends a response after deriving shared key material.
             length, response = self.v2_state.complete_handshake(BytesIO(self.recvbuf))
             self.recvbuf = self.recvbuf[length:]
             if response:

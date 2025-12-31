@@ -20,7 +20,6 @@ TEST_FRAMEWORK_MODULES = [
     "blocktools",
     "compressor",
     "crypto.chacha20",
-    "crypto.ellswift",
     "key",
     "messages",
     "crypto.muhash",
@@ -50,4 +49,3 @@ def run_unit_tests():
 
 if __name__ == "__main__":
     run_unit_tests()
-

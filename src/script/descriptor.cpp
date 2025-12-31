@@ -7,6 +7,8 @@
 #include <hash.h>
 #include <key_io.h>
 #include <pubkey.h>
+#include <pq/pq_scheme.h>
+#include <pq/pqhd_params.h>
 #include <script/miniscript.h>
 #include <script/parsing.h>
 #include <script/script.h>
@@ -575,6 +577,75 @@ public:
     std::unique_ptr<PubkeyProvider> Clone() const override
     {
         return std::make_unique<BIP32PubkeyProvider>(m_expr_index, m_root_extkey, m_path, m_derive, m_apostrophe);
+    }
+};
+
+/** A parsed pqhd(SEEDID32)/purposeh/cointypeh/schemeh/accounth/changeh/indexh|*h key expression. */
+class PQHDPubkeyProvider final : public PubkeyProvider
+{
+    uint256 m_seed_id;
+    KeyPath m_path;
+    DeriveType m_derive;
+    uint8_t m_scheme_prefix;
+
+    static std::string FormatPQHDKeypath(const KeyPath& path, bool add_derive_wildcard)
+    {
+        std::string ret;
+        for (uint32_t elem : path) {
+            const uint32_t index = elem & 0x7FFFFFFFUL;
+            ret += strprintf("/%uh", index);
+        }
+        if (add_derive_wildcard) {
+            ret += "/*h";
+        }
+        return ret;
+    }
+
+public:
+    PQHDPubkeyProvider(uint32_t exp_index, const uint256& seed_id, KeyPath path, DeriveType derive, uint8_t scheme_prefix)
+        : PubkeyProvider(exp_index), m_seed_id(seed_id), m_path(std::move(path)), m_derive(derive), m_scheme_prefix(scheme_prefix) {}
+
+    bool IsRange() const override { return m_derive != DeriveType::NO; }
+    size_t GetSize() const override
+    {
+        const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(m_scheme_prefix);
+        Assert(scheme != nullptr);
+        return 1 + scheme->pubkey_bytes;
+    }
+    bool IsBIP32() const override { return false; }
+
+    std::optional<CPubKey> GetPubKey(int, const SigningProvider&, FlatSigningProvider&, const DescriptorCache*, DescriptorCache*) const override
+    {
+        // pqhd() key expressions require wallet-local seed material; descriptor parsing exists before wallet integration.
+        return std::nullopt;
+    }
+
+    std::string ToString(StringType) const override
+    {
+        std::string ret = "pqhd(" + m_seed_id.ToString() + ")";
+        ret += FormatPQHDKeypath(m_path, /*add_derive_wildcard=*/m_derive == DeriveType::HARDENED);
+        return ret;
+    }
+
+    bool ToPrivateString(const SigningProvider&, std::string& out) const override
+    {
+        // PQHD seeds are wallet-local and never included in the descriptor string.
+        out = ToString(StringType::PUBLIC);
+        return true;
+    }
+
+    bool ToNormalizedString(const SigningProvider&, std::string& out, const DescriptorCache*) const override
+    {
+        out = ToString(StringType::PUBLIC);
+        return true;
+    }
+
+    void GetPrivKey(int, const SigningProvider&, FlatSigningProvider&) const override {}
+    std::optional<CPubKey> GetRootPubKey() const override { return std::nullopt; }
+    std::optional<CExtPubKey> GetRootExtPubKey() const override { return std::nullopt; }
+    std::unique_ptr<PubkeyProvider> Clone() const override
+    {
+        return std::make_unique<PQHDPubkeyProvider>(m_expr_index, m_seed_id, m_path, m_derive, m_scheme_prefix);
     }
 };
 
@@ -1381,6 +1452,93 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
             return ret;
         }
     }
+
+    // PQHD key expression: pqhd(SEEDID32)/purposeh/cointypeh/schemeh/accounth/changeh/indexh|*h
+    if (str.starts_with("pqhd(") && str.ends_with(")")) {
+        if (ctx == ParseScriptContext::P2WPKH) {
+            // No extra restrictions beyond key validity.
+        }
+        const std::string seed_hex = str.substr(5, str.size() - 6);
+        const auto seed_id = uint256::FromHex(seed_hex);
+        if (!seed_id) {
+            error = strprintf("pqhd() seed id is not 32-byte hex (%u characters)", seed_hex.size());
+            return {};
+        }
+        if (split.size() != 7) {
+            error = strprintf("pqhd() expects 6 hardened path elements after the seed id, got %u", split.size() - 1);
+            return {};
+        }
+
+        KeyPath path;
+        path.reserve(6);
+        bool wildcard{false};
+        bool used_apostrophe{false};
+        for (size_t i = 1; i < split.size(); ++i) {
+            const std::span<const char>& elem = split[i];
+            if (elem.size() >= 2 && elem.front() == '<' && elem.back() == '>') {
+                error = "pqhd() does not support multipath derivation";
+                return {};
+            }
+            if (i == split.size() - 1 && (std::ranges::equal(elem, std::span{"*h"}.first(2)) || std::ranges::equal(elem, std::span{"*'"}.first(2)))) {
+                wildcard = true;
+                used_apostrophe = used_apostrophe || std::ranges::equal(elem, std::span{"*'"}.first(2));
+                continue;
+            }
+            bool elem_apostrophe{false};
+            bool has_hardened{false};
+            auto v = ParseKeyPathNum(elem, elem_apostrophe, error, has_hardened);
+            if (!v) return {};
+            used_apostrophe = used_apostrophe || elem_apostrophe;
+            if (!(*v >> 31)) {
+                error = "pqhd() derivation must be hardened-only";
+                return {};
+            }
+            path.push_back(*v);
+        }
+
+        if (wildcard && path.size() != 5) {
+            error = "pqhd() wildcard form must have exactly 5 fixed elements before *h";
+            return {};
+        }
+        if (!wildcard && path.size() != 6) {
+            error = "pqhd() fixed form must have exactly 6 hardened path elements";
+            return {};
+        }
+
+        const auto check_eq = [&](size_t idx, uint32_t expected, std::string_view name) -> bool {
+            if (idx >= path.size()) return false;
+            const uint32_t v = path[idx] & 0x7FFFFFFFUL;
+            if (v != expected) {
+                error = strprintf("pqhd() %s must be %u, got %u", name, expected, v);
+                return false;
+            }
+            return true;
+        };
+        if (!check_eq(0, pqhd::PURPOSE, "purpose")) return {};
+        if (!check_eq(1, pqhd::COIN_TYPE, "coin_type")) return {};
+
+        const uint32_t scheme_u32 = path[2] & 0x7FFFFFFFUL;
+        if (scheme_u32 > 0xFF) {
+            error = strprintf("pqhd() scheme id must fit in uint8, got %u", scheme_u32);
+            return {};
+        }
+        const auto scheme_prefix = static_cast<uint8_t>(scheme_u32);
+        if (pq::SchemeFromPrefix(scheme_prefix) == nullptr) {
+            error = strprintf("pqhd() scheme id %u is not recognized", scheme_u32);
+            return {};
+        }
+
+        const uint32_t change_u32 = path[4] & 0x7FFFFFFFUL;
+        if (change_u32 > 1) {
+            error = strprintf("pqhd() change must be 0 or 1, got %u", change_u32);
+            return {};
+        }
+
+        apostrophe = apostrophe || used_apostrophe;
+        ret.emplace_back(std::make_unique<PQHDPubkeyProvider>(key_exp_index, *seed_id, std::move(path), wildcard ? DeriveType::HARDENED : DeriveType::NO, scheme_prefix));
+        return ret;
+    }
+
     CExtKey extkey = DecodeExtKey(str);
     CExtPubKey extpubkey = DecodeExtPubKey(str);
     if (!extkey.key.IsValid() && !extpubkey.pubkey.IsValid()) {

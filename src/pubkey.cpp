@@ -8,12 +8,12 @@
 #include <hash.h>
 #include <pq/pq_api.h>
 #include <secp256k1.h>
-#include <secp256k1_ellswift.h>
 #include <secp256k1_recovery.h>
 #include <span.h>
 #include <uint256.h>
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 
 namespace {
@@ -39,17 +39,35 @@ bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchS
 }
 
 bool CPubKey::Recover(const uint256 &hash, const std::vector<unsigned char>& vchSig) {
-    if (vchSig.size() <= SIZE - 1) {
-        return false;
+    const auto msg32 = std::span<const unsigned char>{hash.begin(), 32};
+
+    // Tidecoin does not have a recovery ID for PQ signatures. For message signing,
+    // recovery is achieved by embedding the raw scheme pubkey bytes in the signature:
+    //
+    //   sig = signature_bytes || pubkey_bytes_without_prefix
+    //
+    // This function recovers by trying each known scheme and verifying.
+    for (const pq::SchemeInfo* scheme : {&pq::kFalcon512Info, &pq::kFalcon1024Info, &pq::kMLDSA44Info, &pq::kMLDSA65Info, &pq::kMLDSA87Info}) {
+        const size_t raw_pk_len = scheme->pubkey_bytes;
+        if (vchSig.size() <= raw_pk_len) {
+            continue;
+        }
+        const size_t sig_len = vchSig.size() - raw_pk_len;
+
+        std::array<unsigned char, CPubKey::SIZE> prefixed_pubkey{};
+        prefixed_pubkey[0] = scheme->prefix;
+        std::memcpy(prefixed_pubkey.data() + 1, vchSig.data() + sig_len, raw_pk_len);
+
+        const std::span<const unsigned char> prefixed_pk_span{prefixed_pubkey.data(), raw_pk_len + 1};
+        const std::span<const unsigned char> sig_span{vchSig.data(), sig_len};
+
+        if (pq::VerifyPrefixed(msg32, sig_span, prefixed_pk_span, /*legacy_mode=*/false)) {
+            Set(prefixed_pk_span.begin(), prefixed_pk_span.end());
+            return true;
+        }
     }
-    unsigned int mlen = vchSig.size() - (SIZE - 1);
-    unsigned char *pch = const_cast<unsigned char*>(begin());
-    memcpy(pch + 1, vchSig.data() + mlen, SIZE - 1);
-    pch[0] = pq::kFalcon512Info.prefix;
-    return pq::VerifyPrefixed(std::span<const unsigned char>{hash.begin(), 32},
-                              std::span<const unsigned char>{vchSig.data(), mlen},
-                              std::span<const unsigned char>{begin(), size()},
-                              false);
+
+    return false;
 }
 
 bool CPubKey::IsFullyValid() const {
@@ -64,33 +82,13 @@ bool CPubKey::Derive(CPubKey& pubkeyChild, ChainCode &ccChild, unsigned int nChi
     return false;
 }
 
-EllSwiftPubKey::EllSwiftPubKey(std::span<const std::byte> ellswift) noexcept
-{
-    assert(ellswift.size() == SIZE);
-    std::copy(ellswift.begin(), ellswift.end(), m_pubkey.begin());
-}
-
-CPubKey EllSwiftPubKey::Decode() const
-{
-    secp256k1_pubkey pubkey;
-    secp256k1_ellswift_decode(secp256k1_context_static, &pubkey, UCharCast(m_pubkey.data()));
-
-    size_t sz = CPubKey::SIZE;
-    std::array<uint8_t, CPubKey::SIZE> vch_bytes;
-
-    secp256k1_ec_pubkey_serialize(secp256k1_context_static, vch_bytes.data(), &sz, &pubkey, SECP256K1_EC_COMPRESSED);
-    assert(sz == vch_bytes.size());
-
-    return CPubKey{vch_bytes.begin(), vch_bytes.end()};
-}
-
 void CExtPubKey::Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const {
     code[0] = nDepth;
     memcpy(code+1, vchFingerprint, 4);
     WriteBE32(code+5, nChild);
     memcpy(code+9, chaincode.begin(), 32);
-    assert(pubkey.size() == CPubKey::SIZE);
-    memcpy(code+41, pubkey.begin(), CPubKey::SIZE);
+    assert(pubkey.size() == CPubKey::COMPRESSED_SIZE);
+    memcpy(code+41, pubkey.begin(), CPubKey::COMPRESSED_SIZE);
 }
 
 void CExtPubKey::Decode(const unsigned char code[BIP32_EXTKEY_SIZE]) {

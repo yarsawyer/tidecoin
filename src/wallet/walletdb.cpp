@@ -49,6 +49,9 @@ const std::string NAME{"name"};
 const std::string OLD_KEY{"wkey"};
 const std::string ORDERPOSNEXT{"orderposnext"};
 const std::string POOL{"pool"};
+const std::string PQHD_CRYPTED_SEED{"cpqhdseed"};
+const std::string PQHD_POLICY{"pqhdpolicy"};
+const std::string PQHD_SEED{"pqhdseed"};
 const std::string PURPOSE{"purpose"};
 const std::string SETTINGS{"settings"};
 const std::string TX{"tx"};
@@ -153,6 +156,36 @@ bool WalletBatch::WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey)
 bool WalletBatch::EraseMasterKey(unsigned int id)
 {
     return EraseIC(std::make_pair(DBKeys::MASTER_KEY, id));
+}
+
+bool WalletBatch::WritePQHDSeed(const uint256& seed_id, const PQHDSeed& seed)
+{
+    return WriteIC(std::make_pair(DBKeys::PQHD_SEED, seed_id), seed);
+}
+
+bool WalletBatch::ErasePQHDSeed(const uint256& seed_id)
+{
+    return EraseIC(std::make_pair(DBKeys::PQHD_SEED, seed_id));
+}
+
+bool WalletBatch::WriteCryptedPQHDSeed(const uint256& seed_id, const PQHDCryptedSeed& seed)
+{
+    return WriteIC(std::make_pair(DBKeys::PQHD_CRYPTED_SEED, seed_id), seed);
+}
+
+bool WalletBatch::EraseCryptedPQHDSeed(const uint256& seed_id)
+{
+    return EraseIC(std::make_pair(DBKeys::PQHD_CRYPTED_SEED, seed_id));
+}
+
+bool WalletBatch::WritePQHDPolicy(const PQHDPolicy& policy)
+{
+    return WriteIC(DBKeys::PQHD_POLICY, policy);
+}
+
+bool WalletBatch::ErasePQHDPolicy()
+{
+    return EraseIC(DBKeys::PQHD_POLICY);
 }
 
 bool WalletBatch::WriteWatchOnly(const CScript &dest, const CKeyMetadata& keyMeta)
@@ -1106,6 +1139,69 @@ static DBErrors LoadDecryptionKeys(CWallet* pwallet, DatabaseBatch& batch) EXCLU
     return mkey_res.m_result;
 }
 
+static DBErrors LoadPQHDWalletRecords(CWallet* pwallet, DatabaseBatch& batch) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
+{
+    AssertLockHeld(pwallet->cs_wallet);
+
+    DBErrors result{DBErrors::LOAD_OK};
+
+    LoadResult seed_res = LoadRecords(pwallet, batch, DBKeys::PQHD_SEED,
+        [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+            uint256 seed_id;
+            key >> seed_id;
+            PQHDSeed seed;
+            value >> seed;
+            if (seed.seed.size() != 32) {
+                err = strprintf("Error reading wallet database: invalid PQHD seed length=%u for seed_id=%s",
+                                seed.seed.size(), seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
+            if (!pwallet->LoadPQHDSeed(seed_id, std::move(seed))) {
+                err = strprintf("Error reading wallet database: duplicate or conflicting PQHD seed record for seed_id=%s",
+                                seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
+            return DBErrors::LOAD_OK;
+        });
+    result = std::max(result, seed_res.m_result);
+
+    LoadResult cseed_res = LoadRecords(pwallet, batch, DBKeys::PQHD_CRYPTED_SEED,
+        [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+            uint256 seed_id;
+            key >> seed_id;
+            PQHDCryptedSeed seed;
+            value >> seed;
+            if (seed.crypted_seed.empty()) {
+                err = strprintf("Error reading wallet database: empty PQHD crypted seed for seed_id=%s", seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
+            if (!pwallet->LoadPQHDCryptedSeed(seed_id, std::move(seed))) {
+                err = strprintf("Error reading wallet database: duplicate or conflicting PQHD crypted seed record for seed_id=%s",
+                                seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
+            return DBErrors::LOAD_OK;
+        });
+    result = std::max(result, cseed_res.m_result);
+
+    bool policy_seen{false};
+    LoadResult policy_res = LoadRecords(pwallet, batch, DBKeys::PQHD_POLICY,
+        [&policy_seen] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+            if (policy_seen) {
+                err = "Error reading wallet database: multiple pqhdpolicy records";
+                return DBErrors::CORRUPT;
+            }
+            policy_seen = true;
+            PQHDPolicy policy;
+            value >> policy;
+            pwallet->LoadPQHDPolicy(std::move(policy));
+            return DBErrors::LOAD_OK;
+        });
+    result = std::max(result, policy_res.m_result);
+
+    return result;
+}
+
 DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
 {
     DBErrors result = DBErrors::LOAD_OK;
@@ -1148,6 +1244,9 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
 
         // Load decryption keys
         result = std::max(LoadDecryptionKeys(pwallet, *m_batch), result);
+
+        // Load PQHD seed and policy records (used by PQHD wallets; ignored otherwise)
+        result = std::max(LoadPQHDWalletRecords(pwallet, *m_batch), result);
 
         // Load tx records
         result = std::max(LoadTxRecords(pwallet, *m_batch, any_unordered), result);

@@ -12,7 +12,6 @@
 #include <random.h>
 
 #include <secp256k1.h>
-#include <secp256k1_ellswift.h>
 #include <secp256k1_recovery.h>
 
 static secp256k1_context* secp256k1_context_sign = nullptr;
@@ -120,7 +119,7 @@ bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const
     }
     if ((nChild >> 31) == 0) {
         CPubKey pubkey = GetPubKey();
-        assert(pubkey.size() == CPubKey::SIZE);
+        assert(pubkey.size() == CPubKey::COMPRESSED_SIZE);
         BIP32Hash(cc, nChild, *pubkey.begin(), pubkey.begin()+1, vout.data());
     } else {
         BIP32Hash(cc, nChild, 0, UCharCast(begin()), vout.data());
@@ -130,46 +129,6 @@ bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const
     bool ret = secp256k1_ec_seckey_tweak_add(secp256k1_context_sign, (unsigned char*)keyChild.begin(), vout.data());
     if (!ret) keyChild.ClearKeyData();
     return ret;
-}
-
-EllSwiftPubKey CKey::EllSwiftCreate(std::span<const std::byte> ent32) const
-{
-    std::array<std::byte, EllSwiftPubKey::size()> encoded_pubkey{};
-    if (keydata.size() != 32 || ent32.size() != 32) {
-        return {encoded_pubkey};
-    }
-
-    auto success = secp256k1_ellswift_create(secp256k1_context_sign,
-                                             UCharCast(encoded_pubkey.data()),
-                                             keydata.data(),
-                                             UCharCast(ent32.data()));
-
-    if (!success) {
-        return {std::array<std::byte, EllSwiftPubKey::size()>{}};
-    }
-    return {encoded_pubkey};
-}
-
-ECDHSecret CKey::ComputeBIP324ECDHSecret(const EllSwiftPubKey& their_ellswift, const EllSwiftPubKey& our_ellswift, bool initiating) const
-{
-    ECDHSecret output{};
-    if (keydata.size() != 32) {
-        return output;
-    }
-    // BIP324 uses the initiator as party A, and the responder as party B. Remap the inputs
-    // accordingly:
-    bool success = secp256k1_ellswift_xdh(secp256k1_context_sign,
-                                          UCharCast(output.data()),
-                                          UCharCast(initiating ? our_ellswift.data() : their_ellswift.data()),
-                                          UCharCast(initiating ? their_ellswift.data() : our_ellswift.data()),
-                                          keydata.data(),
-                                          initiating ? 0 : 1,
-                                          secp256k1_ellswift_xdh_hash_function_bip324,
-                                          nullptr);
-    if (!success) {
-        return {};
-    }
-    return output;
 }
 
 CKey GenerateRandomKey(bool compressed) noexcept

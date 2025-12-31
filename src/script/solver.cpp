@@ -34,15 +34,16 @@ std::string GetTxnOutputType(TxoutType t)
 // SOLVER MUST CHECK!
 static bool MatchPayToPubkey(const CScript& script, valtype& pubkey)
 {
-    if (script.size() == CPubKey::SIZE + 2 && script[0] == CPubKey::SIZE && script.back() == OP_CHECKSIG) {
-        pubkey = valtype(script.begin() + 1, script.begin() + CPubKey::SIZE + 1);
-        return CPubKey::ValidSize(pubkey);
-    }
-    if (script.size() == CPubKey::SIZE + 2 && script[0] == CPubKey::SIZE && script.back() == OP_CHECKSIG) {
-        pubkey = valtype(script.begin() + 1, script.begin() + CPubKey::SIZE + 1);
-        return CPubKey::ValidSize(pubkey);
-    }
-    return false;
+    opcodetype opcode;
+    valtype data;
+
+    CScript::const_iterator it = script.begin();
+    if (!script.GetOp(it, opcode, data)) return false;
+    if (!IsPushdataOp(opcode) || !CPubKey::ValidSize(data)) return false;
+
+    // Expect exactly: <pubkey> OP_CHECKSIG
+    if (!script.GetOp(it, opcode) || opcode != OP_CHECKSIG) return false;
+    return it == script.end();
 }
 
 static bool MatchPayToPubkeyHash(const CScript& script, valtype& pubkeyhash)

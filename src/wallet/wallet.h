@@ -30,6 +30,7 @@
 #include <util/ui_change_type.h>
 #include <wallet/crypter.h>
 #include <wallet/db.h>
+#include <wallet/pqhd.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/transaction.h>
 #include <wallet/types.h>
@@ -438,6 +439,17 @@ private:
     //! Set of both spent and unspent transaction outputs owned by this wallet
     std::unordered_map<COutPoint, WalletTXO, SaltedOutpointHasher> m_txos GUARDED_BY(cs_wallet);
 
+    struct PQHDSeedState
+    {
+        int64_t create_time{0};
+        bool encrypted{false};
+        std::vector<unsigned char> seed;
+        std::vector<unsigned char> crypted_seed;
+    };
+
+    std::map<uint256, PQHDSeedState> m_pqhd_seeds GUARDED_BY(cs_wallet);
+    std::optional<PQHDPolicy> m_pqhd_policy GUARDED_BY(cs_wallet);
+
     /**
      * Catch wallet up to current chain, scanning new blocks, updating the best
      * block locator and m_last_block_processed, and registering for
@@ -491,6 +503,15 @@ public:
     bool IsCrypted() const;
     bool IsLocked() const override;
     bool Lock();
+
+    //! Used by wallet DB loading.
+    bool LoadPQHDSeed(const uint256& seed_id, PQHDSeed&& seed) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool LoadPQHDCryptedSeed(const uint256& seed_id, PQHDCryptedSeed&& seed) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void LoadPQHDPolicy(PQHDPolicy&& policy) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+
+    bool HavePQHDSeed(const uint256& seed_id) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    size_t GetPQHDSeedCount() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    std::optional<PQHDPolicy> GetPQHDPolicy() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Interface to assert chain access */
     bool HaveChain() const { return m_chain ? true : false; }

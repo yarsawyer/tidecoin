@@ -10,7 +10,6 @@ add_executable(bench_bitcoin
   addrman.cpp
   base58.cpp
   bech32.cpp
-  bip324_ecdh.cpp
   block_assemble.cpp
   blockencodings.cpp
   ccoins_caching.cpp
@@ -24,7 +23,6 @@ add_executable(bench_bitcoin
   descriptors.cpp
   disconnected_transactions.cpp
   duplicate_inputs.cpp
-  ellswift.cpp
   examples.cpp
   gcs_filter.cpp
   hashpadding.cpp

@@ -10,6 +10,7 @@
 #include <primitives/transaction_identifier.h>
 #include <script/sign.h>
 #include <wallet/db.h>
+#include <wallet/pqhd.h>
 #include <wallet/walletutil.h>
 
 #include <cstdint>
@@ -73,6 +74,9 @@ extern const std::string NAME;
 extern const std::string OLD_KEY;
 extern const std::string ORDERPOSNEXT;
 extern const std::string POOL;
+extern const std::string PQHD_CRYPTED_SEED;
+extern const std::string PQHD_POLICY;
+extern const std::string PQHD_SEED;
 extern const std::string PURPOSE;
 extern const std::string SETTINGS;
 extern const std::string TX;
@@ -129,16 +133,20 @@ public:
 class CKeyMetadata
 {
 public:
-    static const int VERSION_BASIC=1;
-    static const int VERSION_WITH_HDDATA=10;
-    static const int VERSION_WITH_KEY_ORIGIN = 12;
-    static const int CURRENT_VERSION=VERSION_WITH_KEY_ORIGIN;
+    static constexpr int VERSION_BASIC{1};
+    static constexpr int VERSION_WITH_HDDATA{10};
+    static constexpr int VERSION_WITH_KEY_ORIGIN{12};
+    static constexpr int VERSION_WITH_PQHD_ORIGIN{13};
+    static constexpr int CURRENT_VERSION{VERSION_WITH_PQHD_ORIGIN};
     int nVersion;
     int64_t nCreateTime; // 0 means unknown
     std::string hdKeypath; //optional HD/bip32 keypath. Still used to determine whether a key is a seed. Also kept for backwards compatibility
     CKeyID hd_seed_id; //id of the HD seed used to derive this key
     KeyOriginInfo key_origin; // Key origin info with path and fingerprint
     bool has_key_origin = false; //!< Whether the key_origin is useful
+    bool has_pqhd_origin = false;
+    uint256 pqhd_seed_id;
+    std::vector<uint32_t> pqhd_path;
 
     CKeyMetadata()
     {
@@ -161,6 +169,11 @@ public:
             READWRITE(obj.key_origin);
             READWRITE(obj.has_key_origin);
         }
+        if (obj.nVersion >= VERSION_WITH_PQHD_ORIGIN) {
+            READWRITE(obj.has_pqhd_origin);
+            READWRITE(obj.pqhd_seed_id);
+            READWRITE(obj.pqhd_path);
+        }
     }
 
     void SetNull()
@@ -171,6 +184,9 @@ public:
         hd_seed_id.SetNull();
         key_origin.clear();
         has_key_origin = false;
+        has_pqhd_origin = false;
+        pqhd_seed_id.SetNull();
+        pqhd_path.clear();
     }
 };
 
@@ -229,6 +245,13 @@ public:
     bool WriteCryptedKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
     bool EraseMasterKey(unsigned int id);
+
+    bool WritePQHDSeed(const uint256& seed_id, const PQHDSeed& seed);
+    bool ErasePQHDSeed(const uint256& seed_id);
+    bool WriteCryptedPQHDSeed(const uint256& seed_id, const PQHDCryptedSeed& seed);
+    bool EraseCryptedPQHDSeed(const uint256& seed_id);
+    bool WritePQHDPolicy(const PQHDPolicy& policy);
+    bool ErasePQHDPolicy();
 
     bool WriteWatchOnly(const CScript &script, const CKeyMetadata &keymeta);
     bool EraseWatchOnly(const CScript &script);

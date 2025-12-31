@@ -424,6 +424,13 @@ For Tidecoin, the canonical explicit key representation is:
 This matches current descriptor implementation behavior:
 `ConstPubkeyProvider::ToString()` prints pubkeys as raw hex.
 
+Rule (frozen for PQHD v1):
+- Descriptor “pubkey keys” are interpreted as variable-length `tide_pubkey`
+  bytes (`<prefix byte> || <scheme pubkey bytes>`), and are validated by:
+  - SchemeId prefix lookup (`src/pq/pq_scheme.h`), and
+  - scheme-specific expected length (`SchemeInfo.pubkey_bytes + 1`).
+- No secp-specific pubkey assumptions (33/65 bytes) apply to Tidecoin PQ keys.
+
 Optional (later): add a readability wrapper `pkpq(<hex_tide_pubkey>)`.
 - This would be syntactic sugar only (parser expands to the raw hex key form).
 - Canonical printing should remain the raw hex form so descriptor checksums stay
@@ -634,10 +641,10 @@ We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
     - Inputs: write for every input pubkey that the wallet can sign for (and/or
       that appears in satisfactions/scripts the wallet is expected to satisfy).
     - Outputs:
-      - Always write for wallet-owned outputs (at minimum: change outputs).
-      - Additionally write for any output the wallet recognizes as “ours” and
-        whose script contains PQHD-derived pubkeys (e.g. multisig outputs where
-        the wallet controls one or more participant keys).
+      - Always write for wallet-owned outputs (includes change outputs).
+      - For any wallet-owned output whose script contains PQHD-derived pubkeys
+        (including multisig), write `tidecoin/PQHD_ORIGIN` for each such pubkey
+        that the wallet recognizes as its own.
       - Never write for recipient outputs that are not wallet-owned (avoid
         leaking internal origin structure; not useful to the recipient).
   - Do not add `bip32_derivs` for PQHD.
@@ -1206,9 +1213,33 @@ For PQHD v1, we standardize on:
 - `SeedID32` (32 bytes) + full hardened path (vector<u32>)
 - no short fingerprint handles
 
-This requires either:
-- extending `CKeyMetadata` with PQHD-only fields (preferred), or
-- introducing a parallel `CPQKeyMetadata` record keyed by TidePubKey bytes.
+Decision (frozen for implementation):
+- Extend `CKeyMetadata` to carry PQHD origin metadata directly.
+- We do not require any secp/BIP32 key semantics in PQHD-only wallets. Existing
+  BIP32-related fields (`hd_seed_id`, `KeyOriginInfo`) may remain for backward
+  compatibility and legacy imports, but PQHD v1 does not populate or depend on
+  them.
+
+Concrete fields (proposal to implement in `src/wallet/walletdb.h`):
+- `std::optional<uint256> pqhd_seed_id32;`
+  - Stored as raw 32 bytes (a `uint256` is already a 32-byte container).
+- `std::vector<uint32_t> pqhd_path;`
+  - Full hardened path elements (purpose/coin_type/scheme/account/change/index),
+    stored as 32-bit unsigned integers. Every element must have the hardened bit
+    set (`0x80000000`).
+
+Invariants:
+- `pqhd_seed_id32` implies `pqhd_path` is non-empty and conforms to the PQHD
+  shape (at minimum includes scheme element at the expected position).
+- The scheme id implied by `pqhd_path[2]` (low 8 bits) must match the scheme id
+  implied by the public key prefix byte (redundant sanity check).
+
+Wallet serialization/versioning:
+- `CKeyMetadata` serialization must be version-gated so older wallets can still
+  be read and upgraded cleanly (existing Bitcoin walletdb patterns apply).
+- New PQHD metadata must be persisted for both:
+  - derived descriptor keypool keys (so PSBT origin export is available), and
+  - any explicitly imported PQHD-derived keys (if we support that import path).
 
 Frozen requirement (independent of the chosen code shape):
 - Every stored PQ private key must have metadata that includes:
@@ -1271,11 +1302,12 @@ validated by an implementation + tests.
 - Wallet supports multiple PQHD seeds (multiple `SeedID32` roots) (§12.4).
 
 ### Still to finalize
-- Concrete RPC/Qt surface implementing §12.4.1 (seed lifecycle):
-  RPC/Qt names, parameters, and UX for create/import/export, enable/disable, and
-  default seed + per-scheme seed selection.
-- (Optional) whether `PQHD_ORIGIN` is also written for outputs that are not
-  change/receive but still contain PQHD-derived pubkeys (e.g., multisig).
+- Seed lifecycle RPC/Qt surface:
+  - We will not introduce a separate “seed management RPC family” at this stage.
+  - Instead, we will extend/refactor existing wallet RPC/Qt flows (similar to
+    how we keep PSBT workflows and extend them for PQHD metadata).
+  - This work is explicitly deferred until after low-level PQHD storage,
+    descriptor integration, and PSBT origin export are implemented.
 - (Optional, later) PSBT cleanup: remove xpub/BIP32 PSBT metadata (see §10.4).
 
 ---
@@ -1286,9 +1318,11 @@ Before we start implementing PQHD, we should lock down these items to avoid
 large rework:
 
 ### 16.1 Remaining spec decisions
-- Define the exact RPC/Qt UX for multi-root PQHD (implementing §12.4.1):
-  - seed create/import/export + labels
-  - enable/disable + default seed selection (global + optional per-scheme)
+- Seed lifecycle RPC/Qt UX:
+  - Deferred as described in §15 (“Still to finalize”).
+  - Low-level implementation must still follow the frozen semantic rules in
+    §12.4.1 and §12.5, so the later UI/RPC work is an interface layer, not a
+    semantic redesign.
 
 ### 16.2 Major code prerequisites
 - Multi-scheme public key handling:

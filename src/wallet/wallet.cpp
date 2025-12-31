@@ -37,6 +37,7 @@
 #include <primitives/transaction.h>
 #include <psbt.h>
 #include <pubkey.h>
+#include <pq/pq_scheme.h>
 #include <random.h>
 #include <script/descriptor.h>
 #include <script/interpreter.h>
@@ -1727,6 +1728,75 @@ bool CWallet::LoadWalletFlags(uint64_t flags)
     m_wallet_flags = flags;
 
     return true;
+}
+
+bool CWallet::LoadPQHDSeed(const uint256& seed_id, PQHDSeed&& seed)
+{
+    AssertLockHeld(cs_wallet);
+    if (m_pqhd_seeds.contains(seed_id)) return false;
+
+    PQHDSeedState state;
+    state.create_time = seed.nCreateTime;
+    state.encrypted = false;
+    state.seed = std::move(seed.seed);
+    m_pqhd_seeds.emplace(seed_id, std::move(state));
+    MaybeUpdateBirthTime(seed.nCreateTime);
+    return true;
+}
+
+bool CWallet::LoadPQHDCryptedSeed(const uint256& seed_id, PQHDCryptedSeed&& seed)
+{
+    AssertLockHeld(cs_wallet);
+    if (m_pqhd_seeds.contains(seed_id)) return false;
+
+    PQHDSeedState state;
+    state.create_time = seed.nCreateTime;
+    state.encrypted = true;
+    state.crypted_seed = std::move(seed.crypted_seed);
+    m_pqhd_seeds.emplace(seed_id, std::move(state));
+    MaybeUpdateBirthTime(seed.nCreateTime);
+    return true;
+}
+
+void CWallet::LoadPQHDPolicy(PQHDPolicy&& policy)
+{
+    AssertLockHeld(cs_wallet);
+    const std::optional<int> tip_height = chain().getHeight();
+    const int next_height = tip_height ? *tip_height + 1 : 0;
+    const bool auxpow_active = next_height >= Params().GetConsensus().nAuxpowStartHeight;
+    const uint8_t falcon512 = static_cast<uint8_t>(pq::SchemeId::FALCON_512);
+
+    const auto clamp_scheme = [&](uint8_t scheme) -> uint8_t {
+        if (scheme == 0) return falcon512;
+        if (pq::SchemeFromPrefix(scheme) == nullptr) return falcon512;
+        if (!auxpow_active && scheme != falcon512) return falcon512;
+        return scheme;
+    };
+
+    policy.default_receive_scheme = clamp_scheme(policy.default_receive_scheme);
+    policy.default_change_scheme = clamp_scheme(policy.default_change_scheme == 0 ? policy.default_receive_scheme : policy.default_change_scheme);
+
+    if (policy.default_change_seed_id.IsNull()) policy.default_change_seed_id = policy.default_seed_id;
+
+    m_pqhd_policy = std::move(policy);
+}
+
+bool CWallet::HavePQHDSeed(const uint256& seed_id) const
+{
+    AssertLockHeld(cs_wallet);
+    return m_pqhd_seeds.contains(seed_id);
+}
+
+size_t CWallet::GetPQHDSeedCount() const
+{
+    AssertLockHeld(cs_wallet);
+    return m_pqhd_seeds.size();
+}
+
+std::optional<PQHDPolicy> CWallet::GetPQHDPolicy() const
+{
+    AssertLockHeld(cs_wallet);
+    return m_pqhd_policy;
 }
 
 void CWallet::InitWalletFlags(uint64_t flags)
