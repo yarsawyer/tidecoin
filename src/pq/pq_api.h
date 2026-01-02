@@ -35,13 +35,6 @@ namespace pq {
 /** Secure byte container (locked + cleansed on deallocation). */
 using SecureKeyBytes = std::vector<uint8_t, secure_allocator<uint8_t>>;
 
-// Forward declarations (defined in `src/pq/pqhd_keygen.cpp`).
-[[nodiscard]] bool KeyGenFromSeed(uint32_t pqhd_version,
-                                  SchemeId scheme_id,
-                                  std::span<const uint8_t, 64> key_material,
-                                  std::vector<uint8_t>& pk_out,
-                                  SecureKeyBytes& sk_out);
-
 constexpr size_t MLKEM512_PUBLICKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_PUBLICKEYBYTES;
 constexpr size_t MLKEM512_SECRETKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_SECRETKEYBYTES;
 constexpr size_t MLKEM512_CIPHERTEXT_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_CIPHERTEXTBYTES;
@@ -278,11 +271,22 @@ inline bool GenerateKeyPair(const SchemeInfo& info,
 
     // Non-deterministic key generation for ad-hoc keys (e.g. tests, legacy flows).
     // PQHD deterministic wallets must use `KeyGenFromSeed()` on PQHD-derived material.
+    constexpr unsigned int kFalconKeypairMaxAttempts = 10000;
     switch (info.id) {
     case SchemeId::FALCON_512:
-        return PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+        for (unsigned int attempt = 0; attempt < kFalconKeypairMaxAttempts; ++attempt) {
+            if (PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0) {
+                return true;
+            }
+        }
+        return false;
     case SchemeId::FALCON_1024:
-        return PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
+        for (unsigned int attempt = 0; attempt < kFalconKeypairMaxAttempts; ++attempt) {
+            if (PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0) {
+                return true;
+            }
+        }
+        return false;
     case SchemeId::MLDSA_44:
         return PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair(pk.data(), sk.data()) == 0;
     case SchemeId::MLDSA_65:
@@ -412,7 +416,7 @@ inline bool VerifyPrefixed(std::span<const unsigned char> msg32,
     return info && Verify(*info, msg32, sig, raw, legacy_mode);
 }
 
-/** PQHD v1+ deterministic key generation (see `ai-docs/pqhd.md` §7.5). */
+/** PQHD v1+ deterministic key generation. */
 [[nodiscard]] bool KeyGenFromSeed(uint32_t pqhd_version,
                                   SchemeId scheme_id,
                                   std::span<const uint8_t, 64> key_material,

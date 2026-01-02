@@ -54,58 +54,49 @@ PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair(
     inner_shake256_context rng;
     size_t u, v;
 
-    /*
-     * Key generation and encoding can theoretically fail if the chosen secret key
-     * does not fit the fixed-size encoding. Retry with fresh randomness until it
-     * succeeds.
-     */
-    for (unsigned int attempt = 0; attempt < 10000; ++attempt) {
-        randombytes(seed, sizeof seed);
-        inner_shake256_init(&rng);
-        inner_shake256_inject(&rng, seed, sizeof seed);
-        inner_shake256_flip(&rng);
-        PQCLEAN_FALCON1024_CLEAN_keygen(&rng, f, g, F, NULL, h, 10, tmp.b);
-        inner_shake256_ctx_release(&rng);
+    randombytes(seed, sizeof seed);
+    inner_shake256_init(&rng);
+    inner_shake256_inject(&rng, seed, sizeof seed);
+    inner_shake256_flip(&rng);
+    PQCLEAN_FALCON1024_CLEAN_keygen(&rng, f, g, F, NULL, h, 10, tmp.b);
+    inner_shake256_ctx_release(&rng);
 
-        sk[0] = 0x50 + 10;
-        u = 1;
-        v = PQCLEAN_FALCON1024_CLEAN_trim_i8_encode(
-                sk + u, PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES - u,
-                f, 10, PQCLEAN_FALCON1024_CLEAN_max_fg_bits[10]);
-        if (v == 0) {
-            continue;
-        }
-        u += v;
-        v = PQCLEAN_FALCON1024_CLEAN_trim_i8_encode(
-                sk + u, PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES - u,
-                g, 10, PQCLEAN_FALCON1024_CLEAN_max_fg_bits[10]);
-        if (v == 0) {
-            continue;
-        }
-        u += v;
-        v = PQCLEAN_FALCON1024_CLEAN_trim_i8_encode(
-                sk + u, PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES - u,
-                F, 10, PQCLEAN_FALCON1024_CLEAN_max_FG_bits[10]);
-        if (v == 0) {
-            continue;
-        }
-        u += v;
-        if (u != PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES) {
-            continue;
-        }
-
-        pk[0] = 0x00 + 10;
-        v = PQCLEAN_FALCON1024_CLEAN_modq_encode(
-                pk + 1, PQCLEAN_FALCON1024_CLEAN_CRYPTO_PUBLICKEYBYTES - 1,
-                h, 10);
-        if (v != PQCLEAN_FALCON1024_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) {
-            continue;
-        }
-
-        return 0;
+    sk[0] = 0x50 + 10;
+    u = 1;
+    v = PQCLEAN_FALCON1024_CLEAN_trim_i8_encode(
+            sk + u, PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES - u,
+            f, 10, PQCLEAN_FALCON1024_CLEAN_max_fg_bits[10]);
+    if (v == 0) {
+        return -1;
+    }
+    u += v;
+    v = PQCLEAN_FALCON1024_CLEAN_trim_i8_encode(
+            sk + u, PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES - u,
+            g, 10, PQCLEAN_FALCON1024_CLEAN_max_fg_bits[10]);
+    if (v == 0) {
+        return -1;
+    }
+    u += v;
+    v = PQCLEAN_FALCON1024_CLEAN_trim_i8_encode(
+            sk + u, PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES - u,
+            F, 10, PQCLEAN_FALCON1024_CLEAN_max_FG_bits[10]);
+    if (v == 0) {
+        return -1;
+    }
+    u += v;
+    if (u != PQCLEAN_FALCON1024_CLEAN_CRYPTO_SECRETKEYBYTES) {
+        return -1;
     }
 
-    return -1;
+    pk[0] = 0x00 + 10;
+    v = PQCLEAN_FALCON1024_CLEAN_modq_encode(
+            pk + 1, PQCLEAN_FALCON1024_CLEAN_CRYPTO_PUBLICKEYBYTES - 1,
+            h, 10);
+    if (v != PQCLEAN_FALCON1024_CLEAN_CRYPTO_PUBLICKEYBYTES - 1) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int
