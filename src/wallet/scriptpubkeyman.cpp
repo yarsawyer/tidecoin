@@ -1063,6 +1063,7 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
             throw std::runtime_error(std::string(__func__) + ": writing cache items failed");
         }
         m_max_cached_index++;
+        m_storage.WalletCreationProgressStep();
     }
     m_wallet_descriptor.range_end = new_range_end;
     batch.WriteDescriptor(GetID(), m_wallet_descriptor);

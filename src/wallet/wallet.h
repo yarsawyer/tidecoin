@@ -323,6 +323,16 @@ private:
     std::atomic<double> m_scanning_progress{0};
     friend class WalletRescanReserver;
 
+    // Wallet creation progress (used to expose determinate progress for long-running
+    // operations during first-run descriptor setup, e.g. PQ keypool prefill).
+    std::atomic<bool> m_wallet_creation_progress_active{false};
+    std::atomic<uint64_t> m_wallet_creation_progress_total{0};
+    std::atomic<uint64_t> m_wallet_creation_progress_done{0};
+    std::atomic<int> m_wallet_creation_progress_last_percent{-1};
+    std::string WalletCreationProgressTitle() const;
+    void StartWalletCreationProgress(uint64_t total_steps);
+    void FinishWalletCreationProgress();
+
     /** The next scheduled rebroadcast of wallet transactions. */
     NodeClock::time_point m_next_resend{GetDefaultNextResend()};
     /** Whether this wallet will submit newly created transactions to the node's mempool and
@@ -1078,6 +1088,7 @@ public:
     //! Add scriptPubKeys for this ScriptPubKeyMan into the scriptPubKey cache
     void CacheNewScriptPubKeys(const std::set<CScript>& spks, ScriptPubKeyMan* spkm);
 
+    void WalletCreationProgressStep() override;
     void TopUpCallback(const std::set<CScript>& spks, ScriptPubKeyMan* spkm) override;
 
     //! Retrieve the xpubs in use by the active descriptors

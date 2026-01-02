@@ -96,6 +96,57 @@ using util::ToString;
 
 namespace wallet {
 
+std::string CWallet::WalletCreationProgressTitle() const
+{
+    return strprintf("[%s] %s", DisplayName(), _("Creating wallet\u2026"));
+}
+
+void CWallet::StartWalletCreationProgress(uint64_t total_steps)
+{
+    if (total_steps == 0) return;
+    if (!HaveChain()) return;
+
+    m_wallet_creation_progress_total.store(total_steps);
+    m_wallet_creation_progress_done.store(0);
+    m_wallet_creation_progress_last_percent.store(-1);
+    m_wallet_creation_progress_active.store(true);
+    chain().showProgress(WalletCreationProgressTitle(), 0, /*resume_possible=*/false);
+}
+
+void CWallet::FinishWalletCreationProgress()
+{
+    const bool was_active = m_wallet_creation_progress_active.exchange(false);
+    if (!was_active) return;
+
+    if (HaveChain()) {
+        chain().showProgress(WalletCreationProgressTitle(), 100, /*resume_possible=*/false);
+    }
+
+    m_wallet_creation_progress_total.store(0);
+    m_wallet_creation_progress_done.store(0);
+    m_wallet_creation_progress_last_percent.store(-1);
+}
+
+void CWallet::WalletCreationProgressStep()
+{
+    if (!m_wallet_creation_progress_active.load()) return;
+    if (!HaveChain()) return;
+
+    const uint64_t total = m_wallet_creation_progress_total.load();
+    if (total == 0) return;
+
+    const uint64_t done = m_wallet_creation_progress_done.fetch_add(1) + 1;
+
+    int percent = static_cast<int>((done * 100) / total);
+    if (done > 0 && percent == 0) percent = 1;
+    if (percent >= 100) percent = 99;
+
+    const int last = m_wallet_creation_progress_last_percent.load();
+    if (percent == last) return;
+    m_wallet_creation_progress_last_percent.store(percent);
+    chain().showProgress(WalletCreationProgressTitle(), percent, /*resume_possible=*/false);
+}
+
 bool AddWalletSetting(interfaces::Chain& chain, const std::string& wallet_name)
 {
     const auto update_function = [&wallet_name](common::SettingsValue& setting_value) {
@@ -2984,8 +3035,28 @@ std::shared_ptr<CWallet> CWallet::Create(WalletContext& context, const std::stri
         // Only descriptor wallets can be created
         assert(walletInstance->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
 
+        struct WalletCreationProgressGuard {
+            CWallet& wallet;
+            ~WalletCreationProgressGuard() { wallet.FinishWalletCreationProgress(); }
+        };
+        std::optional<WalletCreationProgressGuard> progress_guard;
+
+        // PQ keypool prefill can take a long time; expose determinate progress in the GUI.
+        if (walletInstance->HaveChain()) {
+            const uint64_t total_steps =
+                2ULL * static_cast<uint64_t>(OUTPUT_TYPES.size()) *
+                static_cast<uint64_t>(std::max<int64_t>(walletInstance->m_keypool_size, 1));
+            walletInstance->StartWalletCreationProgress(total_steps);
+            progress_guard.emplace(*walletInstance);
+        }
+
         if ((wallet_creation_flags & WALLET_FLAG_EXTERNAL_SIGNER) || !(wallet_creation_flags & (WALLET_FLAG_DISABLE_PRIVATE_KEYS | WALLET_FLAG_BLANK_WALLET))) {
             walletInstance->SetupDescriptorScriptPubKeyMans();
+        }
+
+        if (progress_guard) {
+            walletInstance->FinishWalletCreationProgress();
+            progress_guard.reset();
         }
 
         if (chain) {

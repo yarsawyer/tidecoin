@@ -55,6 +55,8 @@ public:
     virtual bool IsLocked() const = 0;
     virtual bool HasPQHDSeeds() const = 0;
     virtual bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& master_seed) const = 0;
+    /** Notification hook for long-running wallet creation (e.g. PQ keypool prefill). Default no-op. */
+    virtual void WalletCreationProgressStep() {}
     //! Callback function for after TopUp completes containing any scripts that were added by a SPKMan
     virtual void TopUpCallback(const std::set<CScript>&, ScriptPubKeyMan*) = 0;
 };

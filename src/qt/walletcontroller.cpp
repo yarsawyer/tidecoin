@@ -245,13 +245,6 @@ void CreateWalletActivity::askPassphrase()
 
 void CreateWalletActivity::createWallet()
 {
-    showProgressDialog(
-        //: Title of window indicating the progress of creation of a new wallet.
-        tr("Create Wallet"),
-        /*: Descriptive text of the create wallet progress window which indicates
-            to the user which wallet is currently being created. */
-        tr("Creating Wallet <b>%1</b>…").arg(m_create_wallet_dialog->walletName().toHtmlEscaped()));
-
     std::string name = m_create_wallet_dialog->walletName().toStdString();
     uint64_t flags = 0;
     // Enable descriptors by default.
