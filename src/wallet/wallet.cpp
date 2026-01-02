@@ -2234,11 +2234,17 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
 
 bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
 {
+    const std::optional<int> tip_height = chain().getHeight();
+    const int next_height = tip_height ? *tip_height + 1 : 0;
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+    }
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
         // so we can exit early and return true if that happens
-        if (spk_man->SignTransaction(tx, coins, sighash, input_errors)) {
+        if (spk_man->SignTransaction(tx, coins, sighash, input_errors, script_verify_flags)) {
             return true;
         }
     }
@@ -2276,11 +2282,17 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
     }
 
     const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
+    const std::optional<int> tip_height = chain().getHeight();
+    const int next_height = tip_height ? *tip_height + 1 : 0;
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+    }
 
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         int n_signed_this_spkm = 0;
-        const auto error{spk_man->FillPSBT(psbtx, txdata, sighash_type, sign, bip32derivs, &n_signed_this_spkm, finalize)};
+        const auto error{spk_man->FillPSBT(psbtx, txdata, sighash_type, sign, bip32derivs, &n_signed_this_spkm, finalize, script_verify_flags)};
         if (error) {
             return error;
         }
@@ -2294,12 +2306,6 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
 
     // Complete if every input is now signed
     complete = true;
-    const std::optional<int> tip_height = chain().getHeight();
-    const int next_height = tip_height ? *tip_height + 1 : 0;
-    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
-    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
-        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
-    }
     for (size_t i = 0; i < psbtx.inputs.size(); ++i) {
         complete &= PSBTInputSignedAndVerified(psbtx, i, &txdata, script_verify_flags);
     }

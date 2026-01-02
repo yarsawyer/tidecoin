@@ -175,7 +175,7 @@ public:
      * Create a DER-serialized signature.
      * The test_case parameter tweaks the deterministic nonce.
      */
-    bool Sign(const uint256& hash, std::vector<unsigned char>& vchSig, bool grind = true, uint32_t test_case = 0) const;
+    bool Sign(const uint256& hash, std::vector<unsigned char>& vchSig, bool grind = true, uint32_t test_case = 0, bool legacy_mode = false) const;
 
     //! Derive BIP32 child key.
     [[nodiscard]] bool Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;

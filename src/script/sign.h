@@ -41,12 +41,15 @@ class MutableTransactionSignatureCreator : public BaseSignatureCreator
     unsigned int nIn;
     int nHashType;
     CAmount amount;
+    const bool m_allow_legacy;
     const MutableTransactionSignatureChecker checker;
     const PrecomputedTransactionData* m_txdata;
 
 public:
     MutableTransactionSignatureCreator(const CMutableTransaction& tx LIFETIMEBOUND, unsigned int input_idx, const CAmount& amount, int hash_type);
     MutableTransactionSignatureCreator(const CMutableTransaction& tx LIFETIMEBOUND, unsigned int input_idx, const CAmount& amount, const PrecomputedTransactionData* txdata, int hash_type);
+    MutableTransactionSignatureCreator(const CMutableTransaction& tx LIFETIMEBOUND, unsigned int input_idx, const CAmount& amount, int hash_type, bool allow_legacy);
+    MutableTransactionSignatureCreator(const CMutableTransaction& tx LIFETIMEBOUND, unsigned int input_idx, const CAmount& amount, const PrecomputedTransactionData* txdata, int hash_type, bool allow_legacy);
     const BaseSignatureChecker& Checker() const override { return checker; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
 };
@@ -98,5 +101,6 @@ bool IsSegWitOutput(const SigningProvider& provider, const CScript& script);
 
 /** Sign the CMutableTransaction */
 bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors);
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors, unsigned int script_verify_flags);
 
 #endif // BITCOIN_SCRIPT_SIGN_H

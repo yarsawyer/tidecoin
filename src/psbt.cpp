@@ -419,12 +419,14 @@ PrecomputedTransactionData PrecomputePSBTData(const PartiallySignedTransaction& 
     return txdata;
 }
 
-PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, const PrecomputedTransactionData* txdata, std::optional<int> sighash,  SignatureData* out_sigdata, bool finalize)
+PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, const PrecomputedTransactionData* txdata, std::optional<int> sighash,  SignatureData* out_sigdata, bool finalize, std::optional<unsigned int> script_verify_flags)
 {
     PSBTInput& input = psbt.inputs.at(index);
     const CMutableTransaction& tx = *psbt.tx;
+    const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
+    const bool allow_legacy = !(effective_flags & SCRIPT_VERIFY_PQ_STRICT);
 
-    if (PSBTInputSignedAndVerified(psbt, index, txdata)) {
+    if (PSBTInputSignedAndVerified(psbt, index, txdata, effective_flags)) {
         return PSBTError::OK;
     }
 
@@ -484,7 +486,7 @@ PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransact
     if (txdata == nullptr) {
         sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
     } else {
-        MutableTransactionSignatureCreator creator(tx, index, utxo.nValue, txdata, *sighash);
+        MutableTransactionSignatureCreator creator(tx, index, utxo.nValue, txdata, *sighash, allow_legacy);
         sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
     }
     // Verify that a witness signature was produced in case one was required.

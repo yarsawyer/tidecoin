@@ -16,6 +16,9 @@
 extern "C" {
 int tidecoin_falcon512_pubkey_from_sk(const uint8_t* sk, size_t sklen,
                                       uint8_t* pk, size_t pklen);
+int tidecoin_falcon512_sign_legacy(uint8_t* sig, size_t* siglen,
+                                   const uint8_t* m, size_t mlen,
+                                   const uint8_t* sk, size_t sklen);
 int tidecoin_falcon512_verify(const uint8_t* sig, size_t siglen,
                               const uint8_t* m, size_t mlen,
                               const uint8_t* pk, size_t pklen,
@@ -304,7 +307,6 @@ inline bool Sign(const SchemeInfo& info,
                  std::vector<unsigned char>& sig_out,
                  bool legacy_mode)
 {
-    (void)legacy_mode;
     if (msg32.size() != 32 || sk.size() != info.seckey_bytes) {
         return false;
     }
@@ -312,8 +314,12 @@ inline bool Sign(const SchemeInfo& info,
     case SchemeId::FALCON_512: {
         size_t sig_len = 0;
         sig_out.resize(info.sig_bytes_max);
-        const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
-            sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
+        const int r = legacy_mode
+            ? tidecoin_falcon512_sign_legacy(sig_out.data(), &sig_len,
+                                             msg32.data(), msg32.size(),
+                                             sk.data(), sk.size())
+            : PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
+                  sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
         if (r != 0) {
             return false;
         }

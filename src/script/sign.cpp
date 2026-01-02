@@ -23,15 +23,24 @@ typedef std::vector<unsigned char> valtype;
 static constexpr bool ALLOW_LEGACY_STANDARD = !(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_PQ_STRICT);
 
 MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction& tx, unsigned int input_idx, const CAmount& amount, int hash_type)
-    : m_txto{tx}, nIn{input_idx}, nHashType{hash_type}, amount{amount}, checker{&m_txto, nIn, amount, MissingDataBehavior::FAIL, ALLOW_LEGACY_STANDARD},
-      m_txdata(nullptr)
+    : MutableTransactionSignatureCreator(tx, input_idx, amount, nullptr, hash_type, ALLOW_LEGACY_STANDARD)
 {
 }
 
 MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction& tx, unsigned int input_idx, const CAmount& amount, const PrecomputedTransactionData* txdata, int hash_type)
-    : m_txto{tx}, nIn{input_idx}, nHashType{hash_type}, amount{amount},
-      checker{txdata ? MutableTransactionSignatureChecker{&m_txto, nIn, amount, *txdata, MissingDataBehavior::FAIL, ALLOW_LEGACY_STANDARD} :
-                       MutableTransactionSignatureChecker{&m_txto, nIn, amount, MissingDataBehavior::FAIL, ALLOW_LEGACY_STANDARD}},
+    : MutableTransactionSignatureCreator(tx, input_idx, amount, txdata, hash_type, ALLOW_LEGACY_STANDARD)
+{
+}
+
+MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction& tx, unsigned int input_idx, const CAmount& amount, int hash_type, bool allow_legacy)
+    : MutableTransactionSignatureCreator(tx, input_idx, amount, nullptr, hash_type, allow_legacy)
+{
+}
+
+MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction& tx, unsigned int input_idx, const CAmount& amount, const PrecomputedTransactionData* txdata, int hash_type, bool allow_legacy)
+    : m_txto{tx}, nIn{input_idx}, nHashType{hash_type}, amount{amount}, m_allow_legacy{allow_legacy},
+      checker{txdata ? MutableTransactionSignatureChecker{&m_txto, nIn, amount, *txdata, MissingDataBehavior::FAIL, allow_legacy} :
+                       MutableTransactionSignatureChecker{&m_txto, nIn, amount, MissingDataBehavior::FAIL, allow_legacy}},
       m_txdata(txdata)
 {
 }
@@ -51,7 +60,7 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
 
     uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
-    if (!key.Sign(hash, vchSig))
+    if (!key.Sign(hash, vchSig, false, 0, m_allow_legacy))
         return false;
     vchSig.push_back((unsigned char)hashtype);
     return true;
@@ -571,7 +580,13 @@ bool IsSegWitOutput(const SigningProvider& provider, const CScript& script)
 
 bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, int nHashType, std::map<int, bilingual_str>& input_errors)
 {
+    return SignTransaction(mtx, keystore, coins, nHashType, input_errors, STANDARD_SCRIPT_VERIFY_FLAGS);
+}
+
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, int nHashType, std::map<int, bilingual_str>& input_errors, unsigned int script_verify_flags)
+{
     bool fHashSingle = ((nHashType & ~SIGHASH_ANYONECANPAY) == SIGHASH_SINGLE);
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
 
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
@@ -607,7 +622,7 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
         SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mtx.vout.size())) {
-            ProduceSignature(*keystore, MutableTransactionSignatureCreator(mtx, i, amount, &txdata, nHashType), prevPubKey, sigdata);
+            ProduceSignature(*keystore, MutableTransactionSignatureCreator(mtx, i, amount, &txdata, nHashType, allow_legacy), prevPubKey, sigdata);
         }
 
         UpdateInput(txin, sigdata);
@@ -619,7 +634,7 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
         }
 
         ScriptError serror = SCRIPT_ERR_OK;
-        if (!sigdata.complete && !VerifyScript(txin.scriptSig, prevPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&txConst, i, amount, txdata, MissingDataBehavior::FAIL, ALLOW_LEGACY_STANDARD), &serror)) {
+        if (!sigdata.complete && !VerifyScript(txin.scriptSig, prevPubKey, &txin.scriptWitness, script_verify_flags, TransactionSignatureChecker(&txConst, i, amount, txdata, MissingDataBehavior::FAIL, allow_legacy), &serror)) {
             if (serror == SCRIPT_ERR_INVALID_STACK_OPERATION) {
                 // Unable to sign input and verification failed (possible attempt to partially sign).
                 input_errors[i] = Untranslated("Unable to sign input, invalid stack size (possibly missing key)");

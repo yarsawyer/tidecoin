@@ -7,6 +7,7 @@
 #include <logging.h>
 #include <node/types.h>
 #include <outputtype.h>
+#include <policy/policy.h>
 #include <script/descriptor.h>
 #include <script/script.h>
 #include <script/sign.h>
@@ -25,6 +26,24 @@ using common::PSBTError;
 using util::ToString;
 
 namespace wallet {
+
+namespace {
+struct PQHDWalletSigningProvider final : public SigningProvider {
+    const WalletStorage& storage;
+    const FlatSigningProvider& base;
+
+    explicit PQHDWalletSigningProvider(const WalletStorage& storage_in, const FlatSigningProvider& base_in)
+        : storage(storage_in), base(base_in) {}
+
+    bool GetCScript(const CScriptID& scriptid, CScript& script) const override { return base.GetCScript(scriptid, script); }
+    bool HaveCScript(const CScriptID& scriptid) const override { return base.scripts.find(scriptid) != base.scripts.end(); }
+    bool GetPubKey(const CKeyID& address, CPubKey& pubkey) const override { return base.GetPubKey(address, pubkey); }
+    bool GetKey(const CKeyID& address, CKey& key) const override { return base.GetKey(address, key); }
+    bool HaveKey(const CKeyID& address) const override { return base.keys.find(address) != base.keys.end(); }
+    bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override { return base.GetKeyOrigin(keyid, info); }
+    bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const override { return storage.GetPQHDSeed(seed_id, seed); }
+};
+} // namespace
 
 typedef std::vector<unsigned char> valtype;
 
@@ -1019,19 +1038,6 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
 
     FlatSigningProvider base_provider;
     base_provider.keys = GetKeys();
-    struct PQHDWalletSigningProvider final : public SigningProvider {
-        const WalletStorage& storage;
-        const FlatSigningProvider& base;
-        explicit PQHDWalletSigningProvider(const WalletStorage& storage_in, const FlatSigningProvider& base_in) : storage(storage_in), base(base_in) {}
-
-        bool GetCScript(const CScriptID& scriptid, CScript& script) const override { return base.GetCScript(scriptid, script); }
-        bool HaveCScript(const CScriptID& scriptid) const override { return base.scripts.find(scriptid) != base.scripts.end(); }
-        bool GetPubKey(const CKeyID& address, CPubKey& pubkey) const override { return base.GetPubKey(address, pubkey); }
-        bool GetKey(const CKeyID& address, CKey& key) const override { return base.GetKey(address, key); }
-        bool HaveKey(const CKeyID& address) const override { return base.keys.find(address) != base.keys.end(); }
-        bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override { return base.GetKeyOrigin(keyid, info); }
-        bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const override { return storage.GetPQHDSeed(seed_id, seed); }
-    };
     const PQHDWalletSigningProvider provider{m_storage, base_provider};
 
     uint256 id = GetID();
@@ -1290,7 +1296,8 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
     if (HavePrivateKeys() && include_private) {
         FlatSigningProvider master_provider;
         master_provider.keys = GetKeys();
-        m_wallet_descriptor.descriptor->ExpandPrivate(index, master_provider, *out_keys);
+        const PQHDWalletSigningProvider provider{m_storage, master_provider};
+        m_wallet_descriptor.descriptor->ExpandPrivate(index, provider, *out_keys);
     }
 
     return out_keys;
@@ -1306,7 +1313,7 @@ bool DescriptorScriptPubKeyMan::CanProvide(const CScript& script, SignatureData&
     return IsMine(script);
 }
 
-bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
+bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors, std::optional<unsigned int> script_verify_flags) const
 {
     std::unique_ptr<FlatSigningProvider> keys = std::make_unique<FlatSigningProvider>();
     for (const auto& coin_pair : coins) {
@@ -1317,7 +1324,8 @@ bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const s
         keys->Merge(std::move(*coin_keys));
     }
 
-    return ::SignTransaction(tx, keys.get(), coins, sighash, input_errors);
+    const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
+    return ::SignTransaction(tx, keys.get(), coins, sighash, input_errors, effective_flags);
 }
 
 SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const
@@ -1338,8 +1346,9 @@ SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message,
     return SigningResult::OK;
 }
 
-std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
+std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize, std::optional<unsigned int> script_verify_flags) const
 {
+    const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
     if (n_signed) {
         *n_signed = 0;
     }
@@ -1387,7 +1396,7 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             }
         }
 
-        PSBTError res = SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs), psbtx, i, &txdata, sighash_type, nullptr, finalize);
+        PSBTError res = SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs), psbtx, i, &txdata, sighash_type, nullptr, finalize, effective_flags);
         if (res != PSBTError::OK && res != PSBTError::INCOMPLETE) {
             return res;
         }

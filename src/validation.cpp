@@ -5019,11 +5019,9 @@ void Chainstate::ClearBlockIndexCandidates()
 bool ChainstateManager::LoadBlockIndex()
 {
     AssertLockHeld(cs_main);
-    LogPrintf("LoadBlockIndex: start\n");
     // Load block index from databases
     if (m_blockman.m_blockfiles_indexed) {
         bool ret{m_blockman.LoadBlockIndexDB(SnapshotBlockhash())};
-        LogPrintf("LoadBlockIndex: LoadBlockIndexDB=%s\n", ret ? "success" : "failed");
         if (!ret) return false;
 
         m_blockman.ScanAndUnlinkAlreadyPrunedFiles();
@@ -5054,7 +5052,6 @@ bool ChainstateManager::LoadBlockIndex()
                 m_best_header = pindex;
         }
     }
-    LogPrintf("LoadBlockIndex: done\n");
     return true;
 }
 

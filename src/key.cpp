@@ -80,14 +80,14 @@ bool SigHasLowR(const secp256k1_ecdsa_signature* sig)
     return compact_sig[0] < 0x80;
 }
 
-bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool grind, uint32_t test_case) const {
+bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool grind, uint32_t test_case, bool legacy_mode) const {
     (void)grind;
     (void)test_case;
     if (keydata.empty()) {
         return false;
     }
     return pq::Sign(Scheme(), std::span<const unsigned char>{hash.begin(), 32},
-                    std::span<const unsigned char>{keydata.data(), keydata.size()}, vchSig, false);
+                    std::span<const unsigned char>{keydata.data(), keydata.size()}, vchSig, legacy_mode);
 }
 
 bool CKey::VerifyPubKey(const CPubKey& pubkey) const {
