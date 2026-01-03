@@ -22,7 +22,6 @@
 #include <protocol.h>
 #include <psbt.h>
 #include <pubkey.h>
-#include <script/keyorigin.h>
 #include <streams.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
@@ -182,11 +181,6 @@ FUZZ_TARGET_DESERIALIZE(flat_file_pos_deserialize, {
     FlatFilePos flat_file_pos;
     DeserializeFromFuzzingInput(buffer, flat_file_pos);
     AssertEqualAfterSerializeDeserialize(flat_file_pos);
-})
-FUZZ_TARGET_DESERIALIZE(key_origin_info_deserialize, {
-    KeyOriginInfo key_origin_info;
-    DeserializeFromFuzzingInput(buffer, key_origin_info);
-    AssertEqualAfterSerializeDeserialize(key_origin_info);
 })
 FUZZ_TARGET_DESERIALIZE(partially_signed_transaction_deserialize, {
     PartiallySignedTransaction partially_signed_transaction;

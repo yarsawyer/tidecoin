@@ -15,7 +15,6 @@
 #include <script/solver.h>
 #include <sync.h>
 #include <uint256.h>
-#include <util/bip32.h>
 #include <util/fs.h>
 #include <util/time.h>
 #include <util/translation.h>
@@ -239,8 +238,7 @@ static UniValue ProcessDescriptorImport(CWallet& wallet, const UniValue& data, c
 
             // Check if all private keys are provided
             bool have_all_privkeys = !expand_keys.keys.empty();
-            for (const auto& entry : expand_keys.origins) {
-                const CKeyID& key_id = entry.first;
+            for (const auto& [key_id, pubkey] : expand_keys.pubkeys) {
                 CKey key;
                 if (!expand_keys.GetKey(key_id, key)) {
                     have_all_privkeys = false;

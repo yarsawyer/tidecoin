@@ -114,7 +114,7 @@ static UniValue FinishTransaction(const std::shared_ptr<CWallet> pwallet, const 
     // First fill transaction with our data without signing,
     // so external signers are not asked to sign more than once.
     bool complete;
-    pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/true);
+    pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/false);
     const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true, /*bip32derivs=*/false)};
     if (err) {
         throw JSONRPCPSBTError(*err);
@@ -1190,7 +1190,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
     } else {
         PartiallySignedTransaction psbtx(mtx);
         bool complete = false;
-        const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/true)};
+        const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/false)};
         CHECK_NONFATAL(!err);
         CHECK_NONFATAL(!complete);
         DataStream ssTx{};
@@ -1636,7 +1636,7 @@ RPCHelpMan walletprocesspsbt()
             "       \"ALL|ANYONECANPAY\"\n"
             "       \"NONE|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\""},
-                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include BIP 32 derivation paths for public keys if we know them"},
+                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{false}, "BIP32 derivation paths are not supported (must be false)"},
                     {"finalize", RPCArg::Type::BOOL, RPCArg::Default{true}, "Also finalize inputs if possible"},
                 },
                 RPCResult{
@@ -1672,7 +1672,10 @@ RPCHelpMan walletprocesspsbt()
 
     // Fill transaction with our data and also sign
     bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
-    bool bip32derivs = request.params[3].isNull() ? true : request.params[3].get_bool();
+    bool bip32derivs = request.params[3].isNull() ? false : request.params[3].get_bool();
+    if (bip32derivs) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "BIP32 derivation paths are not supported (PQHD-only)");
+    }
     bool finalize = request.params[4].isNull() ? true : request.params[4].get_bool();
     bool complete = true;
 
@@ -1764,7 +1767,7 @@ RPCHelpMan walletcreatefundedpsbt()
                         },
                         FundTxDoc()),
                         RPCArgOptions{.oneline_description="options"}},
-                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include BIP 32 derivation paths for public keys if we know them"},
+                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{false}, "BIP32 derivation paths are not supported (must be false)"},
                     {"version", RPCArg::Type::NUM, RPCArg::Default{DEFAULT_WALLET_TX_VERSION}, "Transaction version"},
                 },
                 RPCResult{
@@ -1818,7 +1821,10 @@ RPCHelpMan walletcreatefundedpsbt()
     PartiallySignedTransaction psbtx(CMutableTransaction(*txr.tx));
 
     // Fill transaction with out data but don't sign
-    bool bip32derivs = request.params[4].isNull() ? true : request.params[4].get_bool();
+    bool bip32derivs = request.params[4].isNull() ? false : request.params[4].get_bool();
+    if (bip32derivs) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "BIP32 derivation paths are not supported (PQHD-only)");
+    }
     bool complete = true;
     const auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/bip32derivs)};
     if (err) {

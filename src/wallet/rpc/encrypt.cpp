@@ -228,7 +228,7 @@ RPCHelpMan encryptwallet()
                 "Use the walletpassphrase call for this, and then walletlock call.\n"
                 "If the wallet is already encrypted, use the walletpassphrasechange call.\n"
                 "** IMPORTANT **\n"
-                "For security reasons, the encryption process will generate a new HD seed, resulting\n"
+                "For security reasons, the encryption process will generate a new PQHD seed, resulting\n"
                 "in the creation of a fresh set of active descriptors. Therefore, it is crucial to\n"
                 "securely back up the newly generated wallet file using the backupwallet RPC.\n",
                 {
@@ -278,7 +278,7 @@ RPCHelpMan encryptwallet()
         throw JSONRPCError(RPC_WALLET_ENCRYPTION_FAILED, "Error: Failed to encrypt the wallet.");
     }
 
-    return "wallet encrypted; The keypool has been flushed and a new HD seed was generated. You need to make a new backup with the backupwallet RPC.";
+    return "wallet encrypted; The keypool has been flushed and a new PQHD seed was generated. You need to make a new backup with the backupwallet RPC.";
 },
     };
 }

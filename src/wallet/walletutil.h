@@ -23,13 +23,10 @@ enum WalletFlags : uint64_t {
     // Indicates that the metadata has already been upgraded to contain key origins
     WALLET_FLAG_KEY_ORIGIN_METADATA = (1ULL << 1),
 
-    // Indicates that the descriptor cache has been upgraded to cache last hardened xpubs
-    WALLET_FLAG_LAST_HARDENED_XPUB_CACHED = (1ULL << 2),
-
     // will enforce the rule that the wallet can't contain any private keys (only watch-only/pubkeys)
     WALLET_FLAG_DISABLE_PRIVATE_KEYS = (1ULL << 32),
 
-    //! Flag set when a wallet contains no HD seed and no private keys, scripts,
+    //! Flag set when a wallet contains no PQHD seed and no private keys, scripts,
     //! addresses, and other watch only things, and is therefore "blank."
     //!
     //! The main function this flag serves is to distinguish a blank wallet from
@@ -97,8 +94,6 @@ public:
     WalletDescriptor() = default;
     WalletDescriptor(std::shared_ptr<Descriptor> descriptor, uint64_t creation_time, int32_t range_start, int32_t range_end, int32_t next_index) : descriptor(descriptor), id(DescriptorID(*descriptor)), creation_time(creation_time), range_start(range_start), range_end(range_end), next_index(next_index) { }
 };
-
-WalletDescriptor GenerateWalletDescriptor(const CExtPubKey& master_key, const OutputType& output_type, bool internal);
 
 //! Generate a ranged wallet descriptor backed by PQHD (pqhd(SEEDID32)/.../*h).
 //! This does not rely on BIP32/xpub and instead uses the pqhd() key expression.

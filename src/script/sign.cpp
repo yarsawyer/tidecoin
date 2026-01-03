@@ -9,7 +9,6 @@
 #include <key.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
-#include <script/keyorigin.h>
 #include <script/miniscript.h>
 #include <script/script.h>
 #include <script/signingprovider.h>
@@ -91,11 +90,6 @@ static bool GetPubKey(const SigningProvider& provider, const SignatureData& sigd
         return true;
     }
     // Look for pubkey in pubkey lists
-    const auto& pk_it = sigdata.misc_pubkeys.find(address);
-    if (pk_it != sigdata.misc_pubkeys.end()) {
-        pubkey = pk_it->second.first;
-        return true;
-    }
     // Query the underlying provider
     return provider.GetPubKey(address, pubkey);
 }
@@ -107,10 +101,6 @@ static bool CreateSig(const BaseSignatureCreator& creator, SignatureData& sigdat
     if (it != sigdata.signatures.end()) {
         sig_out = it->second.second;
         return true;
-    }
-    KeyOriginInfo info;
-    if (provider.GetKeyOrigin(keyid, info)) {
-        sigdata.misc_pubkeys.emplace(keyid, std::make_pair(pubkey, std::move(info)));
     }
     if (creator.CreateSig(provider, sig_out, keyid, scriptcode, sigversion)) {
         auto i = sigdata.signatures.emplace(keyid, SigPair(pubkey, sig_out));

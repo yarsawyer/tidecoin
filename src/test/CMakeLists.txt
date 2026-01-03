@@ -16,7 +16,6 @@ add_executable(test_bitcoin
   base58_tests.cpp
   base64_tests.cpp
   bech32_tests.cpp
-  bip32_tests.cpp
   bip324_pq_tests.cpp
   blockchain_tests.cpp
   blockencodings_tests.cpp
@@ -79,7 +78,6 @@ add_executable(test_bitcoin
   pqhd_keygen_tests.cpp
   pq_random_key_tests.cpp
   pq_pubkey_container_tests.cpp
-  psbt_pq_keypaths_tests.cpp
   psbt_pqhd_origin_tests.cpp
   prevector_tests.cpp
   raii_event_tests.cpp

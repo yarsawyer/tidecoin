@@ -75,20 +75,7 @@ bool ExternalSigner::SignTransaction(PartiallySignedTransaction& psbtx, std::str
     // Serialize the PSBT
     DataStream ssTx{};
     ssTx << psbtx;
-    // parse ExternalSigner master fingerprint
-    std::vector<unsigned char> parsed_m_fingerprint = ParseHex(m_fingerprint);
-    // Check if signer fingerprint matches any input master key fingerprint
-    auto matches_signer_fingerprint = [&](const PSBTInput& input) {
-        for (const auto& entry : input.hd_keypaths) {
-            if (std::ranges::equal(parsed_m_fingerprint, entry.second.fingerprint)) return true;
-        }
-        return false;
-    };
-
-    if (!std::any_of(psbtx.inputs.begin(), psbtx.inputs.end(), matches_signer_fingerprint)) {
-        error = "Signer fingerprint " + m_fingerprint + " does not match any of the inputs:\n" + EncodeBase64(ssTx.str());
-        return false;
-    }
+    // BIP32 keypaths are disabled in PQHD-only mode; skip signer fingerprint matching.
 
     const std::string command = m_command + " --stdin --fingerprint " + m_fingerprint + NetworkArg();
     const std::string stdinStr = "signtx " + EncodeBase64(ssTx.str());

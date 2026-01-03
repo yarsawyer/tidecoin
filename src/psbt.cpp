@@ -147,13 +147,6 @@ bool PartiallySignedTransaction::Merge(const PartiallySignedTransaction& psbt)
     for (unsigned int i = 0; i < outputs.size(); ++i) {
         outputs[i].Merge(psbt.outputs[i]);
     }
-    for (auto& xpub_pair : psbt.m_xpubs) {
-        if (m_xpubs.count(xpub_pair.first) == 0) {
-            m_xpubs[xpub_pair.first] = xpub_pair.second;
-        } else {
-            m_xpubs[xpub_pair.first].insert(xpub_pair.second.begin(), xpub_pair.second.end());
-        }
-    }
     unknown.insert(psbt.unknown.begin(), psbt.unknown.end());
 
     return true;
@@ -201,7 +194,7 @@ bool PartiallySignedTransaction::GetInputUTXO(CTxOut& utxo, int input_index) con
 
 bool PSBTInput::IsNull() const
 {
-    return !non_witness_utxo && witness_utxo.IsNull() && partial_sigs.empty() && unknown.empty() && hd_keypaths.empty() && redeem_script.empty() && witness_script.empty();
+    return !non_witness_utxo && witness_utxo.IsNull() && partial_sigs.empty() && unknown.empty() && redeem_script.empty() && witness_script.empty();
 }
 
 void PSBTInput::FillSignatureData(SignatureData& sigdata) const
@@ -225,9 +218,6 @@ void PSBTInput::FillSignatureData(SignatureData& sigdata) const
     if (!witness_script.empty()) {
         sigdata.witness_script = witness_script;
     }
-    for (const auto& key_pair : hd_keypaths) {
-        sigdata.misc_pubkeys.emplace(key_pair.first.GetID(), key_pair);
-    }
     for (const auto& [hash, preimage] : ripemd160_preimages) {
         sigdata.ripemd160_preimages.emplace(std::vector<unsigned char>(hash.begin(), hash.end()), preimage);
     }
@@ -246,7 +236,6 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
 {
     if (sigdata.complete) {
         partial_sigs.clear();
-        hd_keypaths.clear();
         redeem_script.clear();
         witness_script.clear();
 
@@ -266,9 +255,6 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
     if (witness_script.empty() && !sigdata.witness_script.empty()) {
         witness_script = sigdata.witness_script;
     }
-    for (const auto& entry : sigdata.misc_pubkeys) {
-        hd_keypaths.emplace(entry.second);
-    }
 }
 
 void PSBTInput::Merge(const PSBTInput& input)
@@ -283,7 +269,6 @@ void PSBTInput::Merge(const PSBTInput& input)
     sha256_preimages.insert(input.sha256_preimages.begin(), input.sha256_preimages.end());
     hash160_preimages.insert(input.hash160_preimages.begin(), input.hash160_preimages.end());
     hash256_preimages.insert(input.hash256_preimages.begin(), input.hash256_preimages.end());
-    hd_keypaths.insert(input.hd_keypaths.begin(), input.hd_keypaths.end());
     unknown.insert(input.unknown.begin(), input.unknown.end());
 
     if (redeem_script.empty() && !input.redeem_script.empty()) redeem_script = input.redeem_script;
@@ -300,9 +285,6 @@ void PSBTOutput::FillSignatureData(SignatureData& sigdata) const
     if (!witness_script.empty()) {
         sigdata.witness_script = witness_script;
     }
-    for (const auto& key_pair : hd_keypaths) {
-        sigdata.misc_pubkeys.emplace(key_pair.first.GetID(), key_pair);
-    }
 }
 
 void PSBTOutput::FromSignatureData(const SignatureData& sigdata)
@@ -313,19 +295,15 @@ void PSBTOutput::FromSignatureData(const SignatureData& sigdata)
     if (witness_script.empty() && !sigdata.witness_script.empty()) {
         witness_script = sigdata.witness_script;
     }
-    for (const auto& entry : sigdata.misc_pubkeys) {
-        hd_keypaths.emplace(entry.second);
-    }
 }
 
 bool PSBTOutput::IsNull() const
 {
-    return redeem_script.empty() && witness_script.empty() && hd_keypaths.empty() && unknown.empty();
+    return redeem_script.empty() && witness_script.empty() && unknown.empty();
 }
 
 void PSBTOutput::Merge(const PSBTOutput& output)
 {
-    hd_keypaths.insert(output.hd_keypaths.begin(), output.hd_keypaths.end());
     unknown.insert(output.unknown.begin(), output.unknown.end());
 
     if (redeem_script.empty() && !output.redeem_script.empty()) redeem_script = output.redeem_script;

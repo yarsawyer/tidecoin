@@ -10,7 +10,6 @@
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
 #include <pubkey.h>
-#include <script/keyorigin.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <span.h>
@@ -145,85 +144,14 @@ void UnserializeFromVector(Stream& s, X&&... args)
     }
 }
 
-// Deserialize bytes of given length from the stream as a KeyOriginInfo
-template<typename Stream>
-KeyOriginInfo DeserializeKeyOrigin(Stream& s, uint64_t length)
-{
-    // Read in key path
-    if (length % 4 || length == 0) {
-        throw std::ios_base::failure("Invalid length for HD key path");
-    }
-
-    KeyOriginInfo hd_keypath;
-    s >> hd_keypath.fingerprint;
-    for (unsigned int i = 4; i < length; i += sizeof(uint32_t)) {
-        uint32_t index;
-        s >> index;
-        hd_keypath.path.push_back(index);
-    }
-    return hd_keypath;
-}
-
-// Deserialize a length prefixed KeyOriginInfo from a stream
-template<typename Stream>
-void DeserializeHDKeypath(Stream& s, KeyOriginInfo& hd_keypath)
-{
-    hd_keypath = DeserializeKeyOrigin(s, ReadCompactSize(s));
-}
-
 // Deserialize HD keypaths into a map
 template<typename Stream>
-void DeserializeHDKeypaths(Stream& s, const std::vector<unsigned char>& key, std::map<CPubKey, KeyOriginInfo>& hd_keypaths)
+void DeserializeHDKeypaths(Stream& s, const std::vector<unsigned char>& key, std::map<CPubKey, std::vector<unsigned char>>& hd_keypaths)
 {
-    // Expect at least a type byte + a non-empty pubkey.
-    if (key.size() < 2 || key.size() > CPubKey::SIZE + 1) {
-        throw std::ios_base::failure("Size of key was not the expected size for the type BIP32 keypath");
-    }
-    // Read in the pubkey from key
-    CPubKey pubkey(key.begin() + 1, key.end());
-    if (!pubkey.IsFullyValid()) {
-       throw std::ios_base::failure("Invalid pubkey");
-    }
-    if (hd_keypaths.count(pubkey) > 0) {
-        throw std::ios_base::failure("Duplicate Key, pubkey derivation path already provided");
-    }
-
-    KeyOriginInfo keypath;
-    DeserializeHDKeypath(s, keypath);
-
-    // Add to map
-    hd_keypaths.emplace(pubkey, std::move(keypath));
-}
-
-// Serialize a KeyOriginInfo to a stream
-template<typename Stream>
-void SerializeKeyOrigin(Stream& s, KeyOriginInfo hd_keypath)
-{
-    s << hd_keypath.fingerprint;
-    for (const auto& path : hd_keypath.path) {
-        s << path;
-    }
-}
-
-// Serialize a length prefixed KeyOriginInfo to a stream
-template<typename Stream>
-void SerializeHDKeypath(Stream& s, KeyOriginInfo hd_keypath)
-{
-    WriteCompactSize(s, (hd_keypath.path.size() + 1) * sizeof(uint32_t));
-    SerializeKeyOrigin(s, hd_keypath);
-}
-
-// Serialize HD keypaths to a stream from a map
-template<typename Stream>
-void SerializeHDKeypaths(Stream& s, const std::map<CPubKey, KeyOriginInfo>& hd_keypaths, CompactSizeWriter type)
-{
-    for (const auto& keypath_pair : hd_keypaths) {
-        if (!keypath_pair.first.IsValid()) {
-            throw std::ios_base::failure("Invalid CPubKey being serialized");
-        }
-        SerializeToVector(s, type, std::span{keypath_pair.first});
-        SerializeHDKeypath(s, keypath_pair.second);
-    }
+    (void)s;
+    (void)key;
+    (void)hd_keypaths;
+    throw std::ios_base::failure("BIP32 derivation paths are not supported");
 }
 
 /** A structure for PSBTs which contain per-input information */
@@ -235,7 +163,6 @@ struct PSBTInput
     CScript witness_script;
     CScript final_script_sig;
     CScriptWitness final_script_witness;
-    std::map<CPubKey, KeyOriginInfo> hd_keypaths;
     std::map<CKeyID, SigPair> partial_sigs;
     std::map<uint160, std::vector<unsigned char>> ripemd160_preimages;
     std::map<uint256, std::vector<unsigned char>> sha256_preimages;
@@ -288,9 +215,6 @@ struct PSBTInput
                 SerializeToVector(s, CompactSizeWriter(PSBT_IN_WITNESSSCRIPT));
                 s << witness_script;
             }
-
-            // Write any hd keypaths
-            SerializeHDKeypaths(s, hd_keypaths, CompactSizeWriter(PSBT_IN_BIP32_DERIVATION));
 
             // Write any ripemd160 preimage
             for (const auto& [hash, preimage] : ripemd160_preimages) {
@@ -448,8 +372,7 @@ struct PSBTInput
                 }
                 case PSBT_IN_BIP32_DERIVATION:
                 {
-                    DeserializeHDKeypaths(s, key, hd_keypaths);
-                    break;
+                    throw std::ios_base::failure("BIP32 derivation paths are not supported");
                 }
                 case PSBT_IN_SCRIPTSIG:
                 {
@@ -598,7 +521,6 @@ struct PSBTOutput
 {
     CScript redeem_script;
     CScript witness_script;
-    std::map<CPubKey, KeyOriginInfo> hd_keypaths;
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
     std::set<PSBTProprietary> m_proprietary;
 
@@ -621,9 +543,6 @@ struct PSBTOutput
             SerializeToVector(s, CompactSizeWriter(PSBT_OUT_WITNESSSCRIPT));
             s << witness_script;
         }
-
-        // Write any hd keypaths
-        SerializeHDKeypaths(s, hd_keypaths, CompactSizeWriter(PSBT_OUT_BIP32_DERIVATION));
 
         // Write proprietary things
         for (const auto& entry : m_proprietary) {
@@ -688,8 +607,7 @@ struct PSBTOutput
                 }
                 case PSBT_OUT_BIP32_DERIVATION:
                 {
-                    DeserializeHDKeypaths(s, key, hd_keypaths);
-                    break;
+                    throw std::ios_base::failure("BIP32 derivation paths are not supported");
                 }
                 case PSBT_OUT_PROPRIETARY:
                 {
@@ -734,9 +652,6 @@ struct PSBTOutput
 struct PartiallySignedTransaction
 {
     std::optional<CMutableTransaction> tx;
-    // We use a vector of CExtPubKey in the event that there happens to be the same KeyOriginInfos for different CExtPubKeys
-    // Note that this map swaps the key and values from the serialization
-    std::map<KeyOriginInfo, std::set<CExtPubKey>> m_xpubs;
     std::vector<PSBTInput> inputs;
     std::vector<PSBTOutput> outputs;
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
@@ -773,18 +688,6 @@ struct PartiallySignedTransaction
 
         // Write serialized tx to a stream
         SerializeToVector(s, TX_NO_WITNESS(*tx));
-
-        // Write xpubs
-        for (const auto& xpub_pair : m_xpubs) {
-            for (const auto& xpub : xpub_pair.second) {
-                unsigned char ser_xpub[BIP32_EXTKEY_WITH_VERSION_SIZE];
-                xpub.EncodeWithVersion(ser_xpub);
-                // Note that the serialization swaps the key and value
-                // The xpub is the key (for uniqueness) while the path is the value
-                SerializeToVector(s, PSBT_GLOBAL_XPUB, ser_xpub);
-                SerializeHDKeypath(s, xpub_pair.first);
-            }
-        }
 
         // PSBT version
         if (GetVersion() > 0) {
@@ -830,9 +733,6 @@ struct PartiallySignedTransaction
         // Used for duplicate key detection
         std::set<std::vector<unsigned char>> key_lookup;
 
-        // Track the global xpubs we have already seen. Just for sanity checking
-        std::set<CExtPubKey> global_xpubs;
-
         // Read global data
         bool found_sep = false;
         while(!s.empty()) {
@@ -874,33 +774,7 @@ struct PartiallySignedTransaction
                 }
                 case PSBT_GLOBAL_XPUB:
                 {
-                    if (key.size() != BIP32_EXTKEY_WITH_VERSION_SIZE + 1) {
-                        throw std::ios_base::failure("Size of key was not the expected size for the type global xpub");
-                    }
-                    // Read in the xpub from key
-                    CExtPubKey xpub;
-                    xpub.DecodeWithVersion(&key.data()[1]);
-                    if (!xpub.pubkey.IsFullyValid()) {
-                       throw std::ios_base::failure("Invalid pubkey");
-                    }
-                    if (global_xpubs.count(xpub) > 0) {
-                       throw std::ios_base::failure("Duplicate key, global xpub already provided");
-                    }
-                    global_xpubs.insert(xpub);
-                    // Read in the keypath from stream
-                    KeyOriginInfo keypath;
-                    DeserializeHDKeypath(s, keypath);
-
-                    // Note that we store these swapped to make searches faster.
-                    // Serialization uses xpub -> keypath to enqure key uniqueness
-                    if (m_xpubs.count(keypath) == 0) {
-                        // Make a new set to put the xpub in
-                        m_xpubs[keypath] = {xpub};
-                    } else {
-                        // Insert xpub into existing set
-                        m_xpubs[keypath].insert(xpub);
-                    }
-                    break;
+                    throw std::ios_base::failure("Global xpubs are not supported");
                 }
                 case PSBT_GLOBAL_VERSION:
                 {
@@ -1032,7 +906,7 @@ size_t CountPSBTUnsignedInputs(const PartiallySignedTransaction& psbt);
 
 /** Updates a PSBTOutput with information from provider.
  *
- * This fills in the redeem_script, witness_script, and hd_keypaths where possible.
+ * This fills in the redeem_script and witness_script where possible.
  */
 void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index);
 

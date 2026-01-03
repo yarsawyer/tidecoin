@@ -3,7 +3,6 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <script/keyorigin.h>
 #include <script/interpreter.h>
 #include <script/signingprovider.h>
 
@@ -38,12 +37,6 @@ bool HidingSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
     return m_provider->GetKey(keyid, key);
 }
 
-bool HidingSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
-{
-    if (m_hide_origin) return false;
-    return m_provider->GetKeyOrigin(keyid, info);
-}
-
 bool HidingSigningProvider::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const
 {
     if (m_hide_secret) return false;
@@ -52,13 +45,6 @@ bool HidingSigningProvider::GetPQHDSeed(const uint256& seed_id, std::array<uint8
 
 bool FlatSigningProvider::GetCScript(const CScriptID& scriptid, CScript& script) const { return LookupHelper(scripts, scriptid, script); }
 bool FlatSigningProvider::GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const { return LookupHelper(pubkeys, keyid, pubkey); }
-bool FlatSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
-{
-    std::pair<CPubKey, KeyOriginInfo> out;
-    bool ret = LookupHelper(origins, keyid, out);
-    if (ret) info = std::move(out.second);
-    return ret;
-}
 bool FlatSigningProvider::HaveKey(const CKeyID &keyid) const
 {
     CKey key;
@@ -71,7 +57,6 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     scripts.merge(b.scripts);
     pubkeys.merge(b.pubkeys);
     keys.merge(b.keys);
-    origins.merge(b.origins);
     return *this;
 }
 
@@ -226,14 +211,6 @@ bool MultiSigningProvider::GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const
     return false;
 }
 
-
-bool MultiSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
-{
-    for (const auto& provider: m_providers) {
-        if (provider->GetKeyOrigin(keyid, info)) return true;
-    }
-    return false;
-}
 
 bool MultiSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
 {

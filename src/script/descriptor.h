@@ -13,48 +13,15 @@
 #include <optional>
 #include <vector>
 
-using ExtPubKeyMap = std::unordered_map<uint32_t, CExtPubKey>;
 using PubKeyMap = std::unordered_map<uint32_t, CPubKey>;
 
 /** Cache for single descriptor's derived extended pubkeys */
 class DescriptorCache {
 private:
-    /** Map key expression index -> map of (key derivation index -> xpub) */
-    std::unordered_map<uint32_t, ExtPubKeyMap> m_derived_xpubs;
     /** Map key expression index -> map of (key derivation index -> pubkey) */
     std::unordered_map<uint32_t, PubKeyMap> m_derived_pubkeys;
-    /** Map key expression index -> parent xpub */
-    ExtPubKeyMap m_parent_xpubs;
-    /** Map key expression index -> last hardened xpub */
-    ExtPubKeyMap m_last_hardened_xpubs;
 
 public:
-    /** Cache a parent xpub
-     *
-     * @param[in] key_exp_pos Position of the key expression within the descriptor
-     * @param[in] xpub The CExtPubKey to cache
-     */
-    void CacheParentExtPubKey(uint32_t key_exp_pos, const CExtPubKey& xpub);
-    /** Retrieve a cached parent xpub
-     *
-     * @param[in] key_exp_pos Position of the key expression within the descriptor
-     * @param[out] xpub The CExtPubKey to get from cache
-     */
-    bool GetCachedParentExtPubKey(uint32_t key_exp_pos, CExtPubKey& xpub) const;
-    /** Cache an xpub derived at an index
-     *
-     * @param[in] key_exp_pos Position of the key expression within the descriptor
-     * @param[in] der_index Derivation index of the xpub
-     * @param[in] xpub The CExtPubKey to cache
-     */
-    void CacheDerivedExtPubKey(uint32_t key_exp_pos, uint32_t der_index, const CExtPubKey& xpub);
-    /** Retrieve a cached xpub derived at an index
-     *
-     * @param[in] key_exp_pos Position of the key expression within the descriptor
-     * @param[in] der_index Derivation index of the xpub
-     * @param[out] xpub The CExtPubKey to get from cache
-     */
-    bool GetCachedDerivedExtPubKey(uint32_t key_exp_pos, uint32_t der_index, CExtPubKey& xpub) const;
     /** Cache a derived pubkey (for non-BIP32 derivation, e.g. PQHD).
      *
      * @param[in] key_exp_pos Position of the key expression within the descriptor
@@ -69,27 +36,9 @@ public:
      * @param[out] pubkey The CPubKey to get from cache
      */
     bool GetCachedDerivedPubKey(uint32_t key_exp_pos, uint32_t der_index, CPubKey& pubkey) const;
-    /** Cache a last hardened xpub
-     *
-     * @param[in] key_exp_pos Position of the key expression within the descriptor
-     * @param[in] xpub The CExtPubKey to cache
-     */
-    void CacheLastHardenedExtPubKey(uint32_t key_exp_pos, const CExtPubKey& xpub);
-    /** Retrieve a cached last hardened xpub
-     *
-     * @param[in] key_exp_pos Position of the key expression within the descriptor
-     * @param[out] xpub The CExtPubKey to get from cache
-     */
-    bool GetCachedLastHardenedExtPubKey(uint32_t key_exp_pos, CExtPubKey& xpub) const;
 
-    /** Retrieve all cached parent xpubs */
-    ExtPubKeyMap GetCachedParentExtPubKeys() const;
-    /** Retrieve all cached derived xpubs */
-    std::unordered_map<uint32_t, ExtPubKeyMap> GetCachedDerivedExtPubKeys() const;
     /** Retrieve all cached derived pubkeys */
     std::unordered_map<uint32_t, PubKeyMap> GetCachedDerivedPubKeys() const;
-    /** Retrieve all cached last hardened xpubs */
-    ExtPubKeyMap GetCachedLastHardenedExtPubKeys() const;
 
     /** Combine another DescriptorCache into this one.
      * Returns a cache containing the items from the other cache unknown to current cache
@@ -104,12 +53,12 @@ public:
  * one, they avoid the need to separately import keys and scripts.
  *
  * Descriptors may be ranged, which occurs when the public keys inside are
- * specified in the form of HD chains (xpubs).
+ * specified in the form of derivation expressions (e.g., PQHD).
  *
  * Descriptors always represent public information - public keys and scripts -
  * but in cases where private keys need to be conveyed along with a descriptor,
  * they can be included inside by changing public keys to private keys (WIF
- * format), and changing xpubs by xprvs.
+ * format).
  *
  * Reference documentation about the descriptor language can be found in
  * doc/descriptors.md.
@@ -133,7 +82,7 @@ struct Descriptor {
     /** Convert the descriptor to a private string. This fails if the provided provider does not have the relevant private keys. */
     virtual bool ToPrivateString(const SigningProvider& provider, std::string& out) const = 0;
 
-    /** Convert the descriptor to a normalized string. Normalized descriptors have the xpub at the last hardened step. This fails if the provided provider does not have the private keys to derive that xpub. */
+    /** Convert the descriptor to a normalized string. */
     virtual bool ToNormalizedString(const SigningProvider& provider, std::string& out, const DescriptorCache* cache = nullptr) const = 0;
 
     /** Expand a descriptor at a specified position.
@@ -178,12 +127,11 @@ struct Descriptor {
     /** Get the maximum size number of stack elements for satisfying this descriptor. */
     virtual std::optional<int64_t> MaxSatisfactionElems() const = 0;
 
-    /** Return all (extended) public keys for this descriptor, including any from subdescriptors.
+    /** Return all public keys for this descriptor, including any from subdescriptors.
      *
      * @param[out] pubkeys Any public keys
-     * @param[out] ext_pubs Any extended public keys
      */
-    virtual void GetPubKeys(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const = 0;
+    virtual void GetPubKeys(std::set<CPubKey>& pubkeys) const = 0;
 };
 
 /** Parse a `descriptor` string. Included private keys are put in `out`.

@@ -76,7 +76,7 @@ void PSBTOperationsDialog::openWithPSBT(PartiallySignedTransaction psbtx)
     bool complete = FinalizePSBT(psbtx); // Make sure all existing signatures are fully combined before checking for completeness.
     if (m_wallet_model) {
         size_t n_could_sign;
-        const auto err{m_wallet_model->wallet().fillPSBT(std::nullopt, /*sign=*/false, /*bip32derivs=*/true, &n_could_sign, m_transaction_data, complete)};
+        const auto err{m_wallet_model->wallet().fillPSBT(std::nullopt, /*sign=*/false, /*bip32derivs=*/false, &n_could_sign, m_transaction_data, complete)};
         if (err) {
             showStatus(tr("Failed to load transaction: %1")
                            .arg(QString::fromStdString(PSBTErrorString(*err).translated)),
@@ -100,7 +100,7 @@ void PSBTOperationsDialog::signTransaction()
 
     WalletModel::UnlockContext ctx(m_wallet_model->requestUnlock());
 
-    const auto err{m_wallet_model->wallet().fillPSBT(std::nullopt, /*sign=*/true, /*bip32derivs=*/true, &n_signed, m_transaction_data, complete)};
+    const auto err{m_wallet_model->wallet().fillPSBT(std::nullopt, /*sign=*/true, /*bip32derivs=*/false, &n_signed, m_transaction_data, complete)};
 
     if (err) {
         showStatus(tr("Failed to sign transaction: %1")

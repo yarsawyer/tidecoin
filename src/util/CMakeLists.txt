@@ -5,7 +5,6 @@
 add_library(bitcoin_util STATIC EXCLUDE_FROM_ALL
   asmap.cpp
   batchpriority.cpp
-  bip32.cpp
   bytevectorhash.cpp
   chaintype.cpp
   check.cpp
@@ -15,6 +14,7 @@ add_library(bitcoin_util STATIC EXCLUDE_FROM_ALL
   fs.cpp
   fs_helpers.cpp
   hasher.cpp
+  keypath.cpp
   moneystr.cpp
   rbf.cpp
   readwritefile.cpp

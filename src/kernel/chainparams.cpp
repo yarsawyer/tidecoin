@@ -141,8 +141,6 @@ public:
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,70);
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1,65);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,125);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x07, 0x68, 0xAC, 0xDE};
-        base58Prefixes[EXT_SECRET_KEY] = {0x07, 0x68, 0xFE, 0xB1};
 
         bech32_hrp = "tbc";
 
@@ -217,8 +215,6 @@ public:
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,132);
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1,127);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,180);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x07, 0x57, 0x28, 0xAF};
-        base58Prefixes[EXT_SECRET_KEY] = {0x07, 0x57, 0x37, 0xB6};
 
         bech32_hrp = "ttbc";
 
@@ -325,8 +321,6 @@ public:
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,186);
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1,122);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,15);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x07, 0x45, 0x65, 0xAF};
-        base58Prefixes[EXT_SECRET_KEY] = {0x07, 0x45, 0x56, 0xCE};
 
         bech32_hrp = "rtbc";
     }

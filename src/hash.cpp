@@ -5,7 +5,6 @@
 #include <hash.h>
 #include <span.h>
 #include <crypto/common.h>
-#include <crypto/hmac_sha512.h>
 
 #include <bit>
 #include <string>
@@ -66,13 +65,6 @@ unsigned int MurmurHash3(unsigned int nHashSeed, std::span<const unsigned char> 
     h1 ^= h1 >> 16;
 
     return h1;
-}
-
-void BIP32Hash(const ChainCode &chainCode, unsigned int nChild, unsigned char header, const unsigned char data[32], unsigned char output[64])
-{
-    unsigned char num[4];
-    WriteBE32(num, nChild);
-    CHMAC_SHA512(chainCode.begin(), chainCode.size()).Write(&header, 1).Write(data, 32).Write(num, 4).Finalize(output);
 }
 
 uint256 SHA256Uint256(const uint256& input)

@@ -13,6 +13,7 @@
 #include <wallet/pqhd.h>
 #include <wallet/walletutil.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -64,7 +65,6 @@ extern const std::string CSCRIPT;
 extern const std::string DEFAULTKEY;
 extern const std::string DESTDATA;
 extern const std::string FLAGS;
-extern const std::string HDCHAIN;
 extern const std::string KEY;
 extern const std::string KEYMETA;
 extern const std::string LOCKED_UTXO;
@@ -91,45 +91,6 @@ extern const std::string WATCHS;
 extern const std::unordered_set<std::string> LEGACY_TYPES;
 } // namespace DBKeys
 
-/* simple HD chain data model */
-class CHDChain
-{
-public:
-    uint32_t nExternalChainCounter;
-    uint32_t nInternalChainCounter;
-    CKeyID seed_id; //!< seed hash160
-    int64_t m_next_external_index{0}; // Next index in the keypool to be used. Memory only.
-    int64_t m_next_internal_index{0}; // Next index in the keypool to be used. Memory only.
-
-    static const int VERSION_HD_BASE        = 1;
-    static const int VERSION_HD_CHAIN_SPLIT = 2;
-    static const int CURRENT_VERSION        = VERSION_HD_CHAIN_SPLIT;
-    int nVersion;
-
-    CHDChain() { SetNull(); }
-
-    SERIALIZE_METHODS(CHDChain, obj)
-    {
-        READWRITE(obj.nVersion, obj.nExternalChainCounter, obj.seed_id);
-        if (obj.nVersion >= VERSION_HD_CHAIN_SPLIT) {
-            READWRITE(obj.nInternalChainCounter);
-        }
-    }
-
-    void SetNull()
-    {
-        nVersion = CHDChain::CURRENT_VERSION;
-        nExternalChainCounter = 0;
-        nInternalChainCounter = 0;
-        seed_id.SetNull();
-    }
-
-    bool operator==(const CHDChain& chain) const
-    {
-        return seed_id == chain.seed_id;
-    }
-};
-
 class CKeyMetadata
 {
 public:
@@ -140,10 +101,6 @@ public:
     static constexpr int CURRENT_VERSION{VERSION_WITH_PQHD_ORIGIN};
     int nVersion;
     int64_t nCreateTime; // 0 means unknown
-    std::string hdKeypath; //optional HD/bip32 keypath. Still used to determine whether a key is a seed. Also kept for backwards compatibility
-    CKeyID hd_seed_id; //id of the HD seed used to derive this key
-    KeyOriginInfo key_origin; // Key origin info with path and fingerprint
-    bool has_key_origin = false; //!< Whether the key_origin is useful
     bool has_pqhd_origin = false;
     uint256 pqhd_seed_id;
     std::vector<uint32_t> pqhd_path;
@@ -162,12 +119,18 @@ public:
     {
         READWRITE(obj.nVersion, obj.nCreateTime);
         if (obj.nVersion >= VERSION_WITH_HDDATA) {
-            READWRITE(obj.hdKeypath, obj.hd_seed_id);
+            std::string unused_hd_keypath;
+            CKeyID unused_seed_id;
+            READWRITE(unused_hd_keypath, unused_seed_id);
         }
         if (obj.nVersion >= VERSION_WITH_KEY_ORIGIN)
         {
-            READWRITE(obj.key_origin);
-            READWRITE(obj.has_key_origin);
+            std::array<unsigned char, 4> unused_fingerprint{};
+            std::vector<uint32_t> unused_path;
+            bool unused_has_origin = false;
+            READWRITE(unused_fingerprint);
+            READWRITE(unused_path);
+            READWRITE(unused_has_origin);
         }
         if (obj.nVersion >= VERSION_WITH_PQHD_ORIGIN) {
             READWRITE(obj.has_pqhd_origin);
@@ -180,10 +143,6 @@ public:
     {
         nVersion = CKeyMetadata::CURRENT_VERSION;
         nCreateTime = 0;
-        hdKeypath.clear();
-        hd_seed_id.SetNull();
-        key_origin.clear();
-        has_key_origin = false;
         has_pqhd_origin = false;
         pqhd_seed_id.SetNull();
         pqhd_path.clear();
@@ -267,10 +226,7 @@ public:
     bool WriteDescriptorKey(const uint256& desc_id, const CPubKey& pubkey, const CPrivKey& privkey);
     bool WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKey& pubkey, const std::vector<unsigned char>& secret);
     bool WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor);
-    bool WriteDescriptorDerivedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index);
-    bool WriteDescriptorParentCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index);
     bool WriteDescriptorDerivedPubKeyCache(const CPubKey& pubkey, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index);
-    bool WriteDescriptorLastHardenedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index);
     bool WriteDescriptorCacheItems(const uint256& desc_id, const DescriptorCache& cache);
 
     bool WriteLockedUTXO(const COutPoint& output);
@@ -326,7 +282,6 @@ bool RunWithinTxn(WalletDatabase& database, std::string_view process_desc, const
 bool LoadKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
 bool LoadCryptedKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
 bool LoadEncryptionKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
-bool LoadHDChain(CWallet* pwallet, DataStream& ssValue, std::string& strErr);
 
 //! Returns true if there are any DBKeys::LEGACY_TYPES record in the wallet db
 bool HasLegacyRecords(CWallet& wallet);

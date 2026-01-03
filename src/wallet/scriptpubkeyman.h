@@ -116,9 +116,6 @@ public:
      */
     virtual std::vector<WalletDestination> MarkUnusedAddresses(const CScript& script) { return {}; }
 
-    /* Returns true if HD is enabled */
-    virtual bool IsHDEnabled() const { return false; }
-
     /* Returns true if the wallet can give out new addresses. This means it has keys in the keypool or can generate new keys */
     virtual bool CanGetAddresses(bool internal = false) const { return false; }
 
@@ -187,10 +184,6 @@ private:
     WatchOnlySet setWatchOnly GUARDED_BY(cs_KeyStore);
     WatchKeyMap mapWatchKeys GUARDED_BY(cs_KeyStore);
 
-    /* the HD chain data model (external chain counters) */
-    CHDChain m_hd_chain;
-    std::unordered_map<CKeyID, CHDChain, SaltedSipHasher> m_inactive_hd_chains;
-
     //! keeps track of whether Unlock has run a thorough check before
     bool fDecryptionThoroughlyChecked = true;
 
@@ -224,7 +217,6 @@ public:
     bool HaveKey(const CKeyID &address) const override;
     bool GetKey(const CKeyID &address, CKey& keyOut) const override;
     bool GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const override;
-    bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
 
     //! Load metadata (used by LoadWallet)
     virtual void LoadKeyMetadata(const CKeyID& keyID, const CKeyMetadata &metadata);
@@ -240,11 +232,6 @@ public:
     bool LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid);
     //! Adds a CScript to the store
     bool LoadCScript(const CScript& redeemScript);
-    //! Load a HD chain model (used by LoadWallet)
-    void LoadHDChain(const CHDChain& chain);
-    void AddInactiveHDChain(const CHDChain& chain);
-    const CHDChain& GetHDChain() const { return m_hd_chain; }
-
     //! Fetches a pubkey from mapWatchKeys if it exists there
     bool GetWatchPubKey(const CKeyID &address, CPubKey &pubkey_out) const;
 
@@ -274,7 +261,6 @@ public:
     bool GetPubKey(const CKeyID &address, CPubKey& pubkey) const override { return m_spk_man.GetPubKey(address, pubkey); }
     bool GetKey(const CKeyID &address, CKey& key) const override { return false; }
     bool HaveKey(const CKeyID &address) const override { return false; }
-    bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override { return m_spk_man.GetKeyOrigin(keyid, info); }
 };
 
 class DescriptorScriptPubKeyMan : public ScriptPubKeyMan
@@ -339,17 +325,10 @@ public:
     void ReturnDestination(int64_t index, bool internal, const CTxDestination& addr) override;
 
     // Tops up the descriptor cache and m_map_script_pub_keys. The cache is stored in the wallet file
-    // and is used to expand the descriptor in GetNewDestination. DescriptorScriptPubKeyMan relies
-    // more on ephemeral data than LegacyScriptPubKeyMan. For wallets using unhardened derivation
-    // (with or without private keys), the "keypool" is a single xpub.
+    // and is used to expand the descriptor in GetNewDestination.
     bool TopUp(unsigned int size = 0) override;
 
     std::vector<WalletDestination> MarkUnusedAddresses(const CScript& script) override;
-
-    bool IsHDEnabled() const override;
-
-    //! Setup descriptors based on the given CExtkey
-    bool SetupDescriptorGeneration(WalletBatch& batch, const CExtKey& master_key, OutputType addr_type, bool internal);
 
     //! Setup a descriptor without relying on BIP32/xpub master keys (e.g. PQHD descriptors).
     //! This assumes the descriptor itself can derive its keys/scripts from the provided wallet storage.
@@ -400,13 +379,11 @@ public:
 
     [[nodiscard]] bool GetDescriptorString(std::string& out, const bool priv) const;
 
-    void UpgradeDescriptorCache();
 };
 
 /** struct containing information needed for migrating legacy wallets to descriptor wallets */
 struct MigrationData
 {
-    CExtKey master_key;
     std::vector<std::pair<std::string, int64_t>> watch_descs;
     std::vector<std::pair<std::string, int64_t>> solvable_descs;
     std::vector<std::unique_ptr<DescriptorScriptPubKeyMan>> desc_spkms;

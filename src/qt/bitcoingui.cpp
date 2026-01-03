@@ -163,7 +163,6 @@ BitcoinGUI::BitcoinGUI(interfaces::Node& node, const PlatformStyle *_platformSty
     frameBlocksLayout->setSpacing(3);
     unitDisplayControl = new UnitDisplayStatusBarControl(platformStyle);
     labelWalletEncryptionIcon = new GUIUtil::ThemedLabel(platformStyle);
-    labelWalletHDStatusIcon = new GUIUtil::ThemedLabel(platformStyle);
     labelProxyIcon = new GUIUtil::ClickableLabel(platformStyle);
     connectionsControl = new GUIUtil::ClickableLabel(platformStyle);
     labelBlocksIcon = new GUIUtil::ClickableLabel(platformStyle);
@@ -174,8 +173,6 @@ BitcoinGUI::BitcoinGUI(interfaces::Node& node, const PlatformStyle *_platformSty
         frameBlocksLayout->addStretch();
         frameBlocksLayout->addWidget(labelWalletEncryptionIcon);
         labelWalletEncryptionIcon->hide();
-        frameBlocksLayout->addWidget(labelWalletHDStatusIcon);
-        labelWalletHDStatusIcon->hide();
     }
     frameBlocksLayout->addWidget(labelProxyIcon);
     frameBlocksLayout->addStretch();
@@ -771,7 +768,6 @@ void BitcoinGUI::removeWallet(WalletModel* walletModel)
 {
     if (!walletFrame) return;
 
-    labelWalletHDStatusIcon->hide();
     labelWalletEncryptionIcon->hide();
 
     int index = m_wallet_selector->findData(QVariant::fromValue(walletModel));
@@ -1412,13 +1408,6 @@ bool BitcoinGUI::handlePaymentRequest(const SendCoinsRecipient& recipient)
     return false;
 }
 
-void BitcoinGUI::setHDStatus(bool privkeyDisabled, int hdEnabled)
-{
-    labelWalletHDStatusIcon->setThemedPixmap(privkeyDisabled ? QStringLiteral(":/icons/eye") : hdEnabled ? QStringLiteral(":/icons/hd_enabled") : QStringLiteral(":/icons/hd_disabled"), STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE);
-    labelWalletHDStatusIcon->setToolTip(privkeyDisabled ? tr("Private key <b>disabled</b>") : hdEnabled ? tr("HD key generation is <b>enabled</b>") : tr("HD key generation is <b>disabled</b>"));
-    labelWalletHDStatusIcon->show();
-}
-
 void BitcoinGUI::setEncryptionStatus(int status)
 {
     switch(status)
@@ -1464,7 +1453,6 @@ void BitcoinGUI::updateWalletStatus()
     }
     WalletModel * const walletModel = walletView->getWalletModel();
     setEncryptionStatus(walletModel->getEncryptionStatus());
-    setHDStatus(walletModel->wallet().privateKeysDisabled(), walletModel->wallet().hdEnabled());
 }
 #endif // ENABLE_WALLET
 

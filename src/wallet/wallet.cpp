@@ -85,7 +85,6 @@
 #include <tuple>
 #include <variant>
 
-struct KeyOriginInfo;
 
 using common::AmountErrMsg;
 using common::AmountHighWarn;
@@ -370,8 +369,11 @@ public:
             assert(desc_spkm != nullptr);
             AddScriptPubKeys(desc_spkm);
             // save each range descriptor's end for possible future filter updates
-            if (desc_spkm->IsHDEnabled()) {
-                m_last_range_ends.emplace(desc_spkm->GetID(), desc_spkm->GetEndRange());
+            {
+                LOCK(desc_spkm->cs_desc_man);
+                if (desc_spkm->GetWalletDescriptor().descriptor->IsRange()) {
+                    m_last_range_ends.emplace(desc_spkm->GetID(), desc_spkm->GetEndRange());
+                }
             }
         }
     }
@@ -571,19 +573,6 @@ const CWalletTx* CWallet::GetWalletTx(const Txid& hash) const
     return &(it->second);
 }
 
-void CWallet::UpgradeDescriptorCache()
-{
-    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS) || IsLocked() || IsWalletFlagSet(WALLET_FLAG_LAST_HARDENED_XPUB_CACHED)) {
-        return;
-    }
-
-    for (ScriptPubKeyMan* spkm : GetAllScriptPubKeyMans()) {
-        DescriptorScriptPubKeyMan* desc_spkm = dynamic_cast<DescriptorScriptPubKeyMan*>(spkm);
-        desc_spkm->UpgradeDescriptorCache();
-    }
-    SetWalletFlag(WALLET_FLAG_LAST_HARDENED_XPUB_CACHED);
-}
-
 /* Given a wallet passphrase string and an unencrypted master key, determine the proper key
  * derivation parameters (should take at least 100ms) and encrypt the master key. */
 static bool EncryptMasterKey(const SecureString& wallet_passphrase, const CKeyingMaterial& plain_master_key, CMasterKey& master_key)
@@ -638,8 +627,6 @@ bool CWallet::Unlock(const SecureString& strWalletPassphrase)
                 continue; // try another master key
             }
             if (Unlock(plain_master_key)) {
-                // Now that we've unlocked, upgrade the descriptor cache
-                UpgradeDescriptorCache();
                 return true;
             }
         }
@@ -1708,17 +1695,6 @@ CAmount CWallet::GetDebit(const CTransaction& tx) const
     return nDebit;
 }
 
-bool CWallet::IsHDEnabled() const
-{
-    // All Active ScriptPubKeyMans must be HD for this to be true
-    bool result = false;
-    for (const auto& spk_man : GetActiveScriptPubKeyMans()) {
-        if (!spk_man->IsHDEnabled()) return false;
-        result = true;
-    }
-    return result;
-}
-
 bool CWallet::CanGetAddresses(bool internal) const
 {
     LOCK(cs_wallet);
@@ -2257,6 +2233,9 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
 {
     if (n_signed) {
         *n_signed = 0;
+    }
+    if (bip32derivs) {
+        return PSBTError::UNSUPPORTED;
     }
     LOCK(cs_wallet);
     // Get all of the previous transactions
@@ -3035,8 +3014,7 @@ std::shared_ptr<CWallet> CWallet::Create(WalletContext& context, const std::stri
         LOCK(walletInstance->cs_wallet);
 
         // Init with passed flags.
-        // Always set the cache upgrade flag as this feature is supported from the beginning.
-        walletInstance->InitWalletFlags(wallet_creation_flags | WALLET_FLAG_LAST_HARDENED_XPUB_CACHED);
+        walletInstance->InitWalletFlags(wallet_creation_flags);
 
         // Only descriptor wallets can be created
         assert(walletInstance->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
@@ -3680,36 +3658,6 @@ DescriptorScriptPubKeyMan& CWallet::LoadDescriptorScriptPubKeyMan(uint256 id, Wa
     return *spk_manager;
 }
 
-DescriptorScriptPubKeyMan& CWallet::SetupDescriptorScriptPubKeyMan(WalletBatch& batch, const CExtKey& master_key, const OutputType& output_type, bool internal)
-{
-    AssertLockHeld(cs_wallet);
-    auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
-    if (IsCrypted()) {
-        if (IsLocked()) {
-            throw std::runtime_error(std::string(__func__) + ": Wallet is locked, cannot setup new descriptors");
-        }
-        if (!spk_manager->CheckDecryptionKey(vMasterKey) && !spk_manager->Encrypt(vMasterKey, &batch)) {
-            throw std::runtime_error(std::string(__func__) + ": Could not encrypt new descriptors");
-        }
-    }
-    spk_manager->SetupDescriptorGeneration(batch, master_key, output_type, internal);
-    DescriptorScriptPubKeyMan* out = spk_manager.get();
-    uint256 id = spk_manager->GetID();
-    AddScriptPubKeyMan(id, std::move(spk_manager));
-    AddActiveScriptPubKeyManWithDb(batch, id, output_type, internal);
-    return *out;
-}
-
-void CWallet::SetupDescriptorScriptPubKeyMans(WalletBatch& batch, const CExtKey& master_key)
-{
-    AssertLockHeld(cs_wallet);
-    for (bool internal : {false, true}) {
-        for (OutputType t : OUTPUT_TYPES) {
-            SetupDescriptorScriptPubKeyMan(batch, master_key, t, internal);
-        }
-    }
-}
-
 void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
 {
     AssertLockHeld(cs_wallet);
@@ -4068,7 +4016,7 @@ util::Result<void> CWallet::ApplyMigrationData(WalletBatch& local_wallet_batch, 
     }
 
     // Note: when the legacy wallet has no spendable scripts, it must be empty at the end of the process.
-    bool has_spendable_material = !data.desc_spkms.empty() || data.master_key.key.IsValid();
+    bool has_spendable_material = !data.desc_spkms.empty();
 
     // Get all invalid or non-watched scripts that will not be migrated
     std::set<CTxDestination> not_migrated_dests;
@@ -4104,13 +4052,8 @@ util::Result<void> CWallet::ApplyMigrationData(WalletBatch& local_wallet_batch, 
     // Setup new descriptors (only if we are migrating any key material)
     SetWalletFlagWithDB(local_wallet_batch, WALLET_FLAG_DESCRIPTORS);
     if (has_spendable_material && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
-        // Use the existing master key if we have it
-        if (data.master_key.key.IsValid()) {
-            SetupDescriptorScriptPubKeyMans(local_wallet_batch, data.master_key);
-        } else {
-            // Setup with a new seed if we don't.
-            SetupOwnDescriptorScriptPubKeyMans(local_wallet_batch);
-        }
+        // Setup with a new PQHD seed for future address generation.
+        SetupOwnDescriptorScriptPubKeyMans(local_wallet_batch);
     }
 
     // Get best block locator so that we can copy it to the watchonly and solvables
@@ -4606,27 +4549,6 @@ void CWallet::TopUpCallback(const std::set<CScript>& spks, ScriptPubKeyMan* spkm
 {
     // Update scriptPubKey cache
     CacheNewScriptPubKeys(spks, spkm);
-}
-
-std::set<CExtPubKey> CWallet::GetActiveHDPubKeys() const
-{
-    AssertLockHeld(cs_wallet);
-
-    Assert(IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
-
-    std::set<CExtPubKey> active_xpubs;
-    for (const auto& spkm : GetActiveScriptPubKeyMans()) {
-        const DescriptorScriptPubKeyMan* desc_spkm = dynamic_cast<DescriptorScriptPubKeyMan*>(spkm);
-        assert(desc_spkm);
-        LOCK(desc_spkm->cs_desc_man);
-        WalletDescriptor w_desc = desc_spkm->GetWalletDescriptor();
-
-        std::set<CPubKey> desc_pubkeys;
-        std::set<CExtPubKey> desc_xpubs;
-        w_desc.descriptor->GetPubKeys(desc_pubkeys, desc_xpubs);
-        active_xpubs.merge(std::move(desc_xpubs));
-    }
-    return active_xpubs;
 }
 
 std::optional<CKey> CWallet::GetKey(const CKeyID& keyid) const

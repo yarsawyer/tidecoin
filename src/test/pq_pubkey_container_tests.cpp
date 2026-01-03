@@ -117,14 +117,14 @@ BOOST_AUTO_TEST_CASE(cpubkey_accepts_secp_compressed_and_uncompressed_sizes)
     CPubKey pkc(compressed);
     BOOST_CHECK(pkc.IsValid());
     BOOST_CHECK(pkc.IsValidNonHybrid());
-    BOOST_CHECK_EQUAL(pkc.size(), CPubKey::COMPRESSED_SIZE);
+    BOOST_CHECK_EQUAL(pkc.size(), compressed.size());
 
     std::vector<uint8_t> uncompressed(65);
     uncompressed[0] = 0x04;
     CPubKey pku(uncompressed);
     BOOST_CHECK(pku.IsValid());
     BOOST_CHECK(pku.IsValidNonHybrid());
-    BOOST_CHECK_EQUAL(pku.size(), CPubKey::UNCOMPRESSED_SIZE);
+    BOOST_CHECK_EQUAL(pku.size(), uncompressed.size());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

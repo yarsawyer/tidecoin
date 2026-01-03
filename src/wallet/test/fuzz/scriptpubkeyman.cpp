@@ -161,7 +161,6 @@ FUZZ_TARGET(scriptpubkeyman, .init = initialize_spkm)
                         auto dest{spk_manager->GetNewDestination(*output_type)};
                         if (dest) {
                             assert(IsValidDestination(*dest));
-                            assert(spk_manager->IsHDEnabled());
                         }
                     }
                 }

@@ -16,9 +16,6 @@
 #include <cstring>
 #include <vector>
 
-const unsigned int BIP32_EXTKEY_SIZE = 74;
-const unsigned int BIP32_EXTKEY_WITH_VERSION_SIZE = 78;
-
 /** A reference to a CKey: the Hash160 of its serialized public key */
 class CKeyID : public uint160
 {
@@ -27,19 +24,12 @@ public:
     explicit CKeyID(const uint160& in) : uint160(in) {}
 };
 
-typedef uint256 ChainCode;
-
 /** An encapsulated public key. */
 class CPubKey
 {
 public:
-    // Historical Bitcoin constants (kept because they are used by legacy secp256k1/BIP32 code paths).
-    static constexpr unsigned int COMPRESSED_SIZE = 33;
-    static constexpr unsigned int UNCOMPRESSED_SIZE = 65;
-
     // Maximum serialized pubkey size (supports all currently defined PQ schemes).
     static constexpr unsigned int SIZE = pq::kMLDSA87Info.pubkey_bytes + 1;
-    static_assert(SIZE >= UNCOMPRESSED_SIZE);
 
 private:
 
@@ -52,14 +42,6 @@ private:
     //! Compute the length of a pubkey with a given first byte.
     unsigned int static GetLen(unsigned char chHeader)
     {
-        // Legacy secp256k1 encodings (compressed/uncompressed).
-        if (chHeader == 2 || chHeader == 3) {
-            return COMPRESSED_SIZE;
-        }
-        if (chHeader == 4) {
-            return UNCOMPRESSED_SIZE;
-        }
-
         // PQ scheme-prefixed keys.
         if (const auto* scheme = pq::SchemeFromPrefix(chHeader)) {
             return scheme->pubkey_bytes + 1;
@@ -195,10 +177,7 @@ public:
     /** Check if a public key is a syntactically valid compressed or uncompressed key. */
     bool IsValidNonHybrid() const noexcept
     {
-        if (!IsValid()) return false;
-        // Avoid hybrid secp256k1 pubkeys (0x06/0x07) as 0x07 is reserved for Falcon-512.
-        if (vch[0] == 2 || vch[0] == 3 || vch[0] == 4) return true;
-        return pq::SchemeFromPrefix(vch[0]) != nullptr;
+        return IsValid() && pq::SchemeFromPrefix(vch[0]) != nullptr;
     }
 
     //! fully validate whether this is a valid public key (more expensive than IsValid())
@@ -215,47 +194,6 @@ public:
     //! Recover a public key from a signature.
     bool Recover(const uint256& hash, const std::vector<unsigned char>& vchSig);
 
-    //! Derive BIP32 child pubkey.
-    [[nodiscard]] bool Derive(CPubKey& pubkeyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;
-};
-
-struct CExtPubKey {
-    unsigned char version[4];
-    unsigned char nDepth;
-    unsigned char vchFingerprint[4];
-    unsigned int nChild;
-    ChainCode chaincode;
-    CPubKey pubkey;
-
-    friend bool operator==(const CExtPubKey &a, const CExtPubKey &b)
-    {
-        return a.nDepth == b.nDepth &&
-            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
-            a.nChild == b.nChild &&
-            a.chaincode == b.chaincode &&
-            a.pubkey == b.pubkey;
-    }
-
-    friend bool operator!=(const CExtPubKey &a, const CExtPubKey &b)
-    {
-        return !(a == b);
-    }
-
-    friend bool operator<(const CExtPubKey &a, const CExtPubKey &b)
-    {
-        if (a.pubkey < b.pubkey) {
-            return true;
-        } else if (a.pubkey > b.pubkey) {
-            return false;
-        }
-        return a.chaincode < b.chaincode;
-    }
-
-    void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
-    void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
-    void EncodeWithVersion(unsigned char code[BIP32_EXTKEY_WITH_VERSION_SIZE]) const;
-    void DecodeWithVersion(const unsigned char code[BIP32_EXTKEY_WITH_VERSION_SIZE]);
-    [[nodiscard]] bool Derive(CExtPubKey& out, unsigned int nChild) const;
 };
 
 #endif // BITCOIN_PUBKEY_H

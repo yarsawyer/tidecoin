@@ -122,7 +122,6 @@ private:
 
     UnitDisplayStatusBarControl* unitDisplayControl = nullptr;
     GUIUtil::ThemedLabel* labelWalletEncryptionIcon = nullptr;
-    GUIUtil::ThemedLabel* labelWalletHDStatusIcon = nullptr;
     GUIUtil::ClickableLabel* labelProxyIcon = nullptr;
     GUIUtil::ClickableLabel* connectionsControl = nullptr;
     GUIUtil::ClickableLabel* labelBlocksIcon = nullptr;
@@ -254,12 +253,6 @@ private:
        @see WalletModel::EncryptionStatus
     */
     void setEncryptionStatus(int status);
-
-    /** Set the hd-enabled status as shown in the UI.
-     @param[in] hdEnabled         current hd enabled status
-     @see WalletModel::EncryptionStatus
-     */
-    void setHDStatus(bool privkeyDisabled, int hdEnabled);
 
 public Q_SLOTS:
     bool handlePaymentRequest(const SendCoinsRecipient& recipient);

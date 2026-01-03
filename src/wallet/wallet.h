@@ -73,9 +73,7 @@ class WalletBatch;
 enum class DBErrors : int;
 } // namespace wallet
 struct CBlockLocator;
-struct CExtKey;
 struct FlatSigningProvider;
-struct KeyOriginInfo;
 struct PartiallySignedTransaction;
 struct SignatureData;
 
@@ -153,8 +151,6 @@ constexpr OutputType DEFAULT_ADDRESS_TYPE{OutputType::BECH32};
 static constexpr uint64_t KNOWN_WALLET_FLAGS =
         WALLET_FLAG_AVOID_REUSE
     |   WALLET_FLAG_BLANK_WALLET
-    |   WALLET_FLAG_KEY_ORIGIN_METADATA
-    |   WALLET_FLAG_LAST_HARDENED_XPUB_CACHED
     |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
     |   WALLET_FLAG_DESCRIPTORS
     |   WALLET_FLAG_EXTERNAL_SIGNER;
@@ -165,8 +161,6 @@ static constexpr uint64_t MUTABLE_WALLET_FLAGS =
 static const std::map<WalletFlags, std::string> WALLET_FLAG_TO_STRING{
     {WALLET_FLAG_AVOID_REUSE, "avoid_reuse"},
     {WALLET_FLAG_BLANK_WALLET, "blank"},
-    {WALLET_FLAG_KEY_ORIGIN_METADATA, "key_origin_metadata"},
-    {WALLET_FLAG_LAST_HARDENED_XPUB_CACHED, "last_hardened_xpub_cached"},
     {WALLET_FLAG_DISABLE_PRIVATE_KEYS, "disable_private_keys"},
     {WALLET_FLAG_DESCRIPTORS, "descriptor_wallet"},
     {WALLET_FLAG_EXTERNAL_SIGNER, "external_signer"}
@@ -175,8 +169,6 @@ static const std::map<WalletFlags, std::string> WALLET_FLAG_TO_STRING{
 static const std::map<std::string, WalletFlags> STRING_TO_WALLET_FLAG{
     {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_AVOID_REUSE), WALLET_FLAG_AVOID_REUSE},
     {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_BLANK_WALLET), WALLET_FLAG_BLANK_WALLET},
-    {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_KEY_ORIGIN_METADATA), WALLET_FLAG_KEY_ORIGIN_METADATA},
-    {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_LAST_HARDENED_XPUB_CACHED), WALLET_FLAG_LAST_HARDENED_XPUB_CACHED},
     {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_DISABLE_PRIVATE_KEYS), WALLET_FLAG_DISABLE_PRIVATE_KEYS},
     {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_DESCRIPTORS), WALLET_FLAG_DESCRIPTORS},
     {WALLET_FLAG_TO_STRING.at(WALLET_FLAG_EXTERNAL_SIGNER), WALLET_FLAG_EXTERNAL_SIGNER}
@@ -614,9 +606,6 @@ public:
     SteadyClock::duration ScanningDuration() const { return fScanningWallet ? SteadyClock::now() - m_scanning_start.load() : SteadyClock::duration{}; }
     double ScanningProgress() const { return fScanningWallet ? (double) m_scanning_progress : 0; }
 
-    //! Upgrade DescriptorCaches
-    void UpgradeDescriptorCache() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-
     //! Marks destination as previously spent.
     void LoadAddressPreviouslySpent(const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     //! Appends payment request to destination.
@@ -706,7 +695,7 @@ public:
      * @param[out] complete indicates whether the PSBT is now complete
      * @param[in]  sighash_type the sighash type to use when signing (if PSBT does not specify)
      * @param[in]  sign whether to sign or not
-     * @param[in]  bip32derivs whether to fill in bip32 derivation information if available
+     * @param[in]  bip32derivs whether to fill in bip32 derivation information if available (unsupported)
      * @param[out] n_signed the number of inputs signed by this wallet
      * @param[in] finalize whether to create the final scriptSig or scriptWitness if possible
      * return error
@@ -715,7 +704,7 @@ public:
                   bool& complete,
                   std::optional<int> sighash_type = std::nullopt,
                   bool sign = true,
-                  bool bip32derivs = true,
+                  bool bip32derivs = false,
                   size_t* n_signed = nullptr,
                   bool finalize = true) const;
 
@@ -914,9 +903,6 @@ public:
 
     bool BackupWallet(const std::string& strDest) const;
 
-    /* Returns true if HD is enabled */
-    bool IsHDEnabled() const;
-
     /* Returns true if the wallet can give out new addresses. This means it has keys in the keypool or can generate new keys */
     bool CanGetAddresses(bool internal = false) const;
 
@@ -1048,10 +1034,6 @@ public:
     //! @param[in] internal Whether this ScriptPubKeyMan provides change addresses
     void DeactivateScriptPubKeyMan(uint256 id, OutputType type, bool internal);
 
-    //! Create new DescriptorScriptPubKeyMan and add it to the wallet
-    DescriptorScriptPubKeyMan& SetupDescriptorScriptPubKeyMan(WalletBatch& batch, const CExtKey& master_key, const OutputType& output_type, bool internal) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    //! Create new DescriptorScriptPubKeyMans and add them to the wallet
-    void SetupDescriptorScriptPubKeyMans(WalletBatch& batch, const CExtKey& master_key) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void SetupDescriptorScriptPubKeyMans() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Create new seed and default DescriptorScriptPubKeyMans for this wallet
@@ -1090,9 +1072,6 @@ public:
 
     void WalletCreationProgressStep() override;
     void TopUpCallback(const std::set<CScript>& spks, ScriptPubKeyMan* spkm) override;
-
-    //! Retrieve the xpubs in use by the active descriptors
-    std::set<CExtPubKey> GetActiveHDPubKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Find the private key for the given key id from the wallet's descriptors, if available
     //! Returns nullopt when no descriptor has the key or if the wallet is locked.

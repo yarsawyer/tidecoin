@@ -426,14 +426,7 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
         }
         else if(ExtractDestination(out.txout.scriptPubKey, address))
         {
-            CPubKey pubkey;
-            PKHash* pkhash = std::get_if<PKHash>(&address);
-            if (pkhash && model->wallet().getPubKey(out.txout.scriptPubKey, ToKeyID(*pkhash), pubkey))
-            {
-                nBytesInputs += 148;
-            }
-            else
-                nBytesInputs += 148; // in all error cases, simply assume 148 here
+            nBytesInputs += 148;
         }
         else nBytesInputs += 148;
     }

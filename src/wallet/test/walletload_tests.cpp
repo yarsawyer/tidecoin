@@ -2,10 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://www.opensource.org/licenses/mit-license.php.
 
-#include <wallet/test/util.h>
-#include <wallet/wallet.h>
 #include <test/util/logging.h>
 #include <test/util/setup_common.h>
+#include <wallet/test/util.h>
+#include <wallet/wallet.h>
+#include <key.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -34,11 +35,12 @@ public:
     std::optional<int64_t> ScriptSize() const override { return {}; }
     std::optional<int64_t> MaxSatisfactionWeight(bool) const override { return {}; }
     std::optional<int64_t> MaxSatisfactionElems() const override { return {}; }
-    void GetPubKeys(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const override {}
+    void GetPubKeys(std::set<CPubKey>& pubkeys) const override {}
 };
 
 BOOST_FIXTURE_TEST_CASE(wallet_load_descriptors, TestingSetup)
 {
+    if (CKey::SIZE != 32) return;
     std::unique_ptr<WalletDatabase> database = CreateMockableWalletDatabase();
     {
         // Write unknown active descriptor
@@ -81,6 +83,27 @@ BOOST_FIXTURE_TEST_CASE(wallet_load_descriptors, TestingSetup)
         BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::CORRUPT);
         BOOST_CHECK(found); // The error must be logged
     }
+}
+
+BOOST_FIXTURE_TEST_CASE(wallet_load_legacy_keys, TestingSetup)
+{
+    std::unique_ptr<WalletDatabase> database = CreateMockableWalletDatabase();
+    WalletBatch batch(*database);
+
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/false);
+    const CPubKey pubkey = key.GetPubKey();
+    const CPrivKey privkey = key.GetPrivKey();
+    CKeyMetadata meta;
+    meta.nCreateTime = 1;
+
+    BOOST_CHECK(batch.WriteKey(pubkey, privkey, meta));
+
+    const std::shared_ptr<CWallet> wallet(new CWallet(m_node.chain.get(), "", std::move(database)));
+    BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+    LegacyDataSPKM* legacy = wallet->GetLegacyDataSPKM();
+    BOOST_REQUIRE(legacy != nullptr);
+    BOOST_CHECK(legacy->HaveKey(pubkey.GetID()));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -9,7 +9,6 @@
 #include <policy/feerate.h>
 #include <policy/fees.h>
 #include <primitives/transaction.h>
-#include <script/keyorigin.h>
 #include <script/signingprovider.h>
 
 #include <algorithm>

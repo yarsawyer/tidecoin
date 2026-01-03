@@ -14,7 +14,6 @@
 #include <script/script.h>
 #include <serialize.h>
 #include <sync.h>
-#include <util/bip32.h>
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/time.h>
@@ -270,56 +269,18 @@ bool WalletBatch::WriteDescriptor(const uint256& desc_id, const WalletDescriptor
     return WriteIC(make_pair(DBKeys::WALLETDESCRIPTOR, desc_id), descriptor);
 }
 
-bool WalletBatch::WriteDescriptorDerivedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index)
-{
-    std::vector<unsigned char> ser_xpub(BIP32_EXTKEY_SIZE);
-    xpub.Encode(ser_xpub.data());
-    return WriteIC(std::make_pair(std::make_pair(DBKeys::WALLETDESCRIPTORCACHE, desc_id), std::make_pair(key_exp_index, der_index)), ser_xpub);
-}
-
-bool WalletBatch::WriteDescriptorParentCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index)
-{
-    std::vector<unsigned char> ser_xpub(BIP32_EXTKEY_SIZE);
-    xpub.Encode(ser_xpub.data());
-    return WriteIC(std::make_pair(std::make_pair(DBKeys::WALLETDESCRIPTORCACHE, desc_id), key_exp_index), ser_xpub);
-}
-
 bool WalletBatch::WriteDescriptorDerivedPubKeyCache(const CPubKey& pubkey, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index)
 {
     return WriteIC(std::make_pair(std::make_pair(DBKeys::WALLETDESCRIPTORPUBKEYCACHE, desc_id), std::make_pair(key_exp_index, der_index)), pubkey);
 }
 
-bool WalletBatch::WriteDescriptorLastHardenedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index)
-{
-    std::vector<unsigned char> ser_xpub(BIP32_EXTKEY_SIZE);
-    xpub.Encode(ser_xpub.data());
-    return WriteIC(std::make_pair(std::make_pair(DBKeys::WALLETDESCRIPTORLHCACHE, desc_id), key_exp_index), ser_xpub);
-}
-
 bool WalletBatch::WriteDescriptorCacheItems(const uint256& desc_id, const DescriptorCache& cache)
 {
-    for (const auto& parent_xpub_pair : cache.GetCachedParentExtPubKeys()) {
-        if (!WriteDescriptorParentCache(parent_xpub_pair.second, desc_id, parent_xpub_pair.first)) {
-            return false;
-        }
-    }
-    for (const auto& derived_xpub_map_pair : cache.GetCachedDerivedExtPubKeys()) {
-        for (const auto& derived_xpub_pair : derived_xpub_map_pair.second) {
-            if (!WriteDescriptorDerivedCache(derived_xpub_pair.second, desc_id, derived_xpub_map_pair.first, derived_xpub_pair.first)) {
-                return false;
-            }
-        }
-    }
     for (const auto& derived_pubkey_map_pair : cache.GetCachedDerivedPubKeys()) {
         for (const auto& derived_pubkey_pair : derived_pubkey_map_pair.second) {
             if (!WriteDescriptorDerivedPubKeyCache(derived_pubkey_pair.second, desc_id, derived_pubkey_map_pair.first, derived_pubkey_pair.first)) {
                 return false;
             }
-        }
-    }
-    for (const auto& lh_xpub_pair : cache.GetCachedLastHardenedExtPubKeys()) {
-        if (!WriteDescriptorLastHardenedCache(lh_xpub_pair.second, desc_id, lh_xpub_pair.first)) {
-            return false;
         }
     }
     return true;
@@ -467,22 +428,6 @@ bool LoadEncryptionKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue,
     return true;
 }
 
-bool LoadHDChain(CWallet* pwallet, DataStream& ssValue, std::string& strErr)
-{
-    LOCK(pwallet->cs_wallet);
-    try {
-        CHDChain chain;
-        ssValue >> chain;
-        pwallet->GetOrCreateLegacyDataSPKM()->LoadHDChain(chain);
-    } catch (const std::exception& e) {
-        if (strErr.empty()) {
-            strErr = e.what();
-        }
-        return false;
-    }
-    return true;
-}
-
 static DBErrors LoadWalletFlags(CWallet* pwallet, DatabaseBatch& batch) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
 {
     AssertLockHeld(pwallet->cs_wallet);
@@ -595,14 +540,6 @@ static DBErrors LoadLegacyWalletRecords(CWallet* pwallet, DatabaseBatch& batch, 
         return DBErrors::LOAD_OK;
     }
 
-    // Load HD Chain
-    // Note: There should only be one HDCHAIN record with no data following the type
-    LoadResult hd_chain_res = LoadRecords(pwallet, batch, DBKeys::HDCHAIN,
-        [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
-        return LoadHDChain(pwallet, value, err) ? DBErrors:: LOAD_OK : DBErrors::CORRUPT;
-    });
-    result = std::max(result, hd_chain_res.m_result);
-
     // Load unencrypted keys
     LoadResult key_res = LoadRecords(pwallet, batch, DBKeys::KEY,
         [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
@@ -640,92 +577,16 @@ static DBErrors LoadLegacyWalletRecords(CWallet* pwallet, DatabaseBatch& batch, 
     }
 
     // Load keymeta
-    std::map<uint160, CHDChain> hd_chains;
     LoadResult keymeta_res = LoadRecords(pwallet, batch, DBKeys::KEYMETA,
-        [&hd_chains] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& strErr) {
+        [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& strErr) {
         CPubKey vchPubKey;
         key >> vchPubKey;
         CKeyMetadata keyMeta;
         value >> keyMeta;
         pwallet->GetOrCreateLegacyDataSPKM()->LoadKeyMetadata(vchPubKey.GetID(), keyMeta);
-
-        // Extract some CHDChain info from this metadata if it has any
-        if (keyMeta.nVersion >= CKeyMetadata::VERSION_WITH_HDDATA && !keyMeta.hd_seed_id.IsNull() && keyMeta.hdKeypath.size() > 0) {
-            // Get the path from the key origin or from the path string
-            // Not applicable when path is "s" or "m" as those indicate a seed
-            // See https://github.com/bitcoin/bitcoin/pull/12924
-            bool internal = false;
-            uint32_t index = 0;
-            if (keyMeta.hdKeypath != "s" && keyMeta.hdKeypath != "m") {
-                std::vector<uint32_t> path;
-                if (keyMeta.has_key_origin) {
-                    // We have a key origin, so pull it from its path vector
-                    path = keyMeta.key_origin.path;
-                } else {
-                    // No key origin, have to parse the string
-                    if (!ParseHDKeypath(keyMeta.hdKeypath, path)) {
-                        strErr = "Error reading wallet database: keymeta with invalid HD keypath";
-                        return DBErrors::NONCRITICAL_ERROR;
-                    }
-                }
-
-                // Extract the index and internal from the path
-                // Path string is m/0'/k'/i'
-                // Path vector is [0', k', i'] (but as ints OR'd with the hardened bit
-                // k == 0 for external, 1 for internal. i is the index
-                if (path.size() != 3) {
-                    strErr = "Error reading wallet database: keymeta found with unexpected path";
-                    return DBErrors::NONCRITICAL_ERROR;
-                }
-                if (path[0] != 0x80000000) {
-                    strErr = strprintf("Unexpected path index of 0x%08x (expected 0x80000000) for the element at index 0", path[0]);
-                    return DBErrors::NONCRITICAL_ERROR;
-                }
-                if (path[1] != 0x80000000 && path[1] != (1 | 0x80000000)) {
-                    strErr = strprintf("Unexpected path index of 0x%08x (expected 0x80000000 or 0x80000001) for the element at index 1", path[1]);
-                    return DBErrors::NONCRITICAL_ERROR;
-                }
-                if ((path[2] & 0x80000000) == 0) {
-                    strErr = strprintf("Unexpected path index of 0x%08x (expected to be greater than or equal to 0x80000000)", path[2]);
-                    return DBErrors::NONCRITICAL_ERROR;
-                }
-                internal = path[1] == (1 | 0x80000000);
-                index = path[2] & ~0x80000000;
-            }
-
-            // Insert a new CHDChain, or get the one that already exists
-            auto [ins, inserted] = hd_chains.emplace(keyMeta.hd_seed_id, CHDChain());
-            CHDChain& chain = ins->second;
-            if (inserted) {
-                // For new chains, we want to default to VERSION_HD_BASE until we see an internal
-                chain.nVersion = CHDChain::VERSION_HD_BASE;
-                chain.seed_id = keyMeta.hd_seed_id;
-            }
-            if (internal) {
-                chain.nVersion = CHDChain::VERSION_HD_CHAIN_SPLIT;
-                chain.nInternalChainCounter = std::max(chain.nInternalChainCounter, index + 1);
-            } else {
-                chain.nExternalChainCounter = std::max(chain.nExternalChainCounter, index + 1);
-            }
-        }
         return DBErrors::LOAD_OK;
     });
     result = std::max(result, keymeta_res.m_result);
-
-    // Set inactive chains
-    if (!hd_chains.empty()) {
-        LegacyDataSPKM* legacy_spkm = pwallet->GetLegacyDataSPKM();
-        if (legacy_spkm) {
-            for (const auto& [hd_seed_id, chain] : hd_chains) {
-                if (hd_seed_id != legacy_spkm->GetHDChain().seed_id) {
-                    legacy_spkm->AddInactiveHDChain(chain);
-                }
-            }
-        } else {
-            pwallet->WalletLogPrintf("Inactive HD Chains found but no Legacy ScriptPubKeyMan\n");
-            result = DBErrors::CORRUPT;
-        }
-    }
 
     // Load watchonly scripts
     LoadResult watch_script_res = LoadRecords(pwallet, batch, DBKeys::WATCHS,
@@ -836,60 +697,8 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
 
         DescriptorCache cache;
 
-        // Get key cache for this descriptor
-        DataStream prefix = PrefixStream(DBKeys::WALLETDESCRIPTORCACHE, id);
-        LoadResult key_cache_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORCACHE, prefix,
-            [&id, &cache] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
-            bool parent = true;
-            uint256 desc_id;
-            uint32_t key_exp_index;
-            uint32_t der_index;
-            key >> desc_id;
-            assert(desc_id == id);
-            key >> key_exp_index;
-
-            // if the der_index exists, it's a derived xpub
-            try
-            {
-                key >> der_index;
-                parent = false;
-            }
-            catch (...) {}
-
-            std::vector<unsigned char> ser_xpub(BIP32_EXTKEY_SIZE);
-            value >> ser_xpub;
-            CExtPubKey xpub;
-            xpub.Decode(ser_xpub.data());
-            if (parent) {
-                cache.CacheParentExtPubKey(key_exp_index, xpub);
-            } else {
-                cache.CacheDerivedExtPubKey(key_exp_index, der_index, xpub);
-            }
-            return DBErrors::LOAD_OK;
-        });
-        result = std::max(result, key_cache_res.m_result);
-
-        // Get last hardened cache for this descriptor
-        prefix = PrefixStream(DBKeys::WALLETDESCRIPTORLHCACHE, id);
-        LoadResult lh_cache_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORLHCACHE, prefix,
-            [&id, &cache] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
-            uint256 desc_id;
-            uint32_t key_exp_index;
-            key >> desc_id;
-            assert(desc_id == id);
-            key >> key_exp_index;
-
-            std::vector<unsigned char> ser_xpub(BIP32_EXTKEY_SIZE);
-            value >> ser_xpub;
-            CExtPubKey xpub;
-            xpub.Decode(ser_xpub.data());
-            cache.CacheLastHardenedExtPubKey(key_exp_index, xpub);
-            return DBErrors::LOAD_OK;
-        });
-        result = std::max(result, lh_cache_res.m_result);
-
         // Get derived pubkey cache for this descriptor (non-BIP32 derivation, e.g. PQHD).
-        prefix = PrefixStream(DBKeys::WALLETDESCRIPTORPUBKEYCACHE, id);
+        DataStream prefix = PrefixStream(DBKeys::WALLETDESCRIPTORPUBKEYCACHE, id);
         LoadResult pubkey_cache_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORPUBKEYCACHE, prefix,
             [&id, &cache] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
             uint256 desc_id;
@@ -1309,13 +1118,7 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
     if (any_unordered)
         result = pwallet->ReorderTransactions();
 
-    // Upgrade all of the descriptor caches to cache the last hardened xpub
-    // This operation is not atomic, but if it fails, only new entries are added so it is backwards compatible
-    try {
-        pwallet->UpgradeDescriptorCache();
-    } catch (...) {
-        result = DBErrors::CORRUPT;
-    }
+    // No descriptor xpub caches are maintained in PQHD-only wallets.
 
     // Since it was accidentally possible to "encrypt" a wallet with private keys disabled, we should check if this is
     // such a wallet and remove the encryption key records to avoid any future issues.

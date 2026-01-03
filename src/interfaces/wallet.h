@@ -253,9 +253,6 @@ public:
     //! Get tx confirm target.
     virtual unsigned int getConfirmTarget() = 0;
 
-    // Return whether HD enabled.
-    virtual bool hdEnabled() = 0;
-
     // Return whether the wallet is blank.
     virtual bool canGetAddresses() = 0;
 

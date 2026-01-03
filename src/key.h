@@ -7,6 +7,7 @@
 #ifndef BITCOIN_KEY_H
 #define BITCOIN_KEY_H
 
+#include <ecc_context.h>
 #include <pubkey.h>
 #include <pq/pq_scheme.h>
 #include <serialize.h>
@@ -22,12 +23,6 @@
  * (SIZE bytes)
  */
 typedef std::vector<unsigned char, secure_allocator<unsigned char> > CPrivKey;
-
-/** Size of ECDH shared secrets. */
-constexpr static size_t ECDH_SECRET_SIZE = CSHA256::OUTPUT_SIZE;
-
-// Used to represent ECDH shared secret (ECDH_SECRET_SIZE bytes)
-using ECDHSecret = std::array<std::byte, ECDH_SECRET_SIZE>;
 
 /** An encapsulated private key. */
 class CKey
@@ -177,9 +172,6 @@ public:
      */
     bool Sign(const uint256& hash, std::vector<unsigned char>& vchSig, bool grind = true, uint32_t test_case = 0, bool legacy_mode = false) const;
 
-    //! Derive BIP32 child key.
-    [[nodiscard]] bool Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;
-
     /**
      * Verify thoroughly whether a private key and a public key match.
      * This is done using a different mechanism than just regenerating it.
@@ -192,51 +184,5 @@ public:
 };
 
 CKey GenerateRandomKey(bool compressed = true) noexcept;
-
-struct CExtKey {
-    unsigned char nDepth;
-    unsigned char vchFingerprint[4];
-    unsigned int nChild;
-    ChainCode chaincode;
-    CKey key;
-
-    friend bool operator==(const CExtKey& a, const CExtKey& b)
-    {
-        return a.nDepth == b.nDepth &&
-            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
-            a.nChild == b.nChild &&
-            a.chaincode == b.chaincode &&
-            a.key == b.key;
-    }
-
-    CExtKey() = default;
-    CExtKey(const CExtPubKey& xpub, const CKey& key_in) : nDepth(xpub.nDepth), nChild(xpub.nChild), chaincode(xpub.chaincode), key(key_in)
-    {
-        std::copy(xpub.vchFingerprint, xpub.vchFingerprint + sizeof(xpub.vchFingerprint), vchFingerprint);
-    }
-
-    void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
-    void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
-    [[nodiscard]] bool Derive(CExtKey& out, unsigned int nChild) const;
-    CExtPubKey Neuter() const;
-    void SetSeed(std::span<const std::byte> seed);
-};
-
-/** Check that required EC support is available at runtime. */
-bool ECC_InitSanityCheck();
-
-/**
- * RAII class initializing and deinitializing global state for elliptic curve support.
- * Only one instance may be initialized at a time.
- *
- * In the future global ECC state could be removed, and this class could contain
- * state and be passed as an argument to ECC key functions.
- */
-class ECC_Context
-{
-public:
-    ECC_Context();
-    ~ECC_Context();
-};
 
 #endif // BITCOIN_KEY_H

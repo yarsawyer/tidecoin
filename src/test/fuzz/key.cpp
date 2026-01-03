@@ -9,7 +9,6 @@
 #include <policy/policy.h>
 #include <pubkey.h>
 #include <rpc/util.h>
-#include <script/keyorigin.h>
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
@@ -200,9 +199,6 @@ FUZZ_TARGET(key, .init = initialize_key)
         assert(fillable_signing_provider.GetKeys().size() == 1);
         assert(fillable_signing_provider.HaveKey(key_id));
 
-        KeyOriginInfo key_origin_info;
-        const bool ok_get_key_origin = fillable_signing_provider.GetKeyOrigin(key_id, key_origin_info);
-        assert(!ok_get_key_origin);
     }
 
     {

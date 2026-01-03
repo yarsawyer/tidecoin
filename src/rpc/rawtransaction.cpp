@@ -34,7 +34,7 @@
 #include <script/solver.h>
 #include <uint256.h>
 #include <undo.h>
-#include <util/bip32.h>
+#include <util/keypath.h>
 #include <util/check.h>
 #include <util/strencodings.h>
 #include <util/string.h>
@@ -848,15 +848,6 @@ const RPCResult decodepsbt_inputs{
                 {RPCResult::Type::STR_HEX, "hex", "The raw witness script bytes, hex-encoded"},
                 {RPCResult::Type::STR, "type", "The type, eg 'pubkeyhash'"},
             }},
-            {RPCResult::Type::ARR, "bip32_derivs", /*optional=*/true, "",
-            {
-                {RPCResult::Type::OBJ, "", "",
-                {
-                    {RPCResult::Type::STR, "pubkey", "The public key with the derivation path as the value."},
-                    {RPCResult::Type::STR, "master_fingerprint", "The fingerprint of the master key"},
-                    {RPCResult::Type::STR, "path", "The path"},
-                }},
-            }},
             {RPCResult::Type::ARR, "pqhd_origins", /*optional=*/true, "Tidecoin PQHD origin metadata (\"tidecoin\" proprietary PSBT records with subtype 1).",
             {
                 {RPCResult::Type::OBJ, "", "",
@@ -926,15 +917,6 @@ const RPCResult decodepsbt_outputs{
                 {RPCResult::Type::STR_HEX, "hex", "The raw witness script bytes, hex-encoded"},
                 {RPCResult::Type::STR, "type", "The type, eg 'pubkeyhash'"},
             }},
-            {RPCResult::Type::ARR, "bip32_derivs", /*optional=*/true, "",
-            {
-                {RPCResult::Type::OBJ, "", "",
-                {
-                    {RPCResult::Type::STR, "pubkey", "The public key this path corresponds to"},
-                    {RPCResult::Type::STR, "master_fingerprint", "The fingerprint of the master key"},
-                    {RPCResult::Type::STR, "path", "The path"},
-                }},
-            }},
             {RPCResult::Type::ARR, "pqhd_origins", /*optional=*/true, "Tidecoin PQHD origin metadata (\"tidecoin\" proprietary PSBT records with subtype 1).",
             {
                 {RPCResult::Type::OBJ, "", "",
@@ -977,15 +959,6 @@ static RPCHelpMan decodepsbt()
                         {
                             {RPCResult::Type::ELISION, "", "The layout is the same as the output of decoderawtransaction."},
                         }},
-                        {RPCResult::Type::ARR, "global_xpubs", "",
-                        {
-                            {RPCResult::Type::OBJ, "", "",
-                            {
-                                {RPCResult::Type::STR, "xpub", "The extended public key this path corresponds to"},
-                                {RPCResult::Type::STR_HEX, "master_fingerprint", "The fingerprint of the master key"},
-                                {RPCResult::Type::STR, "path", "The path"},
-                            }},
-                        }},
                         {RPCResult::Type::NUM, "psbt_version", "The PSBT version number. Not to be confused with the unsigned transaction version"},
                         {RPCResult::Type::ARR, "proprietary", "The global proprietary map",
                         {
@@ -1024,23 +997,6 @@ static RPCHelpMan decodepsbt()
     UniValue tx_univ(UniValue::VOBJ);
     TxToUniv(CTransaction(*psbtx.tx), /*block_hash=*/uint256(), /*entry=*/tx_univ, /*include_hex=*/false);
     result.pushKV("tx", std::move(tx_univ));
-
-    // Add the global xpubs
-    UniValue global_xpubs(UniValue::VARR);
-    for (std::pair<KeyOriginInfo, std::set<CExtPubKey>> xpub_pair : psbtx.m_xpubs) {
-        for (auto& xpub : xpub_pair.second) {
-            std::vector<unsigned char> ser_xpub;
-            ser_xpub.assign(BIP32_EXTKEY_WITH_VERSION_SIZE, 0);
-            xpub.EncodeWithVersion(ser_xpub.data());
-
-            UniValue keypath(UniValue::VOBJ);
-            keypath.pushKV("xpub", EncodeBase58Check(ser_xpub));
-            keypath.pushKV("master_fingerprint", HexStr(std::span<unsigned char>(xpub_pair.first.fingerprint, xpub_pair.first.fingerprint + 4)));
-            keypath.pushKV("path", WriteHDKeypath(xpub_pair.first.path));
-            global_xpubs.push_back(std::move(keypath));
-        }
-    }
-    result.pushKV("global_xpubs", std::move(global_xpubs));
 
     // PSBT version
     result.pushKV("psbt_version", static_cast<uint64_t>(psbtx.GetVersion()));
@@ -1134,20 +1090,6 @@ static RPCHelpMan decodepsbt()
             in.pushKV("witness_script", std::move(r));
         }
 
-        // keypaths
-        if (!input.hd_keypaths.empty()) {
-            UniValue keypaths(UniValue::VARR);
-            for (auto entry : input.hd_keypaths) {
-                UniValue keypath(UniValue::VOBJ);
-                keypath.pushKV("pubkey", HexStr(entry.first));
-
-                keypath.pushKV("master_fingerprint", strprintf("%08x", ReadBE32(entry.second.fingerprint)));
-                keypath.pushKV("path", WriteHDKeypath(entry.second.path));
-                keypaths.push_back(std::move(keypath));
-            }
-            in.pushKV("bip32_derivs", std::move(keypaths));
-        }
-
         // PQHD origins (tidecoin subtype 1 proprietary records).
         if (!input.m_proprietary.empty()) {
             UniValue pqhd_origins(UniValue::VARR);
@@ -1157,7 +1099,7 @@ static RPCHelpMan decodepsbt()
                 UniValue o(UniValue::VOBJ);
                 o.pushKV("pubkey", HexStr(std::span<const unsigned char>(origin->pubkey.data(), origin->pubkey.size())));
                 o.pushKV("seed_id", origin->seed_id.ToString());
-                o.pushKV("path", WriteHDKeypath(origin->path_hardened));
+                o.pushKV("path", WriteKeypath(origin->path_hardened));
                 pqhd_origins.push_back(std::move(o));
             }
             if (!pqhd_origins.empty()) {
@@ -1261,19 +1203,6 @@ static RPCHelpMan decodepsbt()
             out.pushKV("witness_script", std::move(r));
         }
 
-        // keypaths
-        if (!output.hd_keypaths.empty()) {
-            UniValue keypaths(UniValue::VARR);
-            for (auto entry : output.hd_keypaths) {
-                UniValue keypath(UniValue::VOBJ);
-                keypath.pushKV("pubkey", HexStr(entry.first));
-                keypath.pushKV("master_fingerprint", strprintf("%08x", ReadBE32(entry.second.fingerprint)));
-                keypath.pushKV("path", WriteHDKeypath(entry.second.path));
-                keypaths.push_back(std::move(keypath));
-            }
-            out.pushKV("bip32_derivs", std::move(keypaths));
-        }
-
         // PQHD origins (tidecoin subtype 1 proprietary records).
         if (!output.m_proprietary.empty()) {
             UniValue pqhd_origins(UniValue::VARR);
@@ -1283,7 +1212,7 @@ static RPCHelpMan decodepsbt()
                 UniValue o(UniValue::VOBJ);
                 o.pushKV("pubkey", HexStr(std::span<const unsigned char>(origin->pubkey.data(), origin->pubkey.size())));
                 o.pushKV("seed_id", origin->seed_id.ToString());
-                o.pushKV("path", WriteHDKeypath(origin->path_hardened));
+                o.pushKV("path", WriteKeypath(origin->path_hardened));
                 pqhd_origins.push_back(std::move(o));
             }
             if (!pqhd_origins.empty()) {
@@ -1586,7 +1515,7 @@ static RPCHelpMan utxoupdatepsbt()
     const PartiallySignedTransaction& psbtx = ProcessPSBT(
         request.params[0].get_str(),
         request.context,
-        HidingSigningProvider(&provider, /*hide_secret=*/true, /*hide_origin=*/false),
+        HidingSigningProvider(&provider, /*hide_secret=*/true),
         /*sighash_type=*/std::nullopt,
         /*finalize=*/false);
 
@@ -1659,13 +1588,6 @@ static RPCHelpMan joinpsbts()
         }
         for (unsigned int i = 0; i < psbt.tx->vout.size(); ++i) {
             merged_psbt.AddOutput(psbt.tx->vout[i], psbt.outputs[i]);
-        }
-        for (auto& xpub_pair : psbt.m_xpubs) {
-            if (merged_psbt.m_xpubs.count(xpub_pair.first) == 0) {
-                merged_psbt.m_xpubs[xpub_pair.first] = xpub_pair.second;
-            } else {
-                merged_psbt.m_xpubs[xpub_pair.first].insert(xpub_pair.second.begin(), xpub_pair.second.end());
-            }
         }
         merged_psbt.unknown.insert(psbt.unknown.begin(), psbt.unknown.end());
     }
@@ -1840,7 +1762,7 @@ RPCHelpMan descriptorprocesspsbt()
             "       \"ALL|ANYONECANPAY\"\n"
             "       \"NONE|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\""},
-                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include BIP 32 derivation paths for public keys if we know them"},
+                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{false}, "BIP32 derivation paths are not supported (must be false)"},
                     {"finalize", RPCArg::Type::BOOL, RPCArg::Default{true}, "Also finalize inputs if possible"},
                 },
                 RPCResult{
@@ -1866,13 +1788,16 @@ RPCHelpMan descriptorprocesspsbt()
     }
 
     std::optional<int> sighash_type = ParseSighashString(request.params[2]);
-    bool bip32derivs = request.params[3].isNull() ? true : request.params[3].get_bool();
+    bool bip32derivs = request.params[3].isNull() ? false : request.params[3].get_bool();
+    if (bip32derivs) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "BIP32 derivation paths are not supported (PQHD-only)");
+    }
     bool finalize = request.params[4].isNull() ? true : request.params[4].get_bool();
 
     const PartiallySignedTransaction& psbtx = ProcessPSBT(
         request.params[0].get_str(),
         request.context,
-        HidingSigningProvider(&provider, /*hide_secret=*/false, !bip32derivs),
+        HidingSigningProvider(&provider, /*hide_secret=*/false),
         sighash_type,
         finalize);
 

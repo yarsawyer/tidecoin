@@ -12,6 +12,8 @@
 #include <thread>
 #include <vector>
 
+#include <ecc_context.h>
+
 class ArgsManager;
 class AddrMan;
 class BanMan;
@@ -22,7 +24,6 @@ class ValidationSignals;
 class CScheduler;
 class CTxMemPool;
 class ChainstateManager;
-class ECC_Context;
 class NetGroupManager;
 class PeerManager;
 namespace interfaces {

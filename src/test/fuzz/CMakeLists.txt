@@ -78,7 +78,6 @@ add_executable(fuzz
   p2p_transport_serialization.cpp
   pcp.cpp
   package_eval.cpp
-  parse_hd_keypath.cpp
   parse_iso8601.cpp
   parse_numbers.cpp
   parse_script.cpp
@@ -100,7 +99,6 @@ add_executable(fuzz
   rpc.cpp
   script.cpp
   script_assets_test_minimizer.cpp
-  script_descriptor_cache.cpp
   script_flags.cpp
   script_format.cpp
   script_interpreter.cpp

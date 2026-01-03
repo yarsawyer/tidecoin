@@ -20,7 +20,6 @@
 
 #include <common/args.h>
 #include <span.h>
-#include <util/bip32.h>
 #include <util/check.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
@@ -196,7 +195,7 @@ public:
     /** Whether this represent multiple public keys at different positions. */
     virtual bool IsRange() const = 0;
 
-    /** Get the size of the generated public key(s) in bytes (33 or 65). */
+    /** Get the size of the generated public key(s) in bytes. */
     virtual size_t GetSize() const = 0;
 
     enum class StringType {
@@ -210,9 +209,7 @@ public:
     /** Get the descriptor string form including private data (if available in arg). */
     virtual bool ToPrivateString(const SigningProvider& arg, std::string& out) const = 0;
 
-    /** Get the descriptor string form with the xpub at the last hardened derivation,
-     *  and always use h for hardened derivation.
-     */
+    /** Get the descriptor string form, normalizing hardened derivation markers. */
     virtual bool ToNormalizedString(const SigningProvider& arg, std::string& out, const DescriptorCache* cache = nullptr) const = 0;
 
     /** Derive a private key, if private data is available in arg and put it into out. */
@@ -220,84 +217,9 @@ public:
 
     /** Return the non-extended public key for this PubkeyProvider, if it has one. */
     virtual std::optional<CPubKey> GetRootPubKey() const = 0;
-    /** Return the extended public key for this PubkeyProvider, if it has one. */
-    virtual std::optional<CExtPubKey> GetRootExtPubKey() const = 0;
-
     /** Make a deep copy of this PubkeyProvider */
     virtual std::unique_ptr<PubkeyProvider> Clone() const = 0;
 
-    /** Whether this PubkeyProvider is a BIP 32 extended key that can be derived from */
-    virtual bool IsBIP32() const = 0;
-};
-
-class OriginPubkeyProvider final : public PubkeyProvider
-{
-    KeyOriginInfo m_origin;
-    std::unique_ptr<PubkeyProvider> m_provider;
-    bool m_apostrophe;
-
-    std::string OriginString(StringType type, bool normalized=false) const
-    {
-        // If StringType==COMPAT, always use the apostrophe to stay compatible with previous versions
-        bool use_apostrophe = (!normalized && m_apostrophe) || type == StringType::COMPAT;
-        return HexStr(m_origin.fingerprint) + FormatHDKeypath(m_origin.path, use_apostrophe);
-    }
-
-public:
-    OriginPubkeyProvider(uint32_t exp_index, KeyOriginInfo info, std::unique_ptr<PubkeyProvider> provider, bool apostrophe) : PubkeyProvider(exp_index), m_origin(std::move(info)), m_provider(std::move(provider)), m_apostrophe(apostrophe) {}
-    std::optional<CPubKey> GetPubKey(int pos, const SigningProvider& arg, FlatSigningProvider& out, const DescriptorCache* read_cache = nullptr, DescriptorCache* write_cache = nullptr) const override
-    {
-        std::optional<CPubKey> pub = m_provider->GetPubKey(pos, arg, out, read_cache, write_cache);
-        if (!pub) return std::nullopt;
-        Assert(out.pubkeys.contains(pub->GetID()));
-        auto& [pubkey, suborigin] = out.origins[pub->GetID()];
-        Assert(pubkey == *pub); // m_provider must have a valid origin by this point.
-        std::copy(std::begin(m_origin.fingerprint), std::end(m_origin.fingerprint), suborigin.fingerprint);
-        suborigin.path.insert(suborigin.path.begin(), m_origin.path.begin(), m_origin.path.end());
-        return pub;
-    }
-    bool IsRange() const override { return m_provider->IsRange(); }
-    size_t GetSize() const override { return m_provider->GetSize(); }
-    bool IsBIP32() const override { return m_provider->IsBIP32(); }
-    std::string ToString(StringType type) const override { return "[" + OriginString(type) + "]" + m_provider->ToString(type); }
-    bool ToPrivateString(const SigningProvider& arg, std::string& ret) const override
-    {
-        std::string sub;
-        if (!m_provider->ToPrivateString(arg, sub)) return false;
-        ret = "[" + OriginString(StringType::PUBLIC) + "]" + std::move(sub);
-        return true;
-    }
-    bool ToNormalizedString(const SigningProvider& arg, std::string& ret, const DescriptorCache* cache) const override
-    {
-        std::string sub;
-        if (!m_provider->ToNormalizedString(arg, sub, cache)) return false;
-        // If m_provider is a BIP32PubkeyProvider, we may get a string formatted like a OriginPubkeyProvider
-        // In that case, we need to strip out the leading square bracket and fingerprint from the substring,
-        // and append that to our own origin string.
-        if (sub[0] == '[') {
-            sub = sub.substr(9);
-            ret = "[" + OriginString(StringType::PUBLIC, /*normalized=*/true) + std::move(sub);
-        } else {
-            ret = "[" + OriginString(StringType::PUBLIC, /*normalized=*/true) + "]" + std::move(sub);
-        }
-        return true;
-    }
-    void GetPrivKey(int pos, const SigningProvider& arg, FlatSigningProvider& out) const override
-    {
-        m_provider->GetPrivKey(pos, arg, out);
-    }
-    std::optional<CPubKey> GetRootPubKey() const override
-    {
-        return m_provider->GetRootPubKey();
-    }
-    std::optional<CExtPubKey> GetRootExtPubKey() const override
-    {
-        return m_provider->GetRootExtPubKey();
-    }
-    std::unique_ptr<PubkeyProvider> Clone() const override
-    {
-        return std::make_unique<OriginPubkeyProvider>(m_expr_index, m_origin, m_provider->Clone(), m_apostrophe);
-    }
 };
 
 /** An object representing a parsed constant public key in a descriptor. */
@@ -316,16 +238,11 @@ public:
     ConstPubkeyProvider(uint32_t exp_index, const CPubKey& pubkey) : PubkeyProvider(exp_index), m_pubkey(pubkey) {}
     std::optional<CPubKey> GetPubKey(int pos, const SigningProvider&, FlatSigningProvider& out, const DescriptorCache* read_cache = nullptr, DescriptorCache* write_cache = nullptr) const override
     {
-        KeyOriginInfo info;
-        CKeyID keyid = m_pubkey.GetID();
-        std::copy(keyid.begin(), keyid.begin() + sizeof(info.fingerprint), info.fingerprint);
-        out.origins.emplace(keyid, std::make_pair(m_pubkey, info));
-        out.pubkeys.emplace(keyid, m_pubkey);
+        out.pubkeys.emplace(m_pubkey.GetID(), m_pubkey);
         return m_pubkey;
     }
     bool IsRange() const override { return false; }
     size_t GetSize() const override { return m_pubkey.size(); }
-    bool IsBIP32() const override { return false; }
     std::string ToString(StringType type) const override { return HexStr(m_pubkey); }
     bool ToPrivateString(const SigningProvider& arg, std::string& ret) const override
     {
@@ -349,10 +266,6 @@ public:
     {
         return m_pubkey;
     }
-    std::optional<CExtPubKey> GetRootExtPubKey() const override
-    {
-        return std::nullopt;
-    }
     std::unique_ptr<PubkeyProvider> Clone() const override
     {
         return std::make_unique<ConstPubkeyProvider>(m_expr_index, m_pubkey);
@@ -361,225 +274,7 @@ public:
 
 enum class DeriveType {
     NO,
-    UNHARDENED,
     HARDENED,
-};
-
-/** An object representing a parsed extended public key in a descriptor. */
-class BIP32PubkeyProvider final : public PubkeyProvider
-{
-    // Root xpub, path, and final derivation step type being used, if any
-    CExtPubKey m_root_extkey;
-    KeyPath m_path;
-    DeriveType m_derive;
-    // Whether ' or h is used in harded derivation
-    bool m_apostrophe;
-
-    bool GetExtKey(const SigningProvider& arg, CExtKey& ret) const
-    {
-        CKey key;
-        if (!arg.GetKey(m_root_extkey.pubkey.GetID(), key)) return false;
-        ret.nDepth = m_root_extkey.nDepth;
-        std::copy(m_root_extkey.vchFingerprint, m_root_extkey.vchFingerprint + sizeof(ret.vchFingerprint), ret.vchFingerprint);
-        ret.nChild = m_root_extkey.nChild;
-        ret.chaincode = m_root_extkey.chaincode;
-        ret.key = key;
-        return true;
-    }
-
-    // Derives the last xprv
-    bool GetDerivedExtKey(const SigningProvider& arg, CExtKey& xprv, CExtKey& last_hardened) const
-    {
-        if (!GetExtKey(arg, xprv)) return false;
-        for (auto entry : m_path) {
-            if (!xprv.Derive(xprv, entry)) return false;
-            if (entry >> 31) {
-                last_hardened = xprv;
-            }
-        }
-        return true;
-    }
-
-    bool IsHardened() const
-    {
-        if (m_derive == DeriveType::HARDENED) return true;
-        for (auto entry : m_path) {
-            if (entry >> 31) return true;
-        }
-        return false;
-    }
-
-public:
-    BIP32PubkeyProvider(uint32_t exp_index, const CExtPubKey& extkey, KeyPath path, DeriveType derive, bool apostrophe) : PubkeyProvider(exp_index), m_root_extkey(extkey), m_path(std::move(path)), m_derive(derive), m_apostrophe(apostrophe) {}
-    bool IsRange() const override { return m_derive != DeriveType::NO; }
-    size_t GetSize() const override { return 33; }
-    bool IsBIP32() const override { return true; }
-    std::optional<CPubKey> GetPubKey(int pos, const SigningProvider& arg, FlatSigningProvider& out, const DescriptorCache* read_cache = nullptr, DescriptorCache* write_cache = nullptr) const override
-    {
-        KeyOriginInfo info;
-        CKeyID keyid = m_root_extkey.pubkey.GetID();
-        std::copy(keyid.begin(), keyid.begin() + sizeof(info.fingerprint), info.fingerprint);
-        info.path = m_path;
-        if (m_derive == DeriveType::UNHARDENED) info.path.push_back((uint32_t)pos);
-        if (m_derive == DeriveType::HARDENED) info.path.push_back(((uint32_t)pos) | 0x80000000L);
-
-        // Derive keys or fetch them from cache
-        CExtPubKey final_extkey = m_root_extkey;
-        CExtPubKey parent_extkey = m_root_extkey;
-        CExtPubKey last_hardened_extkey;
-        bool der = true;
-        if (read_cache) {
-            if (!read_cache->GetCachedDerivedExtPubKey(m_expr_index, pos, final_extkey)) {
-                if (m_derive == DeriveType::HARDENED) return std::nullopt;
-                // Try to get the derivation parent
-                if (!read_cache->GetCachedParentExtPubKey(m_expr_index, parent_extkey)) return std::nullopt;
-                final_extkey = parent_extkey;
-                if (m_derive == DeriveType::UNHARDENED) der = parent_extkey.Derive(final_extkey, pos);
-            }
-        } else if (IsHardened()) {
-            CExtKey xprv;
-            CExtKey lh_xprv;
-            if (!GetDerivedExtKey(arg, xprv, lh_xprv)) return std::nullopt;
-            parent_extkey = xprv.Neuter();
-            if (m_derive == DeriveType::UNHARDENED) der = xprv.Derive(xprv, pos);
-            if (m_derive == DeriveType::HARDENED) der = xprv.Derive(xprv, pos | 0x80000000UL);
-            final_extkey = xprv.Neuter();
-            if (lh_xprv.key.IsValid()) {
-                last_hardened_extkey = lh_xprv.Neuter();
-            }
-        } else {
-            for (auto entry : m_path) {
-                if (!parent_extkey.Derive(parent_extkey, entry)) return std::nullopt;
-            }
-            final_extkey = parent_extkey;
-            if (m_derive == DeriveType::UNHARDENED) der = parent_extkey.Derive(final_extkey, pos);
-            assert(m_derive != DeriveType::HARDENED);
-        }
-        if (!der) return std::nullopt;
-
-        out.origins.emplace(final_extkey.pubkey.GetID(), std::make_pair(final_extkey.pubkey, info));
-        out.pubkeys.emplace(final_extkey.pubkey.GetID(), final_extkey.pubkey);
-
-        if (write_cache) {
-            // Only cache parent if there is any unhardened derivation
-            if (m_derive != DeriveType::HARDENED) {
-                write_cache->CacheParentExtPubKey(m_expr_index, parent_extkey);
-                // Cache last hardened xpub if we have it
-                if (last_hardened_extkey.pubkey.IsValid()) {
-                    write_cache->CacheLastHardenedExtPubKey(m_expr_index, last_hardened_extkey);
-                }
-            } else if (info.path.size() > 0) {
-                write_cache->CacheDerivedExtPubKey(m_expr_index, pos, final_extkey);
-            }
-        }
-
-        return final_extkey.pubkey;
-    }
-    std::string ToString(StringType type, bool normalized) const
-    {
-        // If StringType==COMPAT, always use the apostrophe to stay compatible with previous versions
-        const bool use_apostrophe = (!normalized && m_apostrophe) || type == StringType::COMPAT;
-        std::string ret = EncodeExtPubKey(m_root_extkey) + FormatHDKeypath(m_path, /*apostrophe=*/use_apostrophe);
-        if (IsRange()) {
-            ret += "/*";
-            if (m_derive == DeriveType::HARDENED) ret += use_apostrophe ? '\'' : 'h';
-        }
-        return ret;
-    }
-    std::string ToString(StringType type=StringType::PUBLIC) const override
-    {
-        return ToString(type, /*normalized=*/false);
-    }
-    bool ToPrivateString(const SigningProvider& arg, std::string& out) const override
-    {
-        CExtKey key;
-        if (!GetExtKey(arg, key)) return false;
-        out = EncodeExtKey(key) + FormatHDKeypath(m_path, /*apostrophe=*/m_apostrophe);
-        if (IsRange()) {
-            out += "/*";
-            if (m_derive == DeriveType::HARDENED) out += m_apostrophe ? '\'' : 'h';
-        }
-        return true;
-    }
-    bool ToNormalizedString(const SigningProvider& arg, std::string& out, const DescriptorCache* cache) const override
-    {
-        if (m_derive == DeriveType::HARDENED) {
-            out = ToString(StringType::PUBLIC, /*normalized=*/true);
-
-            return true;
-        }
-        // Step backwards to find the last hardened step in the path
-        int i = (int)m_path.size() - 1;
-        for (; i >= 0; --i) {
-            if (m_path.at(i) >> 31) {
-                break;
-            }
-        }
-        // Either no derivation or all unhardened derivation
-        if (i == -1) {
-            out = ToString();
-            return true;
-        }
-        // Get the path to the last hardened stup
-        KeyOriginInfo origin;
-        int k = 0;
-        for (; k <= i; ++k) {
-            // Add to the path
-            origin.path.push_back(m_path.at(k));
-        }
-        // Build the remaining path
-        KeyPath end_path;
-        for (; k < (int)m_path.size(); ++k) {
-            end_path.push_back(m_path.at(k));
-        }
-        // Get the fingerprint
-        CKeyID id = m_root_extkey.pubkey.GetID();
-        std::copy(id.begin(), id.begin() + 4, origin.fingerprint);
-
-        CExtPubKey xpub;
-        CExtKey lh_xprv;
-        // If we have the cache, just get the parent xpub
-        if (cache != nullptr) {
-            cache->GetCachedLastHardenedExtPubKey(m_expr_index, xpub);
-        }
-        if (!xpub.pubkey.IsValid()) {
-            // Cache miss, or nor cache, or need privkey
-            CExtKey xprv;
-            if (!GetDerivedExtKey(arg, xprv, lh_xprv)) return false;
-            xpub = lh_xprv.Neuter();
-        }
-        assert(xpub.pubkey.IsValid());
-
-        // Build the string
-        std::string origin_str = HexStr(origin.fingerprint) + FormatHDKeypath(origin.path);
-        out = "[" + origin_str + "]" + EncodeExtPubKey(xpub) + FormatHDKeypath(end_path);
-        if (IsRange()) {
-            out += "/*";
-            assert(m_derive == DeriveType::UNHARDENED);
-        }
-        return true;
-    }
-    void GetPrivKey(int pos, const SigningProvider& arg, FlatSigningProvider& out) const override
-    {
-        CExtKey extkey;
-        CExtKey dummy;
-        if (!GetDerivedExtKey(arg, extkey, dummy)) return;
-        if (m_derive == DeriveType::UNHARDENED && !extkey.Derive(extkey, pos)) return;
-        if (m_derive == DeriveType::HARDENED && !extkey.Derive(extkey, pos | 0x80000000UL)) return;
-        out.keys.emplace(extkey.key.GetPubKey().GetID(), extkey.key);
-    }
-    std::optional<CPubKey> GetRootPubKey() const override
-    {
-        return std::nullopt;
-    }
-    std::optional<CExtPubKey> GetRootExtPubKey() const override
-    {
-        return m_root_extkey;
-    }
-    std::unique_ptr<PubkeyProvider> Clone() const override
-    {
-        return std::make_unique<BIP32PubkeyProvider>(m_expr_index, m_root_extkey, m_path, m_derive, m_apostrophe);
-    }
 };
 
 /** A parsed pqhd(SEEDID32)/purposeh/cointypeh/schemeh/accounth/changeh/indexh|*h key expression. */
@@ -614,7 +309,6 @@ public:
         Assert(scheme != nullptr);
         return 1 + scheme->pubkey_bytes;
     }
-    bool IsBIP32() const override { return false; }
 
     std::optional<CPubKey> GetPubKey(int pos, const SigningProvider& arg, FlatSigningProvider& out, const DescriptorCache* read_cache, DescriptorCache* write_cache) const override
     {
@@ -745,7 +439,6 @@ public:
         out.keys.emplace(pubkey.GetID(), key);
     }
     std::optional<CPubKey> GetRootPubKey() const override { return std::nullopt; }
-    std::optional<CExtPubKey> GetRootExtPubKey() const override { return std::nullopt; }
     std::unique_ptr<PubkeyProvider> Clone() const override
     {
         return std::make_unique<PQHDPubkeyProvider>(m_expr_index, m_seed_id, m_path, m_derive, m_scheme_prefix);
@@ -945,16 +638,14 @@ public:
     std::optional<int64_t> MaxSatisfactionElems() const override { return {}; }
 
     // NOLINTNEXTLINE(misc-no-recursion)
-    void GetPubKeys(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const override
+    void GetPubKeys(std::set<CPubKey>& pubkeys) const override
     {
         for (const auto& p : m_pubkey_args) {
             std::optional<CPubKey> pub = p->GetRootPubKey();
             if (pub) pubkeys.insert(*pub);
-            std::optional<CExtPubKey> ext_pub = p->GetRootExtPubKey();
-            if (ext_pub) ext_pubs.insert(*ext_pub);
         }
         for (const auto& arg : m_subdescriptor_args) {
-            arg->GetPubKeys(pubkeys, ext_pubs);
+            arg->GetPubKeys(pubkeys);
         }
     }
 
@@ -1504,20 +1195,6 @@ std::optional<uint32_t> ParseKeyPathNum(std::span<const char> elem, bool& apostr
     return ParseKeyPath(split, out, apostrophe, error, allow_multipath, /*has_hardened=*/dummy);
 }
 
-static DeriveType ParseDeriveType(std::vector<std::span<const char>>& split, bool& apostrophe)
-{
-    DeriveType type = DeriveType::NO;
-    if (std::ranges::equal(split.back(), std::span{"*"}.first(1))) {
-        split.pop_back();
-        type = DeriveType::UNHARDENED;
-    } else if (std::ranges::equal(split.back(), std::span{"*'"}.first(2)) || std::ranges::equal(split.back(), std::span{"*h"}.first(2))) {
-        apostrophe = std::ranges::equal(split.back(), std::span{"*'"}.first(2));
-        split.pop_back();
-        type = DeriveType::HARDENED;
-    }
-    return type;
-}
-
 /** Parse a public key that excludes origin information. */
 std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_index, const std::span<const char>& sp, ParseScriptContext ctx, FlatSigningProvider& out, bool& apostrophe, std::string& error)
 {
@@ -1642,73 +1319,20 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
         return ret;
     }
 
-    CExtKey extkey = DecodeExtKey(str);
-    CExtPubKey extpubkey = DecodeExtPubKey(str);
-    if (!extkey.key.IsValid() && !extpubkey.pubkey.IsValid()) {
-        error = strprintf("key '%s' is not valid", str);
-        return {};
-    }
-    std::vector<KeyPath> paths;
-    DeriveType type = ParseDeriveType(split, apostrophe);
-    if (!ParseKeyPath(split, paths, apostrophe, error, /*allow_multipath=*/true)) return {};
-    if (extkey.key.IsValid()) {
-        extpubkey = extkey.Neuter();
-        out.keys.emplace(extpubkey.pubkey.GetID(), extkey.key);
-    }
-    for (auto& path : paths) {
-        ret.emplace_back(std::make_unique<BIP32PubkeyProvider>(key_exp_index, extpubkey, std::move(path), type, apostrophe));
-    }
-    return ret;
+    error = strprintf("key '%s' is not valid", str);
+    return {};
 }
 
-/** Parse a public key including origin information (if enabled). */
+/** Parse a public key (origin metadata not supported). */
 // NOLINTNEXTLINE(misc-no-recursion)
 std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkey(uint32_t& key_exp_index, const std::span<const char>& sp, ParseScriptContext ctx, FlatSigningProvider& out, std::string& error)
 {
-    std::vector<std::unique_ptr<PubkeyProvider>> ret;
-
-    using namespace script;
-
-    auto origin_split = Split(sp, ']');
-    if (origin_split.size() > 2) {
-        error = "Multiple ']' characters found for a single pubkey";
-        return {};
-    }
-    // This is set if either the origin or path suffix contains a hardened derivation.
     bool apostrophe = false;
-    if (origin_split.size() == 1) {
-        return ParsePubkeyInner(key_exp_index, origin_split[0], ctx, out, apostrophe, error);
-    }
-    if (origin_split[0].empty() || origin_split[0][0] != '[') {
-        error = strprintf("Key origin start '[ character expected but not found, got '%c' instead",
-                          origin_split[0].empty() ? /** empty, implies split char */ ']' : origin_split[0][0]);
+    if (!sp.empty() && sp.front() == '[') {
+        error = "Key origin metadata is not supported";
         return {};
     }
-    auto slash_split = Split(origin_split[0].subspan(1), '/');
-    if (slash_split[0].size() != 8) {
-        error = strprintf("Fingerprint is not 4 bytes (%u characters instead of 8 characters)", slash_split[0].size());
-        return {};
-    }
-    std::string fpr_hex = std::string(slash_split[0].begin(), slash_split[0].end());
-    if (!IsHex(fpr_hex)) {
-        error = strprintf("Fingerprint '%s' is not hex", fpr_hex);
-        return {};
-    }
-    auto fpr_bytes = ParseHex(fpr_hex);
-    KeyOriginInfo info;
-    static_assert(sizeof(info.fingerprint) == 4, "Fingerprint must be 4 bytes");
-    assert(fpr_bytes.size() == 4);
-    std::copy(fpr_bytes.begin(), fpr_bytes.end(), info.fingerprint);
-    std::vector<KeyPath> path;
-    if (!ParseKeyPath(slash_split, path, apostrophe, error, /*allow_multipath=*/false)) return {};
-    info.path = path.at(0);
-    auto providers = ParsePubkeyInner(key_exp_index, origin_split[1], ctx, out, apostrophe, error);
-    if (providers.empty()) return {};
-    ret.reserve(providers.size());
-    for (auto& prov : providers) {
-        ret.emplace_back(std::make_unique<OriginPubkeyProvider>(key_exp_index, info, std::move(prov), apostrophe));
-    }
-    return ret;
+    return ParsePubkeyInner(key_exp_index, sp, ctx, out, apostrophe, error);
 }
 
 std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptContext ctx, const SigningProvider& provider)
@@ -1718,10 +1342,6 @@ std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptCo
         return nullptr;
     }
     std::unique_ptr<PubkeyProvider> key_provider = std::make_unique<ConstPubkeyProvider>(0, pubkey);
-    KeyOriginInfo info;
-    if (provider.GetKeyOrigin(pubkey.GetID(), info)) {
-        return std::make_unique<OriginPubkeyProvider>(0, std::move(info), std::move(key_provider), /*apostrophe=*/false);
-    }
     return key_provider;
 }
 
@@ -2254,40 +1874,6 @@ uint256 DescriptorID(const Descriptor& desc)
     return id;
 }
 
-void DescriptorCache::CacheParentExtPubKey(uint32_t key_exp_pos, const CExtPubKey& xpub)
-{
-    m_parent_xpubs[key_exp_pos] = xpub;
-}
-
-void DescriptorCache::CacheDerivedExtPubKey(uint32_t key_exp_pos, uint32_t der_index, const CExtPubKey& xpub)
-{
-    auto& xpubs = m_derived_xpubs[key_exp_pos];
-    xpubs[der_index] = xpub;
-}
-
-void DescriptorCache::CacheLastHardenedExtPubKey(uint32_t key_exp_pos, const CExtPubKey& xpub)
-{
-    m_last_hardened_xpubs[key_exp_pos] = xpub;
-}
-
-bool DescriptorCache::GetCachedParentExtPubKey(uint32_t key_exp_pos, CExtPubKey& xpub) const
-{
-    const auto& it = m_parent_xpubs.find(key_exp_pos);
-    if (it == m_parent_xpubs.end()) return false;
-    xpub = it->second;
-    return true;
-}
-
-bool DescriptorCache::GetCachedDerivedExtPubKey(uint32_t key_exp_pos, uint32_t der_index, CExtPubKey& xpub) const
-{
-    const auto& key_exp_it = m_derived_xpubs.find(key_exp_pos);
-    if (key_exp_it == m_derived_xpubs.end()) return false;
-    const auto& der_it = key_exp_it->second.find(der_index);
-    if (der_it == key_exp_it->second.end()) return false;
-    xpub = der_it->second;
-    return true;
-}
-
 void DescriptorCache::CacheDerivedPubKey(uint32_t key_exp_pos, uint32_t der_index, const CPubKey& pubkey)
 {
     auto& pubkeys = m_derived_pubkeys[key_exp_pos];
@@ -2304,41 +1890,9 @@ bool DescriptorCache::GetCachedDerivedPubKey(uint32_t key_exp_pos, uint32_t der_
     return true;
 }
 
-bool DescriptorCache::GetCachedLastHardenedExtPubKey(uint32_t key_exp_pos, CExtPubKey& xpub) const
-{
-    const auto& it = m_last_hardened_xpubs.find(key_exp_pos);
-    if (it == m_last_hardened_xpubs.end()) return false;
-    xpub = it->second;
-    return true;
-}
-
 DescriptorCache DescriptorCache::MergeAndDiff(const DescriptorCache& other)
 {
     DescriptorCache diff;
-    for (const auto& parent_xpub_pair : other.GetCachedParentExtPubKeys()) {
-        CExtPubKey xpub;
-        if (GetCachedParentExtPubKey(parent_xpub_pair.first, xpub)) {
-            if (xpub != parent_xpub_pair.second) {
-                throw std::runtime_error(std::string(__func__) + ": New cached parent xpub does not match already cached parent xpub");
-            }
-            continue;
-        }
-        CacheParentExtPubKey(parent_xpub_pair.first, parent_xpub_pair.second);
-        diff.CacheParentExtPubKey(parent_xpub_pair.first, parent_xpub_pair.second);
-    }
-    for (const auto& derived_xpub_map_pair : other.GetCachedDerivedExtPubKeys()) {
-        for (const auto& derived_xpub_pair : derived_xpub_map_pair.second) {
-            CExtPubKey xpub;
-            if (GetCachedDerivedExtPubKey(derived_xpub_map_pair.first, derived_xpub_pair.first, xpub)) {
-                if (xpub != derived_xpub_pair.second) {
-                    throw std::runtime_error(std::string(__func__) + ": New cached derived xpub does not match already cached derived xpub");
-                }
-                continue;
-            }
-            CacheDerivedExtPubKey(derived_xpub_map_pair.first, derived_xpub_pair.first, derived_xpub_pair.second);
-            diff.CacheDerivedExtPubKey(derived_xpub_map_pair.first, derived_xpub_pair.first, derived_xpub_pair.second);
-        }
-    }
     for (const auto& derived_pubkey_map_pair : other.GetCachedDerivedPubKeys()) {
         for (const auto& derived_pubkey_pair : derived_pubkey_map_pair.second) {
             CPubKey pubkey;
@@ -2352,36 +1906,10 @@ DescriptorCache DescriptorCache::MergeAndDiff(const DescriptorCache& other)
             diff.CacheDerivedPubKey(derived_pubkey_map_pair.first, derived_pubkey_pair.first, derived_pubkey_pair.second);
         }
     }
-    for (const auto& lh_xpub_pair : other.GetCachedLastHardenedExtPubKeys()) {
-        CExtPubKey xpub;
-        if (GetCachedLastHardenedExtPubKey(lh_xpub_pair.first, xpub)) {
-            if (xpub != lh_xpub_pair.second) {
-                throw std::runtime_error(std::string(__func__) + ": New cached last hardened xpub does not match already cached last hardened xpub");
-            }
-            continue;
-        }
-        CacheLastHardenedExtPubKey(lh_xpub_pair.first, lh_xpub_pair.second);
-        diff.CacheLastHardenedExtPubKey(lh_xpub_pair.first, lh_xpub_pair.second);
-    }
     return diff;
-}
-
-ExtPubKeyMap DescriptorCache::GetCachedParentExtPubKeys() const
-{
-    return m_parent_xpubs;
-}
-
-std::unordered_map<uint32_t, ExtPubKeyMap> DescriptorCache::GetCachedDerivedExtPubKeys() const
-{
-    return m_derived_xpubs;
 }
 
 std::unordered_map<uint32_t, PubKeyMap> DescriptorCache::GetCachedDerivedPubKeys() const
 {
     return m_derived_pubkeys;
-}
-
-ExtPubKeyMap DescriptorCache::GetCachedLastHardenedExtPubKeys() const
-{
-    return m_last_hardened_xpubs;
 }
