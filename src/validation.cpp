@@ -3440,7 +3440,6 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
     // us in the middle of ProcessNewBlock - do not assume pblock is set
     // sanely for performance or correctness!
     AssertLockNotHeld(::cs_main);
-    LogPrintf("ActivateBestChain: start\n");
 
     // ABC maintains a fair degree of expensive-to-calculate internal state
     // because this function periodically releases cs_main so that it does not lock up other threads for too long
@@ -3598,7 +3597,6 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
         return false;
     }
 
-    LogPrintf("ActivateBestChain: done\n");
     return true;
 }
 

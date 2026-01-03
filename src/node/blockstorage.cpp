@@ -112,7 +112,6 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
     pcursor->Seek(std::make_pair(DB_BLOCK_INDEX, uint256()));
 
     // Load m_block_index
-    size_t blocks_loaded = 0;
     while (pcursor->Valid()) {
         if (interrupt) return false;
         std::pair<uint8_t, uint256> key;
@@ -135,8 +134,6 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nTx            = diskindex.nTx;
 
                 // Skip PoW validation when loading the block index from disk for performance.
-
-                ++blocks_loaded;
                 pcursor->Next();
             } else {
                 LogError("%s: failed to read value\n", __func__);
