@@ -23,7 +23,6 @@
 // (https://github.com/bitcoin/bitcoin/issues/7883#issuecomment-224807484)
 static void CCoinsCaching(benchmark::Bench& bench)
 {
-    ECC_Context ecc_context{};
 
     FillableSigningProvider keystore;
     CCoinsView coinsDummy;

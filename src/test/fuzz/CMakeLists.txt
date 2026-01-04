@@ -107,8 +107,6 @@ add_executable(fuzz
   script_sigcache.cpp
   script_sign.cpp
   scriptnum_ops.cpp
-  secp256k1_ec_seckey_import_export_der.cpp
-  secp256k1_ecdsa_signature_parse_der_lax.cpp
   signature_checker.cpp
   socks5.cpp
   span.cpp
@@ -141,7 +139,6 @@ target_link_libraries(fuzz
   minisketch
   leveldb
   univalue
-  secp256k1
   Boost::headers
   libevent::extra
 )

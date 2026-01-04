@@ -2,9 +2,14 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
-add_library(bitcoin_falcon STATIC EXCLUDE_FROM_ALL
+add_library(bitcoin_quantum STATIC EXCLUDE_FROM_ALL
   fips202.c
   randombytes.cpp
+  falcon512.c
+  falcon1024.c
+  mldsa44.c
+  mldsa65.c
+  mldsa87.c
   falcon-512/codec.c
   falcon-512/common.c
   falcon-512/fft.c
@@ -58,13 +63,13 @@ add_library(bitcoin_falcon STATIC EXCLUDE_FROM_ALL
   ml-kem-512/verify.c
 )
 
-target_link_libraries(bitcoin_falcon
+target_link_libraries(bitcoin_quantum
   PRIVATE
     core_interface
     bitcoin_util
 )
 
-target_include_directories(bitcoin_falcon
+target_include_directories(bitcoin_quantum
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

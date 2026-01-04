@@ -688,8 +688,6 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 static void MutateTx(CMutableTransaction& tx, const std::string& command,
                      const std::string& commandVal)
 {
-    std::unique_ptr<ECC_Context> ecc;
-
     if (command == "nversion")
         MutateTxVersion(tx, commandVal);
     else if (command == "locktime")
@@ -708,10 +706,8 @@ static void MutateTx(CMutableTransaction& tx, const std::string& command,
     else if (command == "outaddr")
         MutateTxAddOutAddr(tx, commandVal);
     else if (command == "outpubkey") {
-        ecc.reset(new ECC_Context());
         MutateTxAddOutPubKey(tx, commandVal);
     } else if (command == "outmultisig") {
-        ecc.reset(new ECC_Context());
         MutateTxAddOutMultiSig(tx, commandVal);
     } else if (command == "outscript")
         MutateTxAddOutScript(tx, commandVal);
@@ -719,7 +715,6 @@ static void MutateTx(CMutableTransaction& tx, const std::string& command,
         MutateTxAddOutData(tx, commandVal);
 
     else if (command == "sign") {
-        ecc.reset(new ECC_Context());
         MutateTxSign(tx, commandVal);
     }
 

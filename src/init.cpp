@@ -402,7 +402,6 @@ void Shutdown(NodeContext& node)
     node.chainman.reset();
     node.validation_signals.reset();
     node.scheduler.reset();
-    node.ecc_context.reset();
     node.kernel.reset();
 
     RemovePidFile(*node.args);
@@ -1137,10 +1136,6 @@ bool AppInitSanityChecks(const kernel::Context& kernel)
     if (!result) {
         InitError(util::ErrorString(result));
         return InitError(strprintf(_("Initialization sanity check failed. %s is shutting down."), CLIENT_NAME));
-    }
-
-    if (!ECC_InitSanityCheck()) {
-        return InitError(strprintf(_("Elliptic curve cryptography sanity check failure. %s is shutting down."), CLIENT_NAME));
     }
 
     // Probe the directory locks to give an early error message, if possible

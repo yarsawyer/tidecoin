@@ -23,8 +23,6 @@ if (ENABLE_IPC AND NOT WITH_EXTERNAL_LIBMULTIPROCESS)
   include(../cmake/libmultiprocess.cmake)
   add_libmultiprocess(ipc/libmultiprocess)
 endif()
-include(../cmake/secp256k1.cmake)
-add_secp256k1(secp256k1)
 
 # Set top-level target output locations.
 if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
@@ -76,8 +74,8 @@ target_link_libraries(bitcoin_consensus
   PRIVATE
     core_interface
     bitcoin_crypto
-    bitcoin_falcon
-    secp256k1
+  PUBLIC
+    bitcoin_quantum
 )
 
 if(WITH_ZMQ)
@@ -127,14 +125,9 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   pow.cpp
   protocol.cpp
   psbt.cpp
-  pq/falcon512.c
-  pq/falcon1024.c
   pq/kem.cpp
   pq/pqhd_kdf.cpp
   pq/pqhd_keygen.cpp
-  pq/mldsa44.c
-  pq/mldsa65.c
-  pq/mldsa87.c
   rpc/rawtransaction_util.cpp
   rpc/request.cpp
   rpc/util.cpp
@@ -150,13 +143,14 @@ target_link_libraries(bitcoin_common
   PRIVATE
     core_interface
     bitcoin_consensus
+    bitcoin_crypto
     bitcoin_util
-    bitcoin_falcon
     univalue
-    secp256k1
     Boost::headers
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
     $<$<PLATFORM_ID:Windows>:ws2_32>
+  PUBLIC
+    bitcoin_quantum
 )
 
 include(InstallBinaryComponent)

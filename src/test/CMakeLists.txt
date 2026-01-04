@@ -160,7 +160,6 @@ target_link_libraries(test_bitcoin
   bitcoin_node
   bitcoin_consensus
   minisketch
-  secp256k1
   Boost::headers
   libevent::extra
 )

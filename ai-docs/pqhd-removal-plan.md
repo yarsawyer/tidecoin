@@ -35,11 +35,14 @@ Completed (in-tree now):
 - Updated `src/test/descriptor_tests.cpp` to drop xpub cache assumptions and
   assert xpub/xprv rejection; updated `src/test/pq_pubkey_container_tests.cpp`
   to avoid secp size constants.
+- Removed `src/secp256k1/` subtree and ECC context wiring (node no longer
+  initializes secp256k1).
 
 Incomplete / pending:
-- Wallet DB still stores HD metadata (CHDChain, hdKeypath, hd_seed_id).
-- CExtKey / CExtPubKey types are still referenced in tests/fuzz (core code removed).
-- secp256k1 / ECC context still linked.
+- CPubKey variable-length PQ refactor (PR-5) is not implemented.
+- Script solver updates for variable-length PQ pubkeys (PR-5) not done.
+- Descriptor parsing for explicit PQ pubkey hex (raw TidePubKey bytes) not done.
+- Remaining test/bench/fuzz cleanup for secp/BIP32 assumptions is partial.
 
 ## Phase 0 — Lock Down Behavior (No Deletions Yet)
 
@@ -238,13 +241,13 @@ Acceptance:
       (`src/wallet/test/walletload_tests.cpp`).
 
 ### PR‑4 Checklist — Remove secp256k1/ECDH/ECC Context
-- [ ] Remove secp256k1 includes and ECDH/ECC types in `src/key.h` / `src/key.cpp`.
-- [ ] Remove `secp256k1_selftest` usage in `src/pubkey.cpp`.
-- [ ] Remove ECC context initialization in `src/init.cpp`, `src/bitcoind.cpp`,
+- [x] Remove secp256k1 includes and ECDH/ECC types in `src/key.h` / `src/key.cpp`.
+- [x] Remove `secp256k1_selftest` usage in `src/pubkey.cpp`.
+- [x] Remove ECC context initialization in `src/init.cpp`, `src/bitcoind.cpp`,
       and any tool entrypoints.
-- [ ] Drop secp256k1 build targets in `src/CMakeLists.txt` and
-      `src/secp256k1/CMakeLists.txt`.
-- [ ] Remove any remaining secp-only tests/bench that break the build.
+- [x] Drop secp256k1 build targets in `src/CMakeLists.txt` and
+      `src/secp256k1/CMakeLists.txt` (subtree removed).
+- [x] Remove any remaining secp-only tests/bench that break the build.
 
 ### PR‑5 Checklist — PQ Pubkey Compatibility + Test Cleanup
 - [ ] Refactor `CPubKey` to variable-length, scheme-aware PQ container in

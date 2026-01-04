@@ -7,7 +7,6 @@
 #ifndef BITCOIN_KEY_H
 #define BITCOIN_KEY_H
 
-#include <ecc_context.h>
 #include <pubkey.h>
 #include <pq/pq_scheme.h>
 #include <serialize.h>

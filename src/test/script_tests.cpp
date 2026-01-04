@@ -29,7 +29,6 @@
 
 #include <boost/test/unit_test.hpp>
 
-#include <secp256k1.h>
 #include <univalue.h>
 
 // Uncomment if you want to output updated JSON tests.
@@ -145,38 +144,6 @@ void DoTest(const CScript& scriptPubKey, const CScript& scriptSig, const CScript
     }
 }
 }; // struct ScriptTest
-
-void static NegateSignatureS(std::vector<unsigned char>& vchSig) {
-    // Parse the signature.
-    std::vector<unsigned char> r, s;
-    r = std::vector<unsigned char>(vchSig.begin() + 4, vchSig.begin() + 4 + vchSig[3]);
-    s = std::vector<unsigned char>(vchSig.begin() + 6 + vchSig[3], vchSig.begin() + 6 + vchSig[3] + vchSig[5 + vchSig[3]]);
-
-    while (s.size() < 33) {
-        s.insert(s.begin(), 0x00);
-    }
-    assert(s[0] == 0);
-    // Perform mod-n negation of s by (ab)using libsecp256k1
-    // (note that this function is meant to be used for negating secret keys,
-    //  but it works for any non-zero scalar modulo the group order, i.e. also for s)
-    int ret = secp256k1_ec_seckey_negate(secp256k1_context_static, s.data() + 1);
-    assert(ret);
-
-    if (s[1] < 0x80) {
-        s.erase(s.begin());
-    }
-
-    // Reconstruct the signature.
-    vchSig.clear();
-    vchSig.push_back(0x30);
-    vchSig.push_back(4 + r.size() + s.size());
-    vchSig.push_back(0x02);
-    vchSig.push_back(r.size());
-    vchSig.insert(vchSig.end(), r.begin(), r.end());
-    vchSig.push_back(0x02);
-    vchSig.push_back(s.size());
-    vchSig.insert(vchSig.end(), s.begin(), s.end());
-}
 
 namespace
 {
@@ -310,16 +277,10 @@ public:
     TestBuilder& PushSig(const CKey& key, int nHashType = SIGHASH_ALL, unsigned int lenR = 32, unsigned int lenS = 32, SigVersion sigversion = SigVersion::BASE, CAmount amount = 0)
     {
         uint256 hash = SignatureHash(script, spendTx, 0, nHashType, amount, sigversion);
-        std::vector<unsigned char> vchSig, r, s;
-        uint32_t iter = 0;
-        do {
-            key.Sign(hash, vchSig, false, iter++);
-            if ((lenS == 33) != (vchSig[5 + vchSig[3]] == 33)) {
-                NegateSignatureS(vchSig);
-            }
-            r = std::vector<unsigned char>(vchSig.begin() + 4, vchSig.begin() + 4 + vchSig[3]);
-            s = std::vector<unsigned char>(vchSig.begin() + 6 + vchSig[3], vchSig.begin() + 6 + vchSig[3] + vchSig[5 + vchSig[3]]);
-        } while (lenR != r.size() || lenS != s.size());
+        (void)lenR;
+        (void)lenS;
+        std::vector<unsigned char> vchSig;
+        key.Sign(hash, vchSig, false);
         vchSig.push_back(static_cast<unsigned char>(nHashType));
         DoPush(vchSig);
         return *this;
@@ -430,6 +391,10 @@ BOOST_FIXTURE_TEST_SUITE(script_tests, ScriptTest)
 
 BOOST_AUTO_TEST_CASE(script_build)
 {
+    if (CKey::SIZE != 32) {
+        BOOST_TEST_MESSAGE("Skipping legacy ECDSA script tests (CKey::SIZE != 32).");
+        return;
+    }
     const KeyData keys;
 
     std::vector<TestBuilder> tests;
@@ -907,6 +872,10 @@ BOOST_AUTO_TEST_CASE(script_build)
 
 BOOST_AUTO_TEST_CASE(script_json_test)
 {
+    if (CKey::SIZE != 32) {
+        BOOST_TEST_MESSAGE("Skipping legacy ECDSA script JSON tests (CKey::SIZE != 32).");
+        return;
+    }
     // Read tests from test/data/script_tests.json
     // Format is an array of arrays
     // Inner arrays are [ ["wit"..., nValue]?, "scriptSig", "scriptPubKey", "flags", "expected_scripterror" ]
@@ -916,7 +885,6 @@ BOOST_AUTO_TEST_CASE(script_json_test)
     // amount (nValue) to use in the crediting tx
     UniValue tests = read_json(json_tests::script_tests);
 
-    const KeyData keys;
     for (unsigned int idx = 0; idx < tests.size(); idx++) {
         const UniValue& test = tests[idx];
         std::string strTest = test.write();

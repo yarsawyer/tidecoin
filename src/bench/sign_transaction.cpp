@@ -27,7 +27,6 @@ enum class InputType {
 
 static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_type)
 {
-    ECC_Context ecc_context{};
 
     FlatSigningProvider keystore;
     std::vector<CScript> prev_spks;
