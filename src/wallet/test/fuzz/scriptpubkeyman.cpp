@@ -190,9 +190,8 @@ FUZZ_TARGET(scriptpubkeyman, .init = initialize_spkm)
                 std::optional<int> sighash_type{fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 151)};
                 if (sighash_type == 151) sighash_type = std::nullopt;
                 auto sign  = fuzzed_data_provider.ConsumeBool();
-                auto bip32derivs = fuzzed_data_provider.ConsumeBool();
                 auto finalize = fuzzed_data_provider.ConsumeBool();
-                (void)spk_manager->FillPSBT(psbt, txdata, sighash_type, sign, bip32derivs, nullptr, finalize);
+                (void)spk_manager->FillPSBT(psbt, txdata, sighash_type, sign, /*bip32derivs=*/false, nullptr, finalize);
             }
         );
     }

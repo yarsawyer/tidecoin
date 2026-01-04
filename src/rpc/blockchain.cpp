@@ -2261,10 +2261,7 @@ static RPCHelpMan scantxoutset()
         "    pkh(<pubkey>)                        P2PKH outputs for the given pubkey\n"
         "    sh(multi(<n>,<pubkey>,<pubkey>,...)) P2SH-multisig outputs for the given threshold and pubkeys\n"
         "    wsh(and_v(v:pk(<pubkey>),after(2)))  P2WSH miniscript with mandatory pubkey and a timelock\n"
-        "\nIn the above, <pubkey> either refers to a fixed public key in hexadecimal notation, or to an xpub/xprv optionally followed by one\n"
-        "or more path elements separated by \"/\", and optionally ending in \"/*\" (unhardened), or \"/*'\" or \"/*h\" (hardened) to specify all\n"
-        "unhardened or hardened child keys.\n"
-        "In the latter case, a range needs to be specified by below if different from 1000.\n"
+        "\nIn the above, <pubkey> refers to a fixed Tidecoin public key in raw prefixed hex, or to a WIF-encoded private key.\n"
         "For more information on output descriptors, see the documentation in the doc/descriptors.md file.\n",
         {
             scan_action_arg_desc,

@@ -32,6 +32,8 @@ Completed (in-tree now):
 - Removed `CExtKey`-based `SetupDescriptorScriptPubKeyMan` overloads in
   `src/wallet/wallet.cpp`.
 - Removed `bip32_tests.cpp` from `src/test/CMakeLists.txt`.
+- Updated RPC help text to remove xpub/xprv guidance in
+  `src/rpc/output_script.cpp` and `src/rpc/blockchain.cpp`.
 - Updated `src/test/descriptor_tests.cpp` to drop xpub cache assumptions and
   assert xpub/xprv rejection; updated `src/test/pq_pubkey_container_tests.cpp`
   to avoid secp size constants.
@@ -39,9 +41,6 @@ Completed (in-tree now):
   initializes secp256k1).
 
 Incomplete / pending:
-- CPubKey variable-length PQ refactor (PR-5) is not implemented.
-- Script solver updates for variable-length PQ pubkeys (PR-5) not done.
-- Descriptor parsing for explicit PQ pubkey hex (raw TidePubKey bytes) not done.
 - Remaining test/bench/fuzz cleanup for secp/BIP32 assumptions is partial.
 
 ## Phase 0 — Lock Down Behavior (No Deletions Yet)
@@ -210,7 +209,8 @@ Acceptance:
 - [x] Define PSBT handling for BIP32/xpub records in `src/psbt.h` and wallet
       FillPSBT: hard-reject BIP32 derivation paths and xpubs.
 - [x] Update `decodepsbt` output in `src/rpc/rawtransaction.cpp` to omit
-      BIP32 fields and reject `bip32derivs=true` in descriptorprocesspsbt.
+      BIP32 fields and remove the `bip32derivs` argument from
+      `descriptorprocesspsbt`.
 - [x] Add/adjust tests for PSBT behavior (expect BIP32 derivations to be rejected).
 
 ### PR‑2 Checklist — Remove BIP32/xpub Public Surface
@@ -250,12 +250,13 @@ Acceptance:
 - [x] Remove any remaining secp-only tests/bench that break the build.
 
 ### PR‑5 Checklist — PQ Pubkey Compatibility + Test Cleanup
-- [ ] Refactor `CPubKey` to variable-length, scheme-aware PQ container in
+- [x] Refactor `CPubKey` to variable-length, scheme-aware PQ container in
       `src/pubkey.h` / `src/pubkey.cpp`.
-- [ ] Update script matching for P2PK/multisig in `src/script/solver.cpp`.
-- [ ] Ensure descriptor parsing accepts explicit PQ pubkeys as raw hex in
-      `src/script/descriptor.cpp`.
-- [ ] Remove all remaining secp/BIP32 tests, benches, and fuzzers
-      (`src/test/*`, `src/bench/*`, `src/test/fuzz/*`) (partial: `bip32_tests`
-      removed from build; fuzz + remaining xpub helpers still present).
-- [ ] Add/update tests for PQ pubkey container and descriptor parsing.
+- [x] Update script matching for P2PK/multisig in `src/script/solver.cpp`.
+- [x] Ensure descriptor parsing accepts explicit PQ pubkeys as raw hex in
+      `src/script/descriptor.cpp` (WIF private keys allowed for descriptor
+      key expressions).
+- [x] Remove all remaining secp/BIP32 tests, benches, and fuzzers
+      (`src/test/*`, `src/bench/*`, `src/test/fuzz/*`) (walletload descriptor
+      test migrated to pqhd; fuzz uses `bip32derivs=false`).
+- [x] Add/update tests for PQ pubkey container and descriptor parsing.

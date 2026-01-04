@@ -1762,7 +1762,6 @@ RPCHelpMan descriptorprocesspsbt()
             "       \"ALL|ANYONECANPAY\"\n"
             "       \"NONE|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\""},
-                    {"bip32derivs", RPCArg::Type::BOOL, RPCArg::Default{false}, "BIP32 derivation paths are not supported (must be false)"},
                     {"finalize", RPCArg::Type::BOOL, RPCArg::Default{true}, "Also finalize inputs if possible"},
                 },
                 RPCResult{
@@ -1788,11 +1787,7 @@ RPCHelpMan descriptorprocesspsbt()
     }
 
     std::optional<int> sighash_type = ParseSighashString(request.params[2]);
-    bool bip32derivs = request.params[3].isNull() ? false : request.params[3].get_bool();
-    if (bip32derivs) {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "BIP32 derivation paths are not supported (PQHD-only)");
-    }
-    bool finalize = request.params[4].isNull() ? true : request.params[4].get_bool();
+    bool finalize = request.params[3].isNull() ? true : request.params[3].get_bool();
 
     const PartiallySignedTransaction& psbtx = ProcessPSBT(
         request.params[0].get_str(),

@@ -64,15 +64,15 @@ CBlock CreateTestBlock(
  * - All outputs are P2WPKH (native SegWit v0)
  * - All outputs have value of 1 BTC
  */
-std::pair<std::vector<CKey>, std::vector<CTxOut>> CreateKeysAndOutputs(const CKey& coinbaseKey, size_t num_ecdsa)
+std::pair<std::vector<CKey>, std::vector<CTxOut>> CreateKeysAndOutputs(const CKey& coinbaseKey, size_t num_keys)
 {
     std::vector<CKey> keys{coinbaseKey};
-    keys.reserve(num_ecdsa + 1);
+    keys.reserve(num_keys + 1);
 
     std::vector<CTxOut> outputs;
-    outputs.reserve(num_ecdsa);
+    outputs.reserve(num_keys);
 
-    for (size_t i{0}; i < num_ecdsa; ++i) {
+    for (size_t i{0}; i < num_keys; ++i) {
         keys.emplace_back(GenerateRandomKey());
         outputs.emplace_back(COIN, GetScriptForDestination(WitnessV0KeyHash{keys.back().GetPubKey()}));
     }
@@ -95,11 +95,11 @@ void BenchmarkConnectBlock(benchmark::Bench& bench, std::vector<CKey>& keys, std
     });
 }
 
-static void ConnectBlockAllEcdsa(benchmark::Bench& bench)
+static void ConnectBlockAllKeys(benchmark::Bench& bench)
 {
     const auto test_setup{MakeNoLogFileContext<TestChain100Setup>()};
-    auto [keys, outputs]{CreateKeysAndOutputs(test_setup->coinbaseKey, /*num_ecdsa=*/5)};
+    auto [keys, outputs]{CreateKeysAndOutputs(test_setup->coinbaseKey, /*num_keys=*/5)};
     BenchmarkConnectBlock(bench, keys, outputs, *test_setup);
 }
 
-BENCHMARK(ConnectBlockAllEcdsa, benchmark::PriorityLevel::HIGH);
+BENCHMARK(ConnectBlockAllKeys, benchmark::PriorityLevel::HIGH);

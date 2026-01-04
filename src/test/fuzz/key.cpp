@@ -49,15 +49,12 @@ FUZZ_TARGET(key, .init = initialize_key)
 
     {
         assert(key.begin() + key.size() == key.end());
-        assert(key.IsCompressed());
-        assert(key.size() == 32);
         assert(DecodeSecret(EncodeSecret(key)) == key);
     }
 
     {
         CKey invalid_key;
         assert(!(invalid_key == key));
-        assert(!invalid_key.IsCompressed());
         assert(!invalid_key.IsValid());
         assert(invalid_key.size() == 0);
     }
@@ -66,39 +63,25 @@ FUZZ_TARGET(key, .init = initialize_key)
         CKey uncompressed_key;
         uncompressed_key.Set(buffer.begin(), buffer.end(), false);
         assert(!(uncompressed_key == key));
-        assert(!uncompressed_key.IsCompressed());
-        assert(key.size() == 32);
         assert(uncompressed_key.begin() + uncompressed_key.size() == uncompressed_key.end());
         assert(uncompressed_key.IsValid());
     }
 
     {
         CKey copied_key;
-        copied_key.Set(key.begin(), key.end(), key.IsCompressed());
+        copied_key.Set(key.begin(), key.end(), true);
         assert(copied_key == key);
     }
 
     const uint256 random_uint256 = Hash(buffer);
 
-    {
-        CKey child_key;
-        ChainCode child_chaincode;
-        const bool ok = key.Derive(child_key, child_chaincode, 0, random_uint256);
-        assert(ok);
-        assert(child_key.IsValid());
-        assert(!(child_key == key));
-        assert(child_chaincode != random_uint256);
-    }
-
     const CPubKey pubkey = key.GetPubKey();
 
     {
-        assert(pubkey.size() == 33);
         assert(key.VerifyPubKey(pubkey));
         assert(pubkey.GetHash() != random_uint256);
         assert(pubkey.begin() + pubkey.size() == pubkey.end());
         assert(pubkey.data() == pubkey.begin());
-        assert(pubkey.IsCompressed());
         assert(pubkey.IsValid());
         assert(pubkey.IsFullyValid());
         assert(HexToPubKey(HexStr(pubkey)) == pubkey);
@@ -120,7 +103,7 @@ FUZZ_TARGET(key, .init = initialize_key)
         assert(!tx_pubkey_script.IsPushOnly());
         assert(!tx_pubkey_script.IsUnspendable());
         assert(tx_pubkey_script.HasValidOps());
-        assert(tx_pubkey_script.size() == 35);
+        assert(!tx_pubkey_script.empty());
 
         const CScript tx_multisig_script = GetScriptForMultisig(1, {pubkey});
         assert(!tx_multisig_script.IsPayToScriptHash());
@@ -128,7 +111,7 @@ FUZZ_TARGET(key, .init = initialize_key)
         assert(!tx_multisig_script.IsPushOnly());
         assert(!tx_multisig_script.IsUnspendable());
         assert(tx_multisig_script.HasValidOps());
-        assert(tx_multisig_script.size() == 37);
+        assert(!tx_multisig_script.empty());
 
         FillableSigningProvider fillable_signing_provider;
         assert(!IsSegWitOutput(fillable_signing_provider, tx_pubkey_script));
@@ -161,14 +144,14 @@ FUZZ_TARGET(key, .init = initialize_key)
         const TxoutType outtype_tx_pubkey = Solver(tx_pubkey_script, v_solutions_ret_tx_pubkey);
         assert(outtype_tx_pubkey == TxoutType::PUBKEY);
         assert(v_solutions_ret_tx_pubkey.size() == 1);
-        assert(v_solutions_ret_tx_pubkey[0].size() == 33);
+        assert(v_solutions_ret_tx_pubkey[0].size() == pubkey.size());
 
         std::vector<std::vector<unsigned char>> v_solutions_ret_tx_multisig;
         const TxoutType outtype_tx_multisig = Solver(tx_multisig_script, v_solutions_ret_tx_multisig);
         assert(outtype_tx_multisig == TxoutType::MULTISIG);
         assert(v_solutions_ret_tx_multisig.size() == 3);
         assert(v_solutions_ret_tx_multisig[0].size() == 1);
-        assert(v_solutions_ret_tx_multisig[1].size() == 33);
+        assert(v_solutions_ret_tx_multisig[1].size() == pubkey.size());
         assert(v_solutions_ret_tx_multisig[2].size() == 1);
 
         OutputType output_type{};
@@ -235,49 +218,13 @@ FUZZ_TARGET(key, .init = initialize_key)
     }
 
     {
-        CPubKey decompressed_pubkey = pubkey;
-        assert(decompressed_pubkey.IsCompressed());
-
-        const bool ok = decompressed_pubkey.Decompress();
-        assert(ok);
-        assert(!decompressed_pubkey.IsCompressed());
-        assert(decompressed_pubkey.size() == 65);
-    }
-
-    {
         std::vector<unsigned char> vch_sig;
         const bool ok = key.Sign(random_uint256, vch_sig, false);
         assert(ok);
         assert(pubkey.Verify(random_uint256, vch_sig));
-        assert(CPubKey::CheckLowS(vch_sig));
 
         const std::vector<unsigned char> vch_invalid_sig{vch_sig.begin(), vch_sig.begin() + vch_sig.size() - 1};
         assert(!pubkey.Verify(random_uint256, vch_invalid_sig));
-        assert(!CPubKey::CheckLowS(vch_invalid_sig));
-    }
-
-    {
-        std::vector<unsigned char> vch_compact_sig;
-        const bool ok_sign_compact = key.SignCompact(random_uint256, vch_compact_sig);
-        assert(ok_sign_compact);
-
-        CPubKey recover_pubkey;
-        const bool ok_recover_compact = recover_pubkey.RecoverCompact(random_uint256, vch_compact_sig);
-        assert(ok_recover_compact);
-        assert(recover_pubkey == pubkey);
-    }
-
-    {
-        CPubKey child_pubkey;
-        ChainCode child_chaincode;
-        const bool ok = pubkey.Derive(child_pubkey, child_chaincode, 0, random_uint256);
-        assert(ok);
-        assert(child_pubkey != pubkey);
-        assert(child_pubkey.IsCompressed());
-        assert(child_pubkey.IsFullyValid());
-        assert(child_pubkey.IsValid());
-        assert(child_pubkey.size() == 33);
-        assert(child_chaincode != random_uint256);
     }
 
     const CPrivKey priv_key = key.GetPrivKey();

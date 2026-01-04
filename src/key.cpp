@@ -10,6 +10,8 @@
 #include <pq/pq_api.h>
 #include <random.h>
 
+#include <algorithm>
+
 bool CKey::DecodeSecretKey(std::span<const unsigned char> vch,
                            const pq::SchemeInfo*& info,
                            std::span<const unsigned char>& raw)
@@ -54,11 +56,10 @@ CPrivKey CKey::GetPrivKey() const {
 CPubKey CKey::GetPubKey() const {
     assert(!keydata.empty());
     assert(!pubkeydata.empty());
-    CPubKey result;
-    unsigned char* pch = const_cast<unsigned char*>(result.begin());
-    memcpy(pch + 1, pubkeydata.data(), pubkeydata.size());
-    pch[0] = Scheme().prefix;
-    return result;
+    std::vector<unsigned char> prefixed_pubkey(pubkeydata.size() + 1);
+    prefixed_pubkey[0] = Scheme().prefix;
+    std::copy(pubkeydata.begin(), pubkeydata.end(), prefixed_pubkey.begin() + 1);
+    return CPubKey(std::span<const uint8_t>(prefixed_pubkey));
 }
 
 bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool grind, uint32_t test_case, bool legacy_mode) const {

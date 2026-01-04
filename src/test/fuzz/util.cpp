@@ -11,18 +11,24 @@
 #include <util/rbf.h>
 #include <util/time.h>
 
+#include <algorithm>
 #include <memory>
 
-std::vector<uint8_t> ConstructPubKeyBytes(FuzzedDataProvider& fuzzed_data_provider, std::span<const uint8_t> byte_data, const bool compressed) noexcept
+std::vector<uint8_t> ConstructPubKeyBytes(FuzzedDataProvider& fuzzed_data_provider, std::span<const uint8_t> byte_data, const bool /*compressed*/) noexcept
 {
-    uint8_t pk_type;
-    if (compressed) {
-        pk_type = fuzzed_data_provider.PickValueInArray({0x02, 0x03});
-    } else {
-        pk_type = fuzzed_data_provider.PickValueInArray({0x04, 0x06, 0x07});
+    const pq::SchemeInfo* scheme = fuzzed_data_provider.PickValueInArray<const pq::SchemeInfo*>({
+        &pq::kFalcon512Info,
+        &pq::kFalcon1024Info,
+        &pq::kMLDSA44Info,
+        &pq::kMLDSA65Info,
+        &pq::kMLDSA87Info,
+    });
+    auto pk_data = ConsumeFixedLengthByteVector(fuzzed_data_provider, scheme->pubkey_bytes + 1);
+    if (!byte_data.empty()) {
+        const size_t copy_len = std::min(pk_data.size(), byte_data.size());
+        std::copy(byte_data.begin(), byte_data.begin() + copy_len, pk_data.begin());
     }
-    std::vector<uint8_t> pk_data{byte_data.begin(), byte_data.begin() + (compressed ? CPubKey::COMPRESSED_SIZE : CPubKey::SIZE)};
-    pk_data[0] = pk_type;
+    pk_data[0] = scheme->prefix;
     return pk_data;
 }
 
@@ -190,10 +196,10 @@ CTxDestination ConsumeTxDestination(FuzzedDataProvider& fuzzed_data_provider) no
             tx_destination = CNoDestination{};
         },
         [&] {
-            bool compressed = fuzzed_data_provider.ConsumeBool();
+            const bool compressed = fuzzed_data_provider.ConsumeBool();
             CPubKey pk{ConstructPubKeyBytes(
                     fuzzed_data_provider,
-                    ConsumeFixedLengthByteVector(fuzzed_data_provider, (compressed ? CPubKey::COMPRESSED_SIZE : CPubKey::SIZE)),
+                    ConsumeFixedLengthByteVector(fuzzed_data_provider, CPubKey::MAX_SIZE),
                     compressed
             )};
             tx_destination = PubKeyDestination{pk};

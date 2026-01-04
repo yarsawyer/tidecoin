@@ -257,7 +257,7 @@ static UniValue DeriveAddresses(const Descriptor* desc, int64_t range_begin, int
 
 static RPCHelpMan deriveaddresses()
 {
-    const std::string EXAMPLE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6DJ2dNUysrn5Vt36jH2KLBT2i1auw1tTSSomg8PhqNiUtx8QX2SvC9nrHu81fT41fvDUnhMjEzQgXnQjKEu3oaqMSzhSrHMxyyoEAmUHQbY/0/*)#cjjspncu";
+    const std::string EXAMPLE_DESCRIPTOR = "wpkh(070975624cba9f13ffb4f2f8cb42dae66f0849a18e97205984e640acd3eab362c5865da92c45b59f5a7ecc8225119afa5048730ed58a6b71c4b83dc515eacb2f2e03713f90041c128fc54e65a9446ea6b9fd74e9dbb778ba4d015bd99f378ef300de0fb3549e1b29eb6b195f91f0f0189b8e7298d972579bab1985c5d0410b57b682bbf5866aef0ec43973b2d6c586469428bb9fd82f3dee85f8621d9326cea7e0afc02fb55ba2abd9ea6f041b7b3bc38895bef9e0a66923afcee251792e4c93f9e78a82dc5ebc4c878399ea7645d2e1993dda2a3cb5e29a95d9b663eac0b18e1a1a2b3526602a813c01497b2a014f30ad382b88d4113398b219cbc626f1966906b435446a708997c54e8c8905466c5a20cebe9b8831469d8c42af6a8c2bd419e559e244235fd94da0c96dab03c6f13a00d7cb0e04320396e7f8f40bae067662f3be19d0a255be6047d7189a82f0d208551117e4ff4be11bd34cc2bcb76463163bc2f7b73d496b12d09ff8eec669a3794807c35cbea214e6faf49fd5465c57f299db2f23fac8eafdde3635b95d8505122669708d0487214f77f4c860e327589932a611e3634c185282249a85a04eaaa4a5812327a10eaad0cdefd823513a3345ecf220419b080c171e1765334237c8209e058f65dc079f84d497e93c83e674edb650ce84f15412db1bd09543882894230580054edceb200dca905172fcc545d8d954550a53ac2333808e7265ad459b2d6ca55b49e21782daf702f9893d55e49f98ee6eccbe7ea0610f83726fe283548463811df801eb9f5891884cebf4022dd4557084f0f0174d4e1a08e1fa6eaf994173c220d0bd2f7ac611abab9a1c5a912857ad51939cb6a04ac3b12c4a6f5ba42fa80f822021aa820b5a66360341eda8b16cd9eab25a1a0a69e3f73ea6232c8088e72048f802826a995a00ec25f1d4339ccceeae39f6c507c246312091fa1a4b775bc6017334a1e26a059131dbcf2969d512717498714218d91881e2327725971816cd6e4ec6fe9b9907693dd0e5058049ec7e4a7df3b94d45be91fa74be678d22009797066b0214e6bf5126e7e77e5233e717863b6636be439be62a79c855d0b75de17e70013472e6376b608d507d64770e424a7138277d9daeb05733e65d68ec617637c148177ed509089ddba3d038e3394de94349caab39a5b514f52aab7b6ecb2ea4c059c58dc3002c1d012fcb28a2e19f02116e8662acb34a6aeb1d48a24d9573065b347e7f3007df02a1b0551b3fe3b2)#p6heqv94";
 
     return RPCHelpMan{
         "deriveaddresses",
@@ -267,8 +267,7 @@ static RPCHelpMan deriveaddresses()
          "    wpkh(<pubkey>)                                    Native segwit P2PKH outputs for the given pubkey\n"
          "    sh(multi(<n>,<pubkey>,<pubkey>,...))              P2SH-multisig outputs for the given threshold and pubkeys\n"
          "    raw(<hex script>)                                 Outputs whose output script equals the specified hex-encoded bytes\n"
-         "\nIn the above, <pubkey> either refers to a fixed public key in hexadecimal notation, or to an xpub/xprv optionally followed by one\n"
-         "or more path elements separated by \"/\", where \"h\" represents a hardened child key.\n"
+         "\nIn the above, <pubkey> refers to a fixed Tidecoin public key in raw prefixed hex, or to a WIF-encoded private key.\n"
         "For more information on output descriptors, see the documentation in the doc/descriptors.md file.\n",
         {
             {"descriptor", RPCArg::Type::STR, RPCArg::Optional::NO, "The descriptor."},
@@ -294,9 +293,9 @@ static RPCHelpMan deriveaddresses()
             },
         },
         RPCExamples{
-            "First three native segwit receive addresses\n" +
-            HelpExampleCli("deriveaddresses", "\"" + EXAMPLE_DESCRIPTOR + "\" \"[0,2]\"") +
-            HelpExampleRpc("deriveaddresses", "\"" + EXAMPLE_DESCRIPTOR + "\", \"[0,2]\"")
+            "Derive a single native segwit address\n" +
+            HelpExampleCli("deriveaddresses", "\"" + EXAMPLE_DESCRIPTOR + "\"") +
+            HelpExampleRpc("deriveaddresses", "\"" + EXAMPLE_DESCRIPTOR + "\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {

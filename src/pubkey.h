@@ -29,7 +29,7 @@ class CPubKey
 {
 public:
     // Maximum serialized pubkey size (supports all currently defined PQ schemes).
-    static constexpr unsigned int SIZE = pq::kMLDSA87Info.pubkey_bytes + 1;
+    static constexpr unsigned int MAX_SIZE = pq::kMLDSA87Info.pubkey_bytes + 1;
 
 private:
 
@@ -37,7 +37,7 @@ private:
      * Just store the serialized data.
      * Its length can very cheaply be computed from the first byte.
      */
-    unsigned char vch[SIZE];
+    std::vector<unsigned char> vch;
 
     //! Compute the length of a pubkey with a given first byte.
     unsigned int static GetLen(unsigned char chHeader)
@@ -52,13 +52,13 @@ private:
     //! Set this key data to be invalid
     void Invalidate()
     {
-        vch[0] = 0xFF;
+        vch.clear();
     }
 
 public:
 
     bool static ValidSize(const std::vector<unsigned char> &vch) {
-      return vch.size() > 0 && GetLen(vch[0]) == vch.size();
+      return vch.size() > 0 && vch.size() <= MAX_SIZE && GetLen(vch[0]) == vch.size();
     }
 
     //! Construct an invalid public key.
@@ -71,11 +71,16 @@ public:
     template <typename T>
     void Set(const T pbegin, const T pend)
     {
-        int len = pend == pbegin ? 0 : GetLen(pbegin[0]);
-        if (len && len == (pend - pbegin))
-            memcpy(vch, (unsigned char*)&pbegin[0], len);
-        else
+        if (pbegin == pend) {
             Invalidate();
+            return;
+        }
+        const unsigned int len = GetLen(pbegin[0]);
+        if (len && len == static_cast<unsigned int>(pend - pbegin) && len <= MAX_SIZE) {
+            vch.assign(pbegin, pend);
+        } else {
+            Invalidate();
+        }
     }
 
     //! Construct a public key using begin/end iterators to byte data.
@@ -92,17 +97,16 @@ public:
     }
 
     //! Simple read-only vector-like interface to the pubkey data.
-    unsigned int size() const { return GetLen(vch[0]); }
-    const unsigned char* data() const { return vch; }
-    const unsigned char* begin() const { return vch; }
-    const unsigned char* end() const { return vch + size(); }
+    unsigned int size() const { return static_cast<unsigned int>(vch.size()); }
+    const unsigned char* data() const { return vch.data(); }
+    const unsigned char* begin() const { return vch.data(); }
+    const unsigned char* end() const { return vch.data() + vch.size(); }
     const unsigned char& operator[](unsigned int pos) const { return vch[pos]; }
 
     //! Comparator implementation.
     friend bool operator==(const CPubKey& a, const CPubKey& b)
     {
-        return a.vch[0] == b.vch[0] &&
-               memcmp(a.vch, b.vch, a.size()) == 0;
+        return a.vch == b.vch;
     }
     friend bool operator!=(const CPubKey& a, const CPubKey& b)
     {
@@ -110,13 +114,11 @@ public:
     }
     friend bool operator<(const CPubKey& a, const CPubKey& b)
     {
-        return a.vch[0] < b.vch[0] ||
-               (a.vch[0] == b.vch[0] && memcmp(a.vch, b.vch, a.size()) < 0);
+        return a.vch < b.vch;
     }
     friend bool operator>(const CPubKey& a, const CPubKey& b)
     {
-        return a.vch[0] > b.vch[0] ||
-               (a.vch[0] == b.vch[0] && memcmp(a.vch, b.vch, a.size()) > 0);
+        return a.vch > b.vch;
     }
 
     //! Implement serialization, as if this was a byte vector.
@@ -125,20 +127,23 @@ public:
     {
         unsigned int len = size();
         ::WriteCompactSize(s, len);
-        s << std::span{vch, len};
+        if (len > 0) {
+            s << std::span{vch.data(), len};
+        }
     }
     template <typename Stream>
     void Unserialize(Stream& s)
     {
         const unsigned int len(::ReadCompactSize(s));
-        if (len <= SIZE) {
-            s >> std::span{vch, len};
-            if (len != size()) {
-                Invalidate();
-            }
-        } else {
+        if (len == 0 || len > MAX_SIZE) {
             // invalid pubkey, skip available data
             s.ignore(len);
+            Invalidate();
+            return;
+        }
+        vch.assign(len, 0);
+        s >> std::span{vch.data(), len};
+        if (GetLen(vch[0]) != len) {
             Invalidate();
         }
     }

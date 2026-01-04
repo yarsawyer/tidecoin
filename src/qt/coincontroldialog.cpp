@@ -408,7 +408,6 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
         nAmount += out.txout.nValue;
 
         // Bytes
-        CTxDestination address;
         int witnessversion = 0;
         std::vector<unsigned char> witnessprogram;
         if (out.txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram))
@@ -424,11 +423,9 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
             }
             fWitness = true;
         }
-        else if(ExtractDestination(out.txout.scriptPubKey, address))
-        {
+        else {
             nBytesInputs += 148;
         }
-        else nBytesInputs += 148;
     }
 
     // calculation

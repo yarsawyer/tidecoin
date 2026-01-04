@@ -315,7 +315,7 @@ struct PSBTInput
                 case PSBT_IN_PARTIAL_SIG:
                 {
                     // Expect at least a type byte + a non-empty pubkey.
-                    if (key.size() < 2 || key.size() > CPubKey::SIZE + 1) {
+                    if (key.size() < 2 || key.size() > CPubKey::MAX_SIZE + 1) {
                         throw std::ios_base::failure("Size of key was not the expected size for the type partial signature pubkey");
                     }
                     // Read in the pubkey from key

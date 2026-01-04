@@ -11,8 +11,9 @@
 #include <uint256.h>
 
 #include <algorithm>
-#include <array>
+#include <cstring>
 #include <cassert>
+#include <vector>
 
 bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchSig, bool legacy_mode) const {
     if (!IsValid()) {
@@ -40,11 +41,11 @@ bool CPubKey::Recover(const uint256 &hash, const std::vector<unsigned char>& vch
         }
         const size_t sig_len = vchSig.size() - raw_pk_len;
 
-        std::array<unsigned char, CPubKey::SIZE> prefixed_pubkey{};
+        std::vector<unsigned char> prefixed_pubkey(raw_pk_len + 1);
         prefixed_pubkey[0] = scheme->prefix;
         std::memcpy(prefixed_pubkey.data() + 1, vchSig.data() + sig_len, raw_pk_len);
 
-        const std::span<const unsigned char> prefixed_pk_span{prefixed_pubkey.data(), raw_pk_len + 1};
+        const std::span<const unsigned char> prefixed_pk_span{prefixed_pubkey.data(), prefixed_pubkey.size()};
         const std::span<const unsigned char> sig_span{vchSig.data(), sig_len};
 
         if (pq::VerifyPrefixed(msg32, sig_span, prefixed_pk_span, /*legacy_mode=*/false)) {
