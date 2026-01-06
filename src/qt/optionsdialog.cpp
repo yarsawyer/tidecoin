@@ -12,15 +12,18 @@
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
+#include <qt/walletmodel.h>
 
 #include <common/system.h>
 #include <interfaces/node.h>
 #include <netbase.h>
 #include <node/caches.h>
 #include <node/chainstatemanager_args.h>
+#include <pq/pq_scheme.h>
 #include <util/strencodings.h>
 
 #include <chrono>
+#include <vector>
 
 #include <QApplication>
 #include <QDataWidgetMapper>
@@ -31,6 +34,32 @@
 #include <QMessageBox>
 #include <QSystemTrayIcon>
 #include <QTimer>
+
+namespace {
+std::vector<const pq::SchemeInfo*> GetPQSchemeInfos()
+{
+    return {
+        &pq::kFalcon512Info,
+        &pq::kFalcon1024Info,
+        &pq::kMLDSA44Info,
+        &pq::kMLDSA65Info,
+        &pq::kMLDSA87Info,
+    };
+}
+
+void PopulatePQSchemeCombo(QComboBox* combo)
+{
+    combo->clear();
+    for (const pq::SchemeInfo* info : GetPQSchemeInfos()) {
+        combo->addItem(QString::fromLatin1(info->name), static_cast<int>(info->prefix));
+    }
+}
+
+int FindPQSchemeIndex(const QComboBox* combo, uint8_t prefix)
+{
+    return combo->findData(static_cast<int>(prefix));
+}
+} // namespace
 
 int setFontChoice(QComboBox* cb, const OptionsModel::FontChoice& fc)
 {
@@ -265,6 +294,12 @@ void OptionsDialog::setModel(OptionsModel *_model)
     connect(ui->thirdPartyTxUrls, &QLineEdit::textChanged, [this]{ showRestartWarning(); });
 }
 
+void OptionsDialog::setWalletModel(WalletModel* wallet_model)
+{
+    walletModel = wallet_model;
+    updatePQHDPolicyControls();
+}
+
 void OptionsDialog::setCurrentTab(OptionsDialog::Tab tab)
 {
     QWidget *tab_widget = nullptr;
@@ -381,6 +416,7 @@ void OptionsDialog::on_okButton_clicked()
     model->setData(model->index(OptionsModel::FontForMoney, 0), ui->moneyFont->itemData(ui->moneyFont->currentIndex()));
 
     mapper->submit();
+    if (!applyPQHDPolicyChanges()) return;
     accept();
     updateDefaultProxyNets();
 }
@@ -467,6 +503,57 @@ void OptionsDialog::updateDefaultProxyNets()
 
     has_proxy = model->node().getProxy(NET_ONION, proxy);
     ui->proxyReachTor->setChecked(has_proxy && proxy.ToString() == proxyIpText);
+}
+
+void OptionsDialog::updatePQHDPolicyControls()
+{
+    if (!ui->groupBoxPqhdPolicy) return;
+    if (!walletModel) {
+        ui->groupBoxPqhdPolicy->setEnabled(false);
+        return;
+    }
+    if (ui->pqhdDefaultReceiveScheme->count() == 0) {
+        PopulatePQSchemeCombo(ui->pqhdDefaultReceiveScheme);
+        PopulatePQSchemeCombo(ui->pqhdDefaultChangeScheme);
+    }
+
+    const auto policy = walletModel->getPQHDPolicy();
+    if (!policy) {
+        ui->groupBoxPqhdPolicy->setEnabled(false);
+        return;
+    }
+
+    ui->groupBoxPqhdPolicy->setEnabled(true);
+    QSignalBlocker block_receive(ui->pqhdDefaultReceiveScheme);
+    QSignalBlocker block_change(ui->pqhdDefaultChangeScheme);
+
+    const int receive_index = FindPQSchemeIndex(ui->pqhdDefaultReceiveScheme, policy->default_receive_scheme);
+    if (receive_index >= 0) {
+        ui->pqhdDefaultReceiveScheme->setCurrentIndex(receive_index);
+    }
+    const int change_index = FindPQSchemeIndex(ui->pqhdDefaultChangeScheme, policy->default_change_scheme);
+    if (change_index >= 0) {
+        ui->pqhdDefaultChangeScheme->setCurrentIndex(change_index);
+    }
+}
+
+bool OptionsDialog::applyPQHDPolicyChanges()
+{
+    if (!walletModel || !ui->groupBoxPqhdPolicy || !ui->groupBoxPqhdPolicy->isEnabled()) return true;
+
+    const auto policy = walletModel->getPQHDPolicy();
+    if (!policy) return true;
+
+    const uint8_t receive = static_cast<uint8_t>(ui->pqhdDefaultReceiveScheme->currentData().toUInt());
+    const uint8_t change = static_cast<uint8_t>(ui->pqhdDefaultChangeScheme->currentData().toUInt());
+    if (policy->default_receive_scheme == receive && policy->default_change_scheme == change) return true;
+
+    QString error;
+    if (!walletModel->setPQHDPolicy(receive, change, error)) {
+        QMessageBox::critical(this, tr("PQHD policy error"), error);
+        return false;
+    }
+    return true;
 }
 
 ProxyAddressValidator::ProxyAddressValidator(QObject *parent) :

@@ -217,10 +217,15 @@ void ReceiveCoinsDialog::on_receiveButton_clicked()
             QMessageBox::Ok, QMessageBox::Ok);
         break;
     case AddressTableModel::EditStatus::KEY_GENERATION_FAILURE:
-        QMessageBox::critical(this, windowTitle(),
-            tr("Could not generate new %1 address").arg(QString::fromStdString(FormatOutputType(address_type))),
-            QMessageBox::Ok, QMessageBox::Ok);
+    {
+        const QString reason = model->getAddressTableModel()->getLastError();
+        const QString message = reason.isEmpty()
+            ? tr("Could not generate new %1 address").arg(QString::fromStdString(FormatOutputType(address_type)))
+            : tr("Could not generate new %1 address:\n%2")
+                  .arg(QString::fromStdString(FormatOutputType(address_type)), reason);
+        QMessageBox::critical(this, windowTitle(), message, QMessageBox::Ok, QMessageBox::Ok);
         break;
+    }
     // These aren't valid return values for our action
     case AddressTableModel::EditStatus::INVALID_ADDRESS:
     case AddressTableModel::EditStatus::DUPLICATE_ADDRESS:

@@ -80,6 +80,8 @@ public:
 
     EncryptionStatus getEncryptionStatus() const;
     bool isHDEnabled() const;
+    std::optional<wallet::PQHDPolicy> getPQHDPolicy() const;
+    bool setPQHDPolicy(std::optional<uint8_t> receive_scheme, std::optional<uint8_t> change_scheme, QString& error);
 
     // Check address for validity
     bool validateAddress(const QString& address) const;

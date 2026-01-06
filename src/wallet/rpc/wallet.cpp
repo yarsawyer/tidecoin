@@ -17,6 +17,7 @@
 #include <wallet/rpc/wallet.h>
 #include <wallet/wallet.h>
 #include <wallet/walletutil.h>
+#include <pq/pq_scheme.h>
 
 #include <optional>
 
@@ -340,6 +341,63 @@ static RPCHelpMan setwalletflag()
     }
 
     return res;
+},
+    };
+}
+
+static RPCHelpMan setpqhdpolicy()
+{
+    return RPCHelpMan{
+        "setpqhdpolicy",
+        "Set default PQ scheme policy for new receive/change addresses.\n",
+        {
+            {"receive_scheme", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Default PQ scheme for receive addresses (name or numeric prefix)."},
+            {"change_scheme", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Default PQ scheme for change outputs (name or numeric prefix)."},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::NUM, "receive_scheme_id", "Selected scheme prefix byte"},
+                {RPCResult::Type::STR, "receive_scheme_name", "Selected scheme name"},
+                {RPCResult::Type::NUM, "change_scheme_id", "Selected scheme prefix byte"},
+                {RPCResult::Type::STR, "change_scheme_name", "Selected scheme name"},
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("setpqhdpolicy", "\"falcon-512\" \"falcon-512\"")
+            + HelpExampleCli("setpqhdpolicy", "\"mldsa65\" \"mldsa65\"")
+            + HelpExampleRpc("setpqhdpolicy", "\"falcon1024\", \"falcon1024\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    LOCK(pwallet->cs_wallet);
+
+    const std::optional<uint8_t> receive_scheme = ParsePQSchemePrefix(request.params[0]);
+    const std::optional<uint8_t> change_scheme = ParsePQSchemePrefix(request.params[1]);
+    if (!receive_scheme && !change_scheme) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "At least one scheme must be provided");
+    }
+
+    util::Result<void> result = pwallet->SetPQHDPolicy(receive_scheme, change_scheme);
+    if (!result) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(result).original);
+    }
+
+    UniValue obj(UniValue::VOBJ);
+    const auto policy = pwallet->GetPQHDPolicy();
+    if (!policy) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Missing PQHD policy");
+    }
+    const auto* receive_info = pq::SchemeFromPrefix(policy->default_receive_scheme);
+    const auto* change_info = pq::SchemeFromPrefix(policy->default_change_scheme);
+    obj.pushKV("receive_scheme_id", policy->default_receive_scheme);
+    obj.pushKV("receive_scheme_name", receive_info ? receive_info->name : "unknown");
+    obj.pushKV("change_scheme_id", policy->default_change_scheme);
+    obj.pushKV("change_scheme_name", change_info ? change_info->name : "unknown");
+    return obj;
 },
     };
 }
@@ -826,6 +884,7 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &sendmany},
         {"wallet", &sendtoaddress},
         {"wallet", &setlabel},
+        {"wallet", &setpqhdpolicy},
         {"wallet", &settxfee},
         {"wallet", &setwalletflag},
         {"wallet", &signmessage},

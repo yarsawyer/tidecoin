@@ -107,6 +107,10 @@ Legend:
     - Output generation gating in `DescriptorScriptPubKeyMan::GetNewDestination` (`src/wallet/scriptpubkeyman.cpp`)
     - Internal vs external descriptor scheme selection uses policy defaults (`src/wallet/wallet.cpp`)
     - Qt scheme override uses async descriptor creation with progress (`src/qt/addresstablemodel.cpp`, `src/wallet/wallet.cpp`)
+    - RPC/Qt policy surface:
+      - `setpqhdpolicy` RPC updates wallet defaults (`src/wallet/rpc/wallet.cpp`)
+      - Options → Wallet tab default scheme selectors (`src/qt/forms/optionsdialog.ui`,
+        `src/qt/optionsdialog.{h,cpp}`, `src/qt/bitcoingui.cpp`)
   - Tests:
     - `./build/bin/test_tidecoin -t pq_pubkey_container_tests` (rule coverage)
     - `./build/bin/test_tidecoin -t walletdb_tests` (policy clamp)

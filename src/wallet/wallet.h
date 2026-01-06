@@ -519,6 +519,8 @@ public:
     bool HavePQHDSeed(const uint256& seed_id) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     size_t GetPQHDSeedCount() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     std::optional<PQHDPolicy> GetPQHDPolicy() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    util::Result<void> SetPQHDPolicy(std::optional<uint8_t> receive_scheme,
+                                     std::optional<uint8_t> change_scheme) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     int GetTargetHeightForOutputs() const override;
 
     /** Interface to assert chain access */

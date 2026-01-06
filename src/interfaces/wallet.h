@@ -16,6 +16,7 @@
 #include <util/fs.h>
 #include <util/result.h>
 #include <util/ui_change_type.h>
+#include <wallet/pqhd.h>
 
 #include <cstdint>
 #include <functional>
@@ -97,6 +98,13 @@ public:
 
     // Get a new address.
     virtual util::Result<CTxDestination> getNewDestination(const OutputType type, const std::string& label, std::optional<uint8_t> scheme_override = std::nullopt) = 0;
+
+    //! Get wallet PQHD policy.
+    virtual std::optional<wallet::PQHDPolicy> getPQHDPolicy() = 0;
+
+    //! Update wallet PQHD policy.
+    virtual util::Result<void> setPQHDPolicy(std::optional<uint8_t> receive_scheme,
+                                             std::optional<uint8_t> change_scheme) = 0;
 
     //! Get public key.
     virtual bool getPubKey(const CScript& script, const CKeyID& address, CPubKey& pub_key) = 0;

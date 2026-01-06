@@ -84,6 +84,7 @@ public:
     int lookupAddress(const QString &address) const;
 
     EditStatus getEditStatus() const { return editStatus; }
+    QString getLastError() const { return m_last_error; }
 
     OutputType GetDefaultAddressType() const;
 
@@ -94,6 +95,7 @@ private:
     AddressTablePriv *priv = nullptr;
     QStringList columns;
     EditStatus editStatus = OK;
+    QString m_last_error;
 
     /** Look up address book data given an address string. */
     bool getAddressData(const QString &address, std::string* name, wallet::AddressPurpose* purpose) const;

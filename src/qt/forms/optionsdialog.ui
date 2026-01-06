@@ -227,6 +227,49 @@
         </widget>
        </item>
        <item>
+        <widget class="QGroupBox" name="groupBoxPqhdPolicy">
+         <property name="title">
+          <string>Default PQ schemes</string>
+         </property>
+         <layout class="QFormLayout" name="formLayoutPqhdPolicy">
+          <item row="0" column="0">
+           <widget class="QLabel" name="pqhdReceiveSchemeLabel">
+            <property name="text">
+             <string>&amp;Default receive scheme</string>
+            </property>
+            <property name="buddy">
+             <cstring>pqhdDefaultReceiveScheme</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="pqhdDefaultReceiveScheme">
+            <property name="toolTip">
+             <string>Select the default PQ scheme for new receive addresses.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="pqhdChangeSchemeLabel">
+            <property name="text">
+             <string>Default &amp;change scheme</string>
+            </property>
+            <property name="buddy">
+             <cstring>pqhdDefaultChangeScheme</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QComboBox" name="pqhdDefaultChangeScheme">
+            <property name="toolTip">
+             <string>Select the default PQ scheme for change outputs.</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <widget class="QGroupBox" name="groupBox">
          <property name="title">
           <string>Expert</string>

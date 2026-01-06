@@ -10,6 +10,7 @@
 
 class ClientModel;
 class OptionsModel;
+class WalletModel;
 class QValidatedLineEdit;
 
 QT_BEGIN_NAMESPACE
@@ -48,6 +49,7 @@ public:
 
     void setClientModel(ClientModel* client_model);
     void setModel(OptionsModel *model);
+    void setWalletModel(WalletModel* wallet_model);
     void setMapper();
     void setCurrentTab(OptionsDialog::Tab tab);
 
@@ -67,6 +69,8 @@ private Q_SLOTS:
     void updateProxyValidationState();
     /* query the networks, for which the default proxy is used */
     void updateDefaultProxyNets();
+    void updatePQHDPolicyControls();
+    bool applyPQHDPolicyChanges();
 
 Q_SIGNALS:
     void proxyIpChecks(QValidatedLineEdit *pUiProxyIp, uint16_t nProxyPort);
@@ -76,6 +80,7 @@ private:
     Ui::OptionsDialog *ui;
     ClientModel* m_client_model{nullptr};
     OptionsModel* model{nullptr};
+    WalletModel* walletModel{nullptr};
     QDataWidgetMapper* mapper{nullptr};
 };
 

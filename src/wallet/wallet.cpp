@@ -1845,6 +1845,65 @@ std::optional<PQHDPolicy> CWallet::GetPQHDPolicy() const
     return m_pqhd_policy;
 }
 
+util::Result<void> CWallet::SetPQHDPolicy(std::optional<uint8_t> receive_scheme,
+                                          std::optional<uint8_t> change_scheme)
+{
+    AssertLockHeld(cs_wallet);
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        return util::Error{Untranslated("PQHD policy requires descriptor wallet")};
+    }
+    if (!m_pqhd_policy) {
+        return util::Error{Untranslated("PQHD policy not initialized")};
+    }
+
+    PQHDPolicy policy = *m_pqhd_policy;
+    const int target_height = GetTargetHeightForOutputs();
+    const Consensus::Params& params = Params().GetConsensus();
+
+    const auto validate_scheme = [&](uint8_t scheme, const char* field) -> util::Result<void> {
+        const auto* info = pq::SchemeFromPrefix(scheme);
+        if (info == nullptr) {
+            return util::Error{Untranslated(strprintf("%s scheme id %u is unknown", field, scheme))};
+        }
+        if (!pq::IsSchemeAllowedAtHeight(info->id, params, target_height)) {
+            return util::Error{Untranslated(strprintf("%s scheme %s is not allowed before auxpow activation height %d",
+                                                     field, info->name, params.nAuxpowStartHeight))};
+        }
+        return util::Result<void>();
+    };
+
+    if (receive_scheme) {
+        auto res = validate_scheme(*receive_scheme, "Receive");
+        if (!res) return res;
+        policy.default_receive_scheme = *receive_scheme;
+    }
+    if (change_scheme) {
+        auto res = validate_scheme(*change_scheme, "Change");
+        if (!res) return res;
+        policy.default_change_scheme = *change_scheme;
+    }
+
+    if (policy.default_receive_scheme == 0) {
+        return util::Error{Untranslated("Default receive scheme must be set")};
+    }
+    if (policy.default_change_scheme == 0) {
+        policy.default_change_scheme = policy.default_receive_scheme;
+    }
+    if (policy.default_seed_id.IsNull()) {
+        return util::Error{Untranslated("Default PQHD seed id is not set")};
+    }
+    if (policy.default_change_seed_id.IsNull()) {
+        policy.default_change_seed_id = policy.default_seed_id;
+    }
+
+    WalletBatch batch(GetDatabase());
+    if (!batch.WritePQHDPolicy(policy)) {
+        return util::Error{Untranslated("Failed to write PQHD policy")};
+    }
+    LoadPQHDPolicy(PQHDPolicy(policy));
+    return util::Result<void>();
+}
+
 int CWallet::GetTargetHeightForOutputs() const
 {
     const std::optional<int> tip_height = chain().getHeight();
@@ -2626,11 +2685,30 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, c
     return GetNewDestination(type, label, std::nullopt);
 }
 
+static std::optional<bilingual_str> SchemeOverrideError(std::optional<uint8_t> scheme_override,
+                                                       const Consensus::Params& params,
+                                                       int target_height)
+{
+    if (!scheme_override) return std::nullopt;
+    const auto* scheme = pq::SchemeFromPrefix(*scheme_override);
+    if (scheme == nullptr) {
+        return _("Unknown PQ scheme prefix.");
+    }
+    if (!pq::IsSchemeAllowedAtHeight(scheme->id, params, target_height)) {
+        return strprintf(_("Scheme %s is not allowed before auxpow activation (height %d)."),
+                         scheme->name, params.nAuxpowStartHeight);
+    }
+    return std::nullopt;
+}
+
 util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, const std::string label, std::optional<uint8_t> scheme_override)
 {
     LOCK(cs_wallet);
     auto spk_man = GetScriptPubKeyMan(type, /*internal=*/false, scheme_override);
     if (!spk_man) {
+        if (auto scheme_error = SchemeOverrideError(scheme_override, Params().GetConsensus(), GetTargetHeightForOutputs())) {
+            return util::Error{*scheme_error};
+        }
         return util::Error{strprintf(_("Error: No %s addresses available."), FormatOutputType(type))};
     }
 
@@ -2716,6 +2794,9 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
     fInternal = internal;
     m_spk_man = pwallet->GetScriptPubKeyMan(type, internal, m_scheme_override);
     if (!m_spk_man) {
+        if (auto scheme_error = SchemeOverrideError(m_scheme_override, Params().GetConsensus(), pwallet->GetTargetHeightForOutputs())) {
+            return util::Error{*scheme_error};
+        }
         return util::Error{strprintf(_("Error: No %s addresses available."), FormatOutputType(type))};
     }
 

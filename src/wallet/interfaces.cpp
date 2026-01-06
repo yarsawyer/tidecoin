@@ -157,6 +157,17 @@ public:
         LOCK(m_wallet->cs_wallet);
         return m_wallet->GetNewDestination(type, label, scheme_override);
     }
+    std::optional<wallet::PQHDPolicy> getPQHDPolicy() override
+    {
+        LOCK(m_wallet->cs_wallet);
+        return m_wallet->GetPQHDPolicy();
+    }
+    util::Result<void> setPQHDPolicy(std::optional<uint8_t> receive_scheme,
+                                     std::optional<uint8_t> change_scheme) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        return m_wallet->SetPQHDPolicy(receive_scheme, change_scheme);
+    }
     bool getPubKey(const CScript& script, const CKeyID& address, CPubKey& pub_key) override
     {
         std::unique_ptr<SigningProvider> provider = m_wallet->GetSolvingProvider(script);

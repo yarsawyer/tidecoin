@@ -330,6 +330,21 @@ bool WalletModel::isHDEnabled() const
     return m_wallet->hasPQHDSeeds();
 }
 
+std::optional<wallet::PQHDPolicy> WalletModel::getPQHDPolicy() const
+{
+    return m_wallet->getPQHDPolicy();
+}
+
+bool WalletModel::setPQHDPolicy(std::optional<uint8_t> receive_scheme, std::optional<uint8_t> change_scheme, QString& error)
+{
+    auto result = m_wallet->setPQHDPolicy(receive_scheme, change_scheme);
+    if (!result) {
+        error = QString::fromStdString(util::ErrorString(result).original);
+        return false;
+    }
+    return true;
+}
+
 bool WalletModel::setWalletEncrypted(const SecureString& passphrase)
 {
     return m_wallet->encryptWallet(passphrase);

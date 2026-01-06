@@ -1389,13 +1389,21 @@ Acceptance tests:
       - Touch‑points: `src/wallet/rpc/util.h`,
         `src/wallet/rpc/util.cpp`, `src/wallet/rpc/addresses.cpp`,
         `src/wallet/rpc/spend.cpp`.
+- [x] RPC default scheme policy:
+      - New `setpqhdpolicy` RPC to update default receive/change scheme.
+      - Stored via `CWallet::SetPQHDPolicy` and persisted in wallet DB policy record.
+      - Touch‑points: `src/wallet/rpc/wallet.cpp`, `src/wallet/wallet.cpp`,
+        `src/wallet/walletdb.cpp`.
 - [x] Qt UI scheme selection:
       - Receive screen scheme selector (wallet default or explicit scheme).
       - Send screen change scheme selector (disabled when custom change address is set).
+      - Options → Wallet tab: default receive/change scheme selectors.
       - Touch‑points: `src/qt/receivecoinsdialog.cpp`,
         `src/qt/forms/receivecoinsdialog.ui`, `src/qt/sendcoinsdialog.cpp`,
         `src/qt/forms/sendcoinsdialog.ui`, `src/qt/addresstablemodel.{h,cpp}`,
-        `src/interfaces/wallet.h`, `src/wallet/interfaces.cpp`.
+        `src/qt/forms/optionsdialog.ui`, `src/qt/optionsdialog.{h,cpp}`,
+        `src/qt/bitcoingui.cpp`, `src/interfaces/wallet.h`,
+        `src/wallet/interfaces.cpp`.
 - [x] Async on-demand descriptor creation (prevents Qt freeze):
       - Run `getNewDestination` in a worker thread when a scheme override is used.
       - Show progress via `CWallet::ShowProgress` when a new PQHD descriptor is created.
