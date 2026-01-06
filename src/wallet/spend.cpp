@@ -8,6 +8,7 @@
 #include <common/system.h>
 #include <consensus/amount.h>
 #include <consensus/validation.h>
+#include <chainparams.h>
 #include <interfaces/chain.h>
 #include <node/types.h>
 #include <numeric>
@@ -15,6 +16,7 @@
 #include <policy/truc_policy.h>
 #include <primitives/transaction.h>
 #include <primitives/transaction_identifier.h>
+#include <pq/pq_scheme.h>
 #include <script/script.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
@@ -1050,6 +1052,19 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         bool sign) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
+
+    if (coin_control.m_change_scheme_override) {
+        const auto* scheme = pq::SchemeFromPrefix(*coin_control.m_change_scheme_override);
+        if (scheme == nullptr) {
+            return util::Error{_("Unknown PQ scheme prefix.")};
+        }
+        const int target_height = wallet.GetTargetHeightForOutputs();
+        const auto& params = Params().GetConsensus();
+        if (!pq::IsSchemeAllowedAtHeight(scheme->id, params, target_height)) {
+            return util::Error{strprintf(_("Scheme %s is not allowed before auxpow activation (height %d)."),
+                                         scheme->name, params.nAuxpowStartHeight)};
+        }
+    }
 
     FastRandomContext rng_fast;
     CMutableTransaction txNew; // The resulting transaction that we make
