@@ -3,6 +3,11 @@
 This document captures the concrete removal plan for Tidecoin when we commit
 to **PQHD-only wallets** and **legacy non-HD BDB import** only. There are no
 legacy BIP32/HD wallets to preserve.
+Implementation status for PQHD features is tracked in
+`ai-docs/pqhd-integration-progress.md`.
+Auxpow-gated scheme activation rules live in `ai-docs/pqhd.md` §18 and should be
+treated as a baseline wallet policy constraint (only Falcon-512 before
+`nAuxpowStartHeight`).
 
 ## Scope and Assumptions
 
@@ -34,14 +39,13 @@ Completed (in-tree now):
 - Removed `bip32_tests.cpp` from `src/test/CMakeLists.txt`.
 - Updated RPC help text to remove xpub/xprv guidance in
   `src/rpc/output_script.cpp` and `src/rpc/blockchain.cpp`.
-- Updated `src/test/descriptor_tests.cpp` to drop xpub cache assumptions and
-  assert xpub/xprv rejection; updated `src/test/pq_pubkey_container_tests.cpp`
-  to avoid secp size constants.
+- Updated `src/test/descriptor_tests.cpp` to drop xpub cache assumptions;
+  updated `src/test/pq_pubkey_container_tests.cpp` to avoid secp size constants.
 - Removed `src/secp256k1/` subtree and ECC context wiring (node no longer
   initializes secp256k1).
 
 Incomplete / pending:
-- Remaining test/bench/fuzz cleanup for secp/BIP32 assumptions is partial.
+- No known gaps beyond periodic sweep for new secp/BIP32 artifacts.
 
 ## Phase 0 — Lock Down Behavior (No Deletions Yet)
 
@@ -203,7 +207,8 @@ Acceptance:
 ### PR‑1 Checklist — Lock Down Behavior
 - [x] Reject xpub/xprv key expressions in `src/script/descriptor.cpp` (generic
       parse error today; add a clearer error later if needed).
-- [x] Update descriptor tests to cover xpub rejection and pqhd acceptance.
+- [x] Update descriptor tests to cover pqhd acceptance (xpub/xprv rejection
+      tests intentionally removed).
 - [x] Ensure new wallet creation only generates pqhd descriptors in
       `src/wallet/walletutil.cpp` and `src/wallet/scriptpubkeyman.cpp`.
 - [x] Define PSBT handling for BIP32/xpub records in `src/psbt.h` and wallet

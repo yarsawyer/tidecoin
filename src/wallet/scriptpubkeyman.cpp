@@ -2,12 +2,14 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <chainparams.h>
 #include <hash.h>
 #include <key_io.h>
 #include <logging.h>
 #include <node/types.h>
 #include <outputtype.h>
 #include <policy/policy.h>
+#include <pq/pq_scheme.h>
 #include <script/descriptor.h>
 #include <script/script.h>
 #include <script/sign.h>
@@ -733,6 +735,17 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
         assert(desc_addr_type);
         if (type != *desc_addr_type) {
             throw std::runtime_error(std::string(__func__) + ": Types are inconsistent. Stored type does not match type of newly generated address");
+        }
+
+        const std::optional<uint8_t> scheme_prefix = m_wallet_descriptor.descriptor->GetPQHDSchemePrefix();
+        if (scheme_prefix) {
+            const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(*scheme_prefix);
+            if (scheme != nullptr) {
+                const int target_height = m_storage.GetTargetHeightForOutputs();
+                if (!pq::IsSchemeAllowedAtHeight(scheme->id, Params().GetConsensus(), target_height)) {
+                    return util::Error{strprintf("%s not allowed at height %i", scheme->name, target_height)};
+                }
+            }
         }
 
         TopUp();

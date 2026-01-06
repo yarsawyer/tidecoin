@@ -28,7 +28,7 @@
      <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
        <layout class="QGridLayout" name="gridLayout">
-        <item row="5" column="0">
+        <item row="6" column="0">
          <widget class="QLabel" name="label">
           <property name="toolTip">
            <string>An optional amount to request. Leave this empty or zero to not request a specific amount.</string>
@@ -44,7 +44,7 @@
           </property>
          </widget>
         </item>
-        <item row="6" column="0">
+        <item row="7" column="0">
          <widget class="QLabel" name="label_3">
           <property name="toolTip">
            <string>An optional message to attach to the payment request, which will be displayed when the request is opened. Note: The message will not be sent with the payment over the Bitcoin network.</string>
@@ -90,14 +90,46 @@
           </property>
          </widget>
         </item>
-        <item row="6" column="2">
+        <item row="5" column="0">
+         <widget class="QLabel" name="label_scheme">
+          <property name="text">
+           <string>S&amp;cheme:</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+          <property name="buddy">
+           <cstring>schemeCombo</cstring>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="2">
+         <widget class="QComboBox" name="schemeCombo">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>1000</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="focusPolicy">
+           <enum>Qt::StrongFocus</enum>
+          </property>
+         </widget>
+        </item>
+        <item row="7" column="2">
          <widget class="QLineEdit" name="reqMessage">
           <property name="toolTip">
            <string>An optional message that is attached to the payment request and may be displayed to the sender.</string>
           </property>
          </widget>
         </item>
-        <item row="7" column="2">
+        <item row="8" column="2">
          <layout class="QHBoxLayout" name="horizontalLayout">
           <item>
            <widget class="QPushButton" name="receiveButton">
@@ -160,14 +192,14 @@
           </item>
          </layout>
         </item>
-        <item row="7" column="0">
+        <item row="8" column="0">
          <widget class="QLabel" name="label_7">
           <property name="text">
            <string/>
           </property>
          </widget>
         </item>
-        <item row="5" column="2">
+        <item row="6" column="2">
          <layout class="QHBoxLayout" name="horizontalLayout_6">
           <item>
            <widget class="BitcoinAmountField" name="reqAmount">
@@ -359,6 +391,7 @@
  </customwidgets>
  <tabstops>
   <tabstop>reqLabel</tabstop>
+  <tabstop>schemeCombo</tabstop>
   <tabstop>reqAmount</tabstop>
   <tabstop>addressType</tabstop>
   <tabstop>reqMessage</tabstop>

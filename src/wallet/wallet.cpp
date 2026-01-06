@@ -38,6 +38,7 @@
 #include <psbt.h>
 #include <pubkey.h>
 #include <pq/pqhd_kdf.h>
+#include <pq/pqhd_params.h>
 #include <pq/pq_scheme.h>
 #include <random.h>
 #include <script/descriptor.h>
@@ -102,23 +103,36 @@ std::string CWallet::WalletCreationProgressTitle() const
 
 void CWallet::StartWalletCreationProgress(uint64_t total_steps)
 {
-    if (total_steps == 0) return;
-    if (!HaveChain()) return;
+    StartWalletCreationProgress(total_steps, WalletCreationProgressTitle());
+}
 
+void CWallet::StartWalletCreationProgress(uint64_t total_steps, const std::string& title)
+{
+    if (total_steps == 0) return;
+
+    m_wallet_creation_progress_title = title;
     m_wallet_creation_progress_total.store(total_steps);
     m_wallet_creation_progress_done.store(0);
     m_wallet_creation_progress_last_percent.store(-1);
-    m_wallet_creation_progress_active.store(true);
-    chain().showProgress(WalletCreationProgressTitle(), 0, /*resume_possible=*/false);
+    m_wallet_creation_progress_active.store(true, std::memory_order_release);
+    if (HaveChain()) {
+        chain().showProgress(m_wallet_creation_progress_title, 0, /*resume_possible=*/false);
+    }
+    if (m_wallet_creation_progress_title != WalletCreationProgressTitle()) {
+        ShowProgress(m_wallet_creation_progress_title, 0);
+    }
 }
 
 void CWallet::FinishWalletCreationProgress()
 {
-    const bool was_active = m_wallet_creation_progress_active.exchange(false);
+    const bool was_active = m_wallet_creation_progress_active.exchange(false, std::memory_order_release);
     if (!was_active) return;
 
     if (HaveChain()) {
-        chain().showProgress(WalletCreationProgressTitle(), 100, /*resume_possible=*/false);
+        chain().showProgress(m_wallet_creation_progress_title, 100, /*resume_possible=*/false);
+    }
+    if (m_wallet_creation_progress_title != WalletCreationProgressTitle()) {
+        ShowProgress(m_wallet_creation_progress_title, 100);
     }
 
     m_wallet_creation_progress_total.store(0);
@@ -128,8 +142,7 @@ void CWallet::FinishWalletCreationProgress()
 
 void CWallet::WalletCreationProgressStep()
 {
-    if (!m_wallet_creation_progress_active.load()) return;
-    if (!HaveChain()) return;
+    if (!m_wallet_creation_progress_active.load(std::memory_order_acquire)) return;
 
     const uint64_t total = m_wallet_creation_progress_total.load();
     if (total == 0) return;
@@ -143,7 +156,12 @@ void CWallet::WalletCreationProgressStep()
     const int last = m_wallet_creation_progress_last_percent.load();
     if (percent == last) return;
     m_wallet_creation_progress_last_percent.store(percent);
-    chain().showProgress(WalletCreationProgressTitle(), percent, /*resume_possible=*/false);
+    if (HaveChain()) {
+        chain().showProgress(m_wallet_creation_progress_title, percent, /*resume_possible=*/false);
+    }
+    if (m_wallet_creation_progress_title != WalletCreationProgressTitle()) {
+        ShowProgress(m_wallet_creation_progress_title, percent);
+    }
 }
 
 bool AddWalletSetting(interfaces::Chain& chain, const std::string& wallet_name)
@@ -1789,15 +1807,15 @@ bool CWallet::LoadPQHDCryptedSeed(const uint256& seed_id, PQHDCryptedSeed&& seed
 void CWallet::LoadPQHDPolicy(PQHDPolicy&& policy)
 {
     AssertLockHeld(cs_wallet);
-    const std::optional<int> tip_height = chain().getHeight();
-    const int next_height = tip_height ? *tip_height + 1 : 0;
-    const bool auxpow_active = next_height >= Params().GetConsensus().nAuxpowStartHeight;
+    const int target_height = GetTargetHeightForOutputs();
+    const Consensus::Params& params = Params().GetConsensus();
     const uint8_t falcon512 = static_cast<uint8_t>(pq::SchemeId::FALCON_512);
 
     const auto clamp_scheme = [&](uint8_t scheme) -> uint8_t {
         if (scheme == 0) return falcon512;
-        if (pq::SchemeFromPrefix(scheme) == nullptr) return falcon512;
-        if (!auxpow_active && scheme != falcon512) return falcon512;
+        const auto* info = pq::SchemeFromPrefix(scheme);
+        if (info == nullptr) return falcon512;
+        if (!pq::IsSchemeAllowedAtHeight(info->id, params, target_height)) return falcon512;
         return scheme;
     };
 
@@ -1825,6 +1843,15 @@ std::optional<PQHDPolicy> CWallet::GetPQHDPolicy() const
 {
     AssertLockHeld(cs_wallet);
     return m_pqhd_policy;
+}
+
+int CWallet::GetTargetHeightForOutputs() const
+{
+    const std::optional<int> tip_height = chain().getHeight();
+    if (!tip_height || *tip_height < 0) {
+        return 0;
+    }
+    return *tip_height + 1;
 }
 
 void CWallet::InitWalletFlags(uint64_t flags)
@@ -2596,8 +2623,13 @@ bool CWallet::TopUpKeyPool(unsigned int kpSize)
 
 util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, const std::string label)
 {
+    return GetNewDestination(type, label, std::nullopt);
+}
+
+util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, const std::string label, std::optional<uint8_t> scheme_override)
+{
     LOCK(cs_wallet);
-    auto spk_man = GetScriptPubKeyMan(type, /*internal=*/false);
+    auto spk_man = GetScriptPubKeyMan(type, /*internal=*/false, scheme_override);
     if (!spk_man) {
         return util::Error{strprintf(_("Error: No %s addresses available."), FormatOutputType(type))};
     }
@@ -2612,9 +2644,14 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, c
 
 util::Result<CTxDestination> CWallet::GetNewChangeDestination(const OutputType type)
 {
+    return GetNewChangeDestination(type, std::nullopt);
+}
+
+util::Result<CTxDestination> CWallet::GetNewChangeDestination(const OutputType type, std::optional<uint8_t> scheme_override)
+{
     LOCK(cs_wallet);
 
-    ReserveDestination reservedest(this, type);
+    ReserveDestination reservedest(this, type, scheme_override);
     auto op_dest = reservedest.GetReservedDestination(true);
     if (op_dest) reservedest.KeepDestination();
 
@@ -2676,7 +2713,8 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
 {
-    m_spk_man = pwallet->GetScriptPubKeyMan(type, internal);
+    fInternal = internal;
+    m_spk_man = pwallet->GetScriptPubKeyMan(type, internal, m_scheme_override);
     if (!m_spk_man) {
         return util::Error{strprintf(_("Error: No %s addresses available."), FormatOutputType(type))};
     }
@@ -3492,6 +3530,99 @@ ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool intern
     return it->second;
 }
 
+ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal, std::optional<uint8_t> scheme_override)
+{
+    AssertLockHeld(cs_wallet);
+    if (!scheme_override) {
+        return GetScriptPubKeyMan(type, internal);
+    }
+
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        return nullptr;
+    }
+
+    const auto* scheme = pq::SchemeFromPrefix(*scheme_override);
+    if (scheme == nullptr) {
+        return nullptr;
+    }
+
+    const int target_height = GetTargetHeightForOutputs();
+    if (!pq::IsSchemeAllowedAtHeight(scheme->id, Params().GetConsensus(), target_height)) {
+        return nullptr;
+    }
+
+    const auto policy = GetPQHDPolicy();
+    if (!policy) {
+        return nullptr;
+    }
+
+    const uint256 seed_id = internal ? policy->default_change_seed_id : policy->default_seed_id;
+    const uint32_t scheme_u32 = *scheme_override;
+
+    auto matches = [&](DescriptorScriptPubKeyMan* desc_spk_man) -> bool {
+        if (desc_spk_man == nullptr) return false;
+        const auto& wallet_desc = desc_spk_man->GetWalletDescriptor();
+        if (!wallet_desc.descriptor) return false;
+        const auto out_type = wallet_desc.descriptor->GetOutputType();
+        if (!out_type || *out_type != type) return false;
+        const auto info = wallet_desc.descriptor->GetPQHDKeyPathInfo();
+        if (!info || !info->is_range) return false;
+        if (info->seed_id != seed_id) return false;
+        if (info->path.size() != 5) return false;
+
+        const auto masked = [](uint32_t v) { return v & 0x7FFFFFFFUL; };
+        if (masked(info->path[0]) != pqhd::PURPOSE) return false;
+        if (masked(info->path[1]) != pqhd::COIN_TYPE) return false;
+        if (masked(info->path[2]) != scheme_u32) return false;
+        if (masked(info->path[3]) != 0U) return false;
+        if (masked(info->path[4]) != (internal ? 1U : 0U)) return false;
+        return true;
+    };
+
+    if (auto* active_desc = dynamic_cast<DescriptorScriptPubKeyMan*>(GetScriptPubKeyMan(type, internal))) {
+        if (matches(active_desc)) return active_desc;
+    }
+
+    for (auto& [id, spk_man] : m_spk_managers) {
+        if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man.get())) {
+            if (matches(desc_spk_man)) return desc_spk_man;
+        }
+    }
+
+    if (IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER)) {
+        return nullptr;
+    }
+    if (!HavePQHDSeed(seed_id)) {
+        return nullptr;
+    }
+    if (IsCrypted() && IsLocked()) {
+        return nullptr;
+    }
+
+    const std::string progress_title = strprintf("[%s] %s", DisplayName(), _("Generating PQHD descriptor..."));
+    const uint64_t total_steps = static_cast<uint64_t>(std::max<int64_t>(m_keypool_size, 1));
+    StartWalletCreationProgress(total_steps, progress_title);
+    try {
+        WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_id, *scheme_override, type, internal, Params().GetConsensus(), target_height);
+        auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
+        WalletBatch batch(GetDatabase());
+        if (IsCrypted()) {
+            if (!spk_manager->CheckDecryptionKey(vMasterKey) && !spk_manager->Encrypt(vMasterKey, &batch)) {
+                throw std::runtime_error(std::string(__func__) + ": Could not encrypt new descriptors");
+            }
+        }
+        spk_manager->SetupDescriptor(batch, std::move(w_desc));
+        uint256 id = spk_manager->GetID();
+        auto* result = spk_manager.get();
+        AddScriptPubKeyMan(id, std::move(spk_manager));
+        FinishWalletCreationProgress();
+        return result;
+    } catch (...) {
+        FinishWalletCreationProgress();
+        throw;
+    }
+}
+
 std::set<ScriptPubKeyMan*> CWallet::GetScriptPubKeyMans(const CScript& script) const
 {
     std::set<ScriptPubKeyMan*> spk_mans;
@@ -3694,10 +3825,15 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     }
     LoadPQHDPolicy(PQHDPolicy(policy));
 
-    // Setup default ScriptPubKeyMans backed by PQHD descriptors (only Falcon-512 before auxpow).
+    const Consensus::Params& consensus = Params().GetConsensus();
+    const int target_height = GetTargetHeightForOutputs();
+
+    // Setup default ScriptPubKeyMans backed by PQHD descriptors.
     for (bool internal : {false, true}) {
+        const uint8_t scheme_prefix = internal ? policy.default_change_scheme : policy.default_receive_scheme;
+        const uint256 seed_for_descriptor = internal ? policy.default_change_seed_id : policy.default_seed_id;
         for (OutputType t : OUTPUT_TYPES) {
-            WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_id, policy.default_receive_scheme, t, internal);
+            WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_for_descriptor, scheme_prefix, t, internal, consensus, target_height);
             auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
             if (IsCrypted()) {
                 if (IsLocked()) {

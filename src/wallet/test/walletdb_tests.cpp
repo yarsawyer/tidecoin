@@ -4,10 +4,13 @@
 
 #include <test/util/setup_common.h>
 #include <clientversion.h>
+#include <outputtype.h>
+#include <pq/pq_scheme.h>
 #include <streams.h>
 #include <uint256.h>
 #include <wallet/test/util.h>
 #include <wallet/wallet.h>
+#include <wallet/walletutil.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -114,6 +117,19 @@ BOOST_AUTO_TEST_CASE(walletdb_pqhd_records_roundtrip)
         BOOST_CHECK_EQUAL(decoded.default_seed_id, policy.default_seed_id);
         BOOST_CHECK_EQUAL(decoded.default_change_seed_id, policy.default_change_seed_id);
     }
+}
+
+BOOST_AUTO_TEST_CASE(walletutil_pqhd_descriptor_auxpow_gate)
+{
+    const uint256 seed_id = uint256::ONE;
+    const auto falcon_prefix = static_cast<uint8_t>(pq::SchemeId::FALCON_512);
+    const auto mldsa_prefix = static_cast<uint8_t>(pq::SchemeId::MLDSA_44);
+    Consensus::Params params;
+    params.nAuxpowStartHeight = 100;
+
+    BOOST_CHECK_NO_THROW(GeneratePQHDWalletDescriptor(seed_id, falcon_prefix, OutputType::BECH32, false, params, 0));
+    BOOST_CHECK_THROW(GeneratePQHDWalletDescriptor(seed_id, mldsa_prefix, OutputType::BECH32, false, params, 0), std::runtime_error);
+    BOOST_CHECK_NO_THROW(GeneratePQHDWalletDescriptor(seed_id, mldsa_prefix, OutputType::BECH32, false, params, 100));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

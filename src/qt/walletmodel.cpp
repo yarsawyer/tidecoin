@@ -325,6 +325,11 @@ WalletModel::EncryptionStatus WalletModel::getEncryptionStatus() const
     }
 }
 
+bool WalletModel::isHDEnabled() const
+{
+    return m_wallet->hasPQHDSeeds();
+}
+
 bool WalletModel::setWalletEncrypted(const SecureString& passphrase)
 {
     return m_wallet->encryptWallet(passphrase);

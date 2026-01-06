@@ -9,11 +9,19 @@
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
+#include <uint256.h>
 
 #include <optional>
 #include <vector>
 
 using PubKeyMap = std::unordered_map<uint32_t, CPubKey>;
+
+struct PQHDKeyPathInfo
+{
+    uint256 seed_id;
+    std::vector<uint32_t> path;
+    bool is_range{false};
+};
 
 /** Cache for single descriptor's derived extended pubkeys */
 class DescriptorCache {
@@ -132,6 +140,12 @@ struct Descriptor {
      * @param[out] pubkeys Any public keys
      */
     virtual void GetPubKeys(std::set<CPubKey>& pubkeys) const = 0;
+
+    /** Return the PQ scheme prefix if this descriptor maps to a single scheme. */
+    virtual std::optional<uint8_t> GetPQHDSchemePrefix() const = 0;
+
+    /** Return PQHD seed/path information if this descriptor maps to a single PQHD key path. */
+    virtual std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const = 0;
 };
 
 /** Parse a `descriptor` string. Included private keys are put in `out`.

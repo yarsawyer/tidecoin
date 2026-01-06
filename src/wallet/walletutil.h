@@ -5,6 +5,7 @@
 #ifndef BITCOIN_WALLET_WALLETUTIL_H
 #define BITCOIN_WALLET_WALLETUTIL_H
 
+#include <consensus/params.h>
 #include <script/descriptor.h>
 #include <util/fs.h>
 
@@ -97,7 +98,12 @@ public:
 
 //! Generate a ranged wallet descriptor backed by PQHD (pqhd(SEEDID32)/.../*h).
 //! This does not rely on BIP32/xpub and instead uses the pqhd() key expression.
-WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id, uint8_t scheme_prefix, const OutputType& output_type, bool internal);
+WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id,
+                                              uint8_t scheme_prefix,
+                                              const OutputType& output_type,
+                                              bool internal,
+                                              const Consensus::Params& consensus,
+                                              int target_height);
 } // namespace wallet
 
 #endif // BITCOIN_WALLET_WALLETUTIL_H

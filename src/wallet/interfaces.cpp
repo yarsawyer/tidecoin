@@ -152,10 +152,10 @@ public:
     void abortRescan() override { m_wallet->AbortRescan(); }
     bool backupWallet(const std::string& filename) override { return m_wallet->BackupWallet(filename); }
     std::string getWalletName() override { return m_wallet->GetName(); }
-    util::Result<CTxDestination> getNewDestination(const OutputType type, const std::string& label) override
+    util::Result<CTxDestination> getNewDestination(const OutputType type, const std::string& label, std::optional<uint8_t> scheme_override) override
     {
         LOCK(m_wallet->cs_wallet);
-        return m_wallet->GetNewDestination(type, label);
+        return m_wallet->GetNewDestination(type, label, scheme_override);
     }
     bool getPubKey(const CScript& script, const CKeyID& address, CPubKey& pub_key) override
     {
@@ -489,6 +489,7 @@ public:
     bool canGetAddresses() override { return m_wallet->CanGetAddresses(); }
     bool hasExternalSigner() override { return m_wallet->IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER); }
     bool privateKeysDisabled() override { return m_wallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS); }
+    bool hasPQHDSeeds() override { return m_wallet->HasPQHDSeeds(); }
     OutputType getDefaultAddressType() override { return m_wallet->m_default_address_type; }
     CAmount getDefaultMaxTxFee() override { return m_wallet->m_default_max_tx_fee; }
     void remove() override

@@ -10,6 +10,8 @@
 
 #include <wallet/types.h>
 
+#include <optional>
+
 #include <QDataWidgetMapper>
 #include <QMessageBox>
 
@@ -80,7 +82,8 @@ bool EditAddressDialog::saveCurrentRow()
                 AddressTableModel::Send,
                 ui->labelEdit->text(),
                 ui->addressEdit->text(),
-                model->GetDefaultAddressType());
+                model->GetDefaultAddressType(),
+                std::nullopt);
         break;
     case EditReceivingAddress:
     case EditSendingAddress:

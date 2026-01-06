@@ -540,6 +540,7 @@ CreatedTransactionResult FundTransaction(CWallet& wallet, const CMutableTransact
                     {"changePosition", UniValueType(UniValue::VNUM)},
                     {"change_position", UniValueType(UniValue::VNUM)},
                     {"change_type", UniValueType(UniValue::VSTR)},
+                    {"change_scheme", UniValueType()},
                     {"includeWatching", UniValueType(UniValue::VBOOL)},
                     {"include_watching", UniValueType(UniValue::VBOOL)},
                     {"inputs", UniValueType(UniValue::VARR)},
@@ -593,6 +594,16 @@ CreatedTransactionResult FundTransaction(CWallet& wallet, const CMutableTransact
                     coinControl.m_change_type.emplace(parsed.value());
                 } else {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown change type '%s'", options["change_type"].get_str()));
+                }
+            }
+
+            if (options.exists("change_scheme")) {
+                if (options.exists("changeAddress") || options.exists("change_address")) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot specify both change address and change scheme options");
+                }
+                const std::optional<uint8_t> scheme_override = ParsePQSchemePrefix(options["change_scheme"]);
+                if (scheme_override) {
+                    coinControl.m_change_scheme_override = *scheme_override;
                 }
             }
 
@@ -783,6 +794,7 @@ RPCHelpMan fundrawtransaction()
                             {"changeAddress", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The bitcoin address to receive the change"},
                             {"changePosition", RPCArg::Type::NUM, RPCArg::DefaultHint{"random"}, "The index of the change output"},
                             {"change_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The output type to use. Only valid if changeAddress is not specified. Options are " + FormatAllOutputTypes() + "."},
+                            {"change_scheme", RPCArg::Type::STR, RPCArg::DefaultHint{"wallet default scheme"}, "The PQ scheme to use for change outputs (name or numeric prefix). Only valid if changeAddress is not specified."},
                             {"includeWatching", RPCArg::Type::BOOL, RPCArg::Default{false}, "(DEPRECATED) No longer used"},
                             {"lockUnspents", RPCArg::Type::BOOL, RPCArg::Default{false}, "Lock selected unspent outputs"},
                             {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB."},
@@ -1244,6 +1256,7 @@ RPCHelpMan send()
                     {"change_address", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The bitcoin address to receive the change"},
                     {"change_position", RPCArg::Type::NUM, RPCArg::DefaultHint{"random"}, "The index of the change output"},
                     {"change_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The output type to use. Only valid if change_address is not specified. Options are " + FormatAllOutputTypes() + "."},
+                    {"change_scheme", RPCArg::Type::STR, RPCArg::DefaultHint{"wallet default scheme"}, "The PQ scheme to use for change outputs (name or numeric prefix). Only valid if change_address is not specified."},
                     {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB.", RPCArgOptions{.also_positional = true}},
                     {"include_watching", RPCArg::Type::BOOL, RPCArg::Default{"false"}, "(DEPRECATED) No longer used"},
                     {"inputs", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "Specify inputs instead of adding them automatically.",
@@ -1750,6 +1763,7 @@ RPCHelpMan walletcreatefundedpsbt()
                             {"changeAddress", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The bitcoin address to receive the change"},
                             {"changePosition", RPCArg::Type::NUM, RPCArg::DefaultHint{"random"}, "The index of the change output"},
                             {"change_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The output type to use. Only valid if changeAddress is not specified. Options are " + FormatAllOutputTypes() + "."},
+                            {"change_scheme", RPCArg::Type::STR, RPCArg::DefaultHint{"wallet default scheme"}, "The PQ scheme to use for change outputs (name or numeric prefix). Only valid if changeAddress is not specified."},
                             {"includeWatching", RPCArg::Type::BOOL, RPCArg::Default{false}, "(DEPRECATED) No longer used"},
                             {"lockUnspents", RPCArg::Type::BOOL, RPCArg::Default{false}, "Lock selected unspent outputs"},
                             {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB."},

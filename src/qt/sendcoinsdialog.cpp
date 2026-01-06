@@ -17,6 +17,7 @@
 #include <qt/sendcoinsentry.h>
 
 #include <chainparams.h>
+#include <pq/pq_scheme.h>
 #include <interfaces/node.h>
 #include <key_io.h>
 #include <node/interface_ui.h>
@@ -32,7 +33,9 @@
 #include <chrono>
 #include <fstream>
 #include <memory>
+#include <optional>
 
+#include <QComboBox>
 #include <QFontMetrics>
 #include <QScrollBar>
 #include <QSettings>
@@ -52,6 +55,40 @@ int getConfTargetForIndex(int index) {
     }
     return confTargets[index];
 }
+
+namespace {
+
+constexpr std::array<const pq::SchemeInfo*, 5> kSchemeOptions{
+    &pq::kFalcon512Info,
+    &pq::kFalcon1024Info,
+    &pq::kMLDSA44Info,
+    &pq::kMLDSA65Info,
+    &pq::kMLDSA87Info,
+};
+
+void PopulateChangeSchemeCombo(QComboBox* combo)
+{
+    if (!combo) return;
+    combo->clear();
+    combo->addItem(QObject::tr("Wallet default"), QVariant());
+    for (const auto* scheme : kSchemeOptions) {
+        combo->addItem(QString::fromLatin1(scheme->name), static_cast<int>(scheme->prefix));
+    }
+    combo->setCurrentIndex(0);
+}
+
+std::optional<uint8_t> SchemeOverrideFromCombo(const QComboBox* combo)
+{
+    if (!combo) return std::nullopt;
+    const QVariant data = combo->currentData();
+    if (!data.isValid()) return std::nullopt;
+    bool ok = false;
+    const int value = data.toInt(&ok);
+    if (!ok) return std::nullopt;
+    return static_cast<uint8_t>(value);
+}
+
+} // namespace
 int getIndexForConfTarget(int target) {
     for (unsigned int i = 0; i < confTargets.size(); i++) {
         if (confTargets[i] >= target) {
@@ -80,6 +117,7 @@ SendCoinsDialog::SendCoinsDialog(const PlatformStyle *_platformStyle, QWidget *p
     }
 
     GUIUtil::setupAddressWidget(ui->lineEditCoinControlChange, this);
+    PopulateChangeSchemeCombo(ui->comboBoxCoinControlChangeScheme);
 
     addEntry();
 
@@ -94,6 +132,7 @@ SendCoinsDialog::SendCoinsDialog(const PlatformStyle *_platformStyle, QWidget *p
     connect(ui->checkBoxCoinControlChange, &QCheckBox::stateChanged, this, &SendCoinsDialog::coinControlChangeChecked);
 #endif
     connect(ui->lineEditCoinControlChange, &QValidatedLineEdit::textEdited, this, &SendCoinsDialog::coinControlChangeEdited);
+    connect(ui->comboBoxCoinControlChangeScheme, qOverload<int>(&QComboBox::currentIndexChanged), this, &SendCoinsDialog::coinControlChangeSchemeChanged);
 
     // Coin Control: clipboard actions
     QAction *clipboardQuantityAction = new QAction(tr("Copy quantity"), this);
@@ -135,6 +174,7 @@ SendCoinsDialog::SendCoinsDialog(const PlatformStyle *_platformStyle, QWidget *p
     minimizeFeeSection(settings.value("fFeeSectionMinimized").toBool());
 
     GUIUtil::ExceptionSafeConnect(ui->sendButton, &QPushButton::clicked, this, &SendCoinsDialog::sendButtonClicked);
+    updateChangeSchemeOverride();
 }
 
 void SendCoinsDialog::setClientModel(ClientModel *_clientModel)
@@ -567,6 +607,10 @@ void SendCoinsDialog::clear()
     m_coin_control->UnSelectAll();
     ui->checkBoxCoinControlChange->setChecked(false);
     ui->lineEditCoinControlChange->clear();
+    if (ui->comboBoxCoinControlChangeScheme) {
+        ui->comboBoxCoinControlChangeScheme->setCurrentIndex(0);
+    }
+    updateChangeSchemeOverride();
     coinControlUpdateLabels();
 
     // Remove entries until only one left
@@ -844,6 +888,23 @@ void SendCoinsDialog::updateCoinControlState()
     // Either custom fee will be used or if not selected, the confirmation target from dropdown box
     m_coin_control->m_confirm_target = getConfTargetForIndex(ui->confTargetSelector->currentIndex());
     m_coin_control->m_signal_bip125_rbf = ui->optInRBF->isChecked();
+    updateChangeSchemeOverride();
+}
+
+void SendCoinsDialog::updateChangeSchemeOverride()
+{
+    if (!ui->comboBoxCoinControlChangeScheme) return;
+    if (!ui->frameCoinControl->isVisible()) {
+        m_coin_control->m_change_scheme_override.reset();
+        return;
+    }
+    const bool custom_change = ui->checkBoxCoinControlChange->isChecked();
+    ui->comboBoxCoinControlChangeScheme->setEnabled(!custom_change);
+    if (custom_change) {
+        m_coin_control->m_change_scheme_override.reset();
+        return;
+    }
+    m_coin_control->m_change_scheme_override = SchemeOverrideFromCombo(ui->comboBoxCoinControlChangeScheme);
 }
 
 void SendCoinsDialog::updateNumberOfBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, SyncType synctype, SynchronizationState sync_state) {
@@ -932,6 +993,7 @@ void SendCoinsDialog::coinControlFeatureChanged(bool checked)
         m_coin_control = std::make_unique<CCoinControl>();
     }
 
+    updateChangeSchemeOverride();
     coinControlUpdateLabels();
 }
 
@@ -960,6 +1022,7 @@ void SendCoinsDialog::coinControlChangeChecked(int state)
         coinControlChangeEdited(ui->lineEditCoinControlChange->text());
 
     ui->lineEditCoinControlChange->setEnabled((state == Qt::Checked));
+    updateChangeSchemeOverride();
 }
 
 // Coin Control: custom change address changed
@@ -1014,6 +1077,11 @@ void SendCoinsDialog::coinControlChangeEdited(const QString& text)
             }
         }
     }
+}
+
+void SendCoinsDialog::coinControlChangeSchemeChanged(int)
+{
+    updateChangeSchemeOverride();
 }
 
 // Coin Control: update labels

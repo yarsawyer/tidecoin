@@ -1072,7 +1072,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
 
     CAmount recipients_sum = 0;
     const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend);
-    ReserveDestination reservedest(&wallet, change_type);
+    ReserveDestination reservedest(&wallet, change_type, coin_control.m_change_scheme_override);
     unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend) {
         if (IsDust(recipient, wallet.chain().relayDustFee())) {

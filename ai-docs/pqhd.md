@@ -7,6 +7,8 @@ address rotation, change outputs) **without** relying on BIP32 public derivation
 
 This document is a target design. It intentionally includes both “repo reality”
 and “new spec” pieces.
+Implementation status is tracked in `ai-docs/pqhd-integration-progress.md`.
+PQHD‑only cleanup/removal work is tracked in `ai-docs/pqhd-removal-plan.md`.
 
 ---
 
@@ -532,17 +534,18 @@ Rationale:
 
 We keep PSBT as “the container” (BIP174 framing, base64 in RPC, same core flows:
 create → update → sign → finalize → extract). The changes are primarily about
-which optional metadata fields we populate.
+which optional metadata fields we populate or reject.
 
 Key points:
 - PQ signatures do not require any change to the PSBT container; signatures are
   just byte vectors attached to pubkeys/scripts.
-- BIP32/xpub-related metadata will not be written by PQHD wallets, because:
+- BIP32/xpub-related metadata is not written by PQHD wallets, because:
   - there is no xpub concept for PQHD, and
   - BIP32 derivation records encode a 4-byte fingerprint (a truncated handle),
     which we decided to avoid for PQHD (SeedID32 only).
-- We still parse/retain these legacy fields for interoperability with existing
-  PSBTs and to avoid unnecessary churn, but PQHD logic ignores them.
+- Global xpubs are **rejected** during PSBT parse (hard fail).
+- BIP32 derivation records may be accepted for round‑trip, but they are ignored
+  by PQHD logic and not exposed in RPC output.
 
 Field matrix (“PQHD wallet behavior”):
 
@@ -550,7 +553,7 @@ Field matrix (“PQHD wallet behavior”):
 - `PSBT_GLOBAL_UNSIGNED_TX`: keep (required)
 - `PSBT_GLOBAL_VERSION`: keep (required by v2/optional by v0, but we keep)
 - `PSBT_GLOBAL_PROPRIETARY`: keep (used for extensions; optional)
-- `PSBT_GLOBAL_XPUB`: parse/retain only; PQHD wallet does not write
+- `PSBT_GLOBAL_XPUB`: **hard‑reject** (unsupported)
 
 **Per-input PSBT map**
 - `PSBT_IN_NON_WITNESS_UTXO`: keep (sometimes required for signing)
@@ -559,7 +562,7 @@ Field matrix (“PQHD wallet behavior”):
 - `PSBT_IN_SIGHASH`: keep (still needed: SIGHASH type is part of script sig)
 - `PSBT_IN_REDEEMSCRIPT`: keep (P2SH / nested cases)
 - `PSBT_IN_WITNESSSCRIPT`: keep (P2WSH / nested cases)
-- `PSBT_IN_BIP32_DERIVATION`: parse/retain only; PQHD wallet does not write
+- `PSBT_IN_BIP32_DERIVATION`: accept for round‑trip only; PQHD wallet does not write
 - `PSBT_IN_[RIPEMD160|SHA256|HASH160|HASH256]` preimages: keep (script tooling)
 - `PSBT_IN_PROPRIETARY`: keep (used for `tidecoin/PQHD_ORIGIN`)
 - `PSBT_IN_[SCRIPTSIG|SCRIPTWITNESS]` final fields: keep (finalize step)
@@ -567,30 +570,27 @@ Field matrix (“PQHD wallet behavior”):
 **Per-output PSBT map**
 - `PSBT_OUT_REDEEMSCRIPT`: keep (for P2SH outputs)
 - `PSBT_OUT_WITNESSSCRIPT`: keep (for P2WSH outputs)
-- `PSBT_OUT_BIP32_DERIVATION`: parse/retain only; PQHD wallet does not write
+- `PSBT_OUT_BIP32_DERIVATION`: accept for round‑trip only; PQHD wallet does not write
 - `PSBT_OUT_PROPRIETARY`: keep (used for `tidecoin/PQHD_ORIGIN` on change outputs)
 
 What changes in user-visible RPC output:
-- `decodepsbt` will still show `global_xpubs` and `bip32_derivs` arrays (because
-  the RPC schema is generic), but for PQHD wallets these will usually be empty.
-- The PQHD path/seed linkage will instead be present under `proprietary` (and
-  later we can add a parsed JSON view for `tidecoin/PQHD_ORIGIN`).
+- `decodepsbt` no longer exposes `global_xpubs` or `bip32_derivs` arrays.
+- PQHD origin metadata is exposed via `pqhd_origins` (parsed from proprietary
+  entries) and via the raw proprietary list.
 
 What changes in the `bip32derivs` knob:
-- Today `walletprocesspsbt(..., bip32derivs=true)` means “include KeyOriginInfo
-  (4-byte fingerprint + path) via `GetKeyOrigin()`”.
-- For PQHD we keep the knob for UX/backward compatibility, but its meaning
-  becomes: “include origin metadata”, implemented as writing
-  `tidecoin/PQHD_ORIGIN` proprietary records (SeedID32 + hardened path).
-  The RPC help text will need updating when we implement PQHD.
+- `descriptorprocesspsbt` no longer accepts a `bip32derivs` parameter.
+- `walletprocesspsbt` still exposes `bip32derivs`, but it is **hard‑rejected**
+  if set true (must be false).
+- PQHD origin emission is handled separately via `tidecoin/PQHD_ORIGIN`
+  proprietary records (planned; see §10.3).
 
 ### 10.1 What we will not use for PQHD
-- `PSBT_GLOBAL_XPUB` (no xpub concept for PQHD).
+- `PSBT_GLOBAL_XPUB` (hard‑rejected at parse).
 - `PSBT_IN_BIP32_DERIVATION` / `PSBT_OUT_BIP32_DERIVATION` for PQHD (these embed
-  a 4-byte fingerprint by design).
+  a 4-byte fingerprint by design; accepted only for round‑trip).
 
-These fields may remain for legacy/non-PQHD wallets, but PQHD itself will not
-populate them.
+PQHD itself will never populate these fields.
 
 Important repo constraint:
 - Current PSBT code still uses `CPubKey` as the “pubkey-sized key” for several
@@ -634,9 +634,10 @@ Consistency rules:
 
 We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
 
-- `walletprocesspsbt` (when `bip32derivs=true`):
-  - Add `tidecoin/PQHD_ORIGIN` proprietary records for all PQHD-derived keys the
-    wallet can attribute to a `SeedID32` + hardened path.
+- `walletprocesspsbt`:
+  - `bip32derivs=true` is **rejected** (must be false).
+  - Planned: add `tidecoin/PQHD_ORIGIN` proprietary records for all PQHD-derived
+    keys the wallet can attribute to a `SeedID32` + hardened path.
   - Write scope (frozen policy for PQHD v1):
     - Inputs: write for every input pubkey that the wallet can sign for (and/or
       that appears in satisfactions/scripts the wallet is expected to satisfy).
@@ -650,11 +651,9 @@ We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
   - Do not add `bip32_derivs` for PQHD.
 
 - `decodepsbt`:
-  - Continue to expose raw proprietary entries (already implemented).
-  - Planned: add a parsed view (new JSON fields) for Tidecoin PQHD origin, e.g.:
-    - `pqhd_origins`: list of `{ pubkey, seedid32, path }`
-    - `path` formatted using `WriteHDKeypath(..., apostrophe=false)` so hardened
-      elements use `h` markers.
+  - Exposes raw proprietary entries.
+  - Exposes a parsed view for Tidecoin PQHD origin under `pqhd_origins`
+    (implemented).
 
 - `analyzepsbt` / Qt PSBT operations:
   - Planned: treat PQHD origin metadata as informational and use it to report
@@ -662,54 +661,6 @@ We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
 
 None of these are consensus critical; they are wallet/tooling UX.
 
-### 10.4 Optional cleanup (later): remove xpub/BIP32 PSBT metadata
-
-PQHD v1 keeps BIP174 PSBT framing and keeps parsing/round-tripping legacy PSBT
-metadata (xpubs, BIP32 derivations), but PQHD itself will not write them.
-
-Once PQHD origin metadata is fully implemented and stable, we can optionally do
-a “cleanup” pass to remove xpub/BIP32-specific parts from Tidecoin’s PSBT stack,
-to reduce surface area and avoid any confusion around `bip32derivs`/xpub in a
-PQ-only wallet world.
-
-Two reasonable cleanup levels (choose later):
-
-**A) Soft cleanup (recommended first)**
-- Continue to accept and preserve existing PSBTs that contain:
-  - `PSBT_GLOBAL_XPUB`
-  - `PSBT_IN_BIP32_DERIVATION` / `PSBT_OUT_BIP32_DERIVATION`
-- But stop treating them as “first-class structured data”:
-  - parse them as unknown/proprietary key/value pairs instead
-  - do not expose dedicated JSON (`global_xpubs`, `bip32_derivs`) in `decodepsbt`
-- This keeps PSBT round-trip semantics while simplifying internal structures.
-
-**B) Hard cleanup (strict Tidecoin-only)**
-- Reject or drop the above legacy fields during PSBT parsing/merging.
-- This is simplest internally, but it breaks interoperability with PSBTs that
-  include those fields (even if Tidecoin otherwise doesn’t use them).
-
-Code touchpoints for cleanup:
-- PSBT core:
-  - `src/psbt.h`: cases for `PSBT_GLOBAL_XPUB`, `PSBT_IN_BIP32_DERIVATION`,
-    `PSBT_OUT_BIP32_DERIVATION`; data members `PartiallySignedTransaction::m_xpubs`,
-    `PSBTInput::hd_keypaths`, `PSBTOutput::hd_keypaths`.
-  - `src/psbt.cpp`: merge logic for `m_xpubs`; signature-data plumbing that
-    currently threads `hd_keypaths` into `SignatureData`.
-- Wallet/descriptor integration:
-  - `src/wallet/scriptpubkeyman.cpp`: `FillPSBT(..., bip32derivs=...)` currently
-    hides/exposes `KeyOriginInfo` via `GetKeyOrigin(...)`.
-  - `src/wallet/rpc/spend.cpp`: RPC arg `bip32derivs` naming/help text.
-- RPC output:
-  - `src/rpc/rawtransaction.cpp`: `decodepsbt` schema fields `global_xpubs` and
-    `bip32_derivs` (and their help strings).
-- Tests:
-  - any wallet/PSBT unit tests and RPC functional tests that assert presence of
-    `global_xpubs` / `bip32_derivs` (must be updated if we remove/repurpose them).
-
-Decision note:
-- This cleanup is explicitly *optional* and should be scheduled only after PQHD
-  origin metadata (`tidecoin/PQHD_ORIGIN`) is fully integrated into
-  walletprocesspsbt/PSBT analysis and we have confidence in the replacement UX.
 
 ---
 
@@ -1308,7 +1259,6 @@ validated by an implementation + tests.
     how we keep PSBT workflows and extend them for PQHD metadata).
   - This work is explicitly deferred until after low-level PQHD storage,
     descriptor integration, and PSBT origin export are implemented.
-- (Optional, later) PSBT cleanup: remove xpub/BIP32 PSBT metadata (see §10.4).
 
 ---
 
@@ -1350,8 +1300,8 @@ large rework:
 - PSBT:
   - Implement `tidecoin/PQHD_ORIGIN` write/read paths in walletprocesspsbt and
     PSBT analysis (§10.2–§10.3).
-  - Update RPC help text for `bip32derivs` to reflect “origin metadata” rather
-    than BIP32 fingerprints/paths (when PQHD is enabled).
+  - Keep `bip32derivs` hard‑rejected (must be false) and ensure help text
+    reflects that PQHD origin metadata is carried via proprietary records.
 - Watch-only workflow:
   - Define concrete “bounded export” RPC(s) for ranges of derived pubkeys (or
     descriptors expanded to explicit pubkeys), because there is no xpub.
@@ -1362,6 +1312,107 @@ large rework:
   across platforms/builds).
 - Wallet restore tests (wipe wallet DB, restore from seed, confirm address
   regeneration and signing works).
+
+---
+
+## 18. Auxpow-Gated Scheme Activation (Implementation Checklist)
+
+Goal: only Falcon-512 outputs before `nAuxpowStartHeight`, and a single
+central rule that future scheme activation can reuse without refactors.
+
+### PR‑A1 — Central rule + unit tests (no wallet behavior change yet)
+- [x] Add `pq::IsSchemeAllowedAtHeight(SchemeId, const Consensus::Params&, int)`
+      in `src/pq/pq_scheme.h` (or new `src/pq/pq_policy.h`).
+      - Rule: pre‑auxpow → only Falcon‑512; post‑auxpow → allow all registered
+        schemes.
+      - Guard invalid prefixes with `SchemeFromId(...) != nullptr`.
+- [x] Add unit tests in `src/test/pq_pubkey_container_tests.cpp`:
+      - pre‑auxpow height: Falcon‑512 allowed, others rejected.
+      - post‑auxpow height: all current schemes allowed.
+- [x] Wire minimal helper use in `src/pq/pq_scheme.h` tests only.
+
+Acceptance tests:
+- `test_tidecoin --run_test=pq_pubkey_container_tests` passes.
+
+### PR‑A2 — Wallet target height helper + policy clamp
+- [x] Add `CWallet::GetTargetHeightForOutputs()` in `src/wallet/wallet.h` and
+      `src/wallet/wallet.cpp`:
+      - Returns `tip_height + 1` when chain is available, otherwise 0.
+- [x] Update `CWallet::LoadPQHDPolicy` (`src/wallet/wallet.cpp:1789`):
+      - Use `IsSchemeAllowedAtHeight(...)` with target height.
+      - Clamp `default_receive_scheme` and `default_change_scheme` via the
+        centralized rule (no ad‑hoc Falcon checks).
+- [x] Update wallet DB tests:
+      - `src/wallet/test/walletdb_tests.cpp` to assert policy clamp behavior
+        when `nAuxpowStartHeight` is not reached (Falcon‑512 enforced).
+
+Acceptance tests:
+- Wallet opens with non‑Falcon policy pre‑auxpow and clamps to Falcon‑512.
+
+### PR‑A3 — Output generation gating (receive + change)
+- [x] Update `DescriptorScriptPubKeyMan::GetNewDestination` in
+      `src/wallet/scriptpubkeyman.cpp` to:
+      - Fetch policy and `GetTargetHeightForOutputs()`.
+      - Reject non‑Falcon schemes pre‑auxpow with a clear error string.
+- [x] Ensure change output scheme selection uses the same helper and clamps to
+      Falcon‑512 pre‑auxpow:
+      - Touch‑points: `src/wallet/wallet.cpp` descriptor setup (internal vs external).
+- [x] Add wallet tests (existing `src/wallet/test/*`):
+      - `src/wallet/test/scriptpubkeyman_tests.cpp` covers PQHD scheme gate behavior
+        for `DescriptorScriptPubKeyMan::GetNewDestination` (pre‑auxpow error path
+        when gating is active; passes through when auxpow is disabled).
+      - `src/wallet/test/scriptpubkeyman_tests.cpp` asserts internal descriptors
+        default to Falcon‑512 (change path).
+
+Acceptance tests:
+- `getnewaddress` fails if an override requests a non‑Falcon scheme pre‑auxpow.
+
+### PR‑A4 — Descriptor creation gating (new wallet / new seed)
+- [x] Update `wallet::GeneratePQHDWalletDescriptor` in
+      `src/wallet/walletutil.cpp`:
+      - Only generate descriptors for allowed schemes at target height.
+- [x] Update `SetupOwnDescriptorScriptPubKeyMans` in `src/wallet/wallet.cpp`:
+      - Use centralized rule; do not create non‑Falcon descriptors pre‑auxpow.
+- [x] Add descriptor test coverage in `src/test/descriptor_tests.cpp`:
+      - PQHD scheme prefix propagation for `pqhd(...)` descriptors.
+
+Acceptance tests:
+- `listdescriptors` after new wallet creation pre‑auxpow contains only
+  Falcon‑512 pqhd descriptors.
+
+### PR‑A5 — RPC/Qt scheme overrides (policy surface)
+- [x] RPC override handling:
+      - `getnewaddress` / `getrawchangeaddress` accept optional `scheme` override.
+      - Spend RPC options accept `change_scheme`.
+      - Overrides are validated via `ParsePQSchemePrefix()` and gated by
+        `pq::IsSchemeAllowedAtHeight(...)`.
+      - Touch‑points: `src/wallet/rpc/util.h`,
+        `src/wallet/rpc/util.cpp`, `src/wallet/rpc/addresses.cpp`,
+        `src/wallet/rpc/spend.cpp`.
+- [x] Qt UI scheme selection:
+      - Receive screen scheme selector (wallet default or explicit scheme).
+      - Send screen change scheme selector (disabled when custom change address is set).
+      - Touch‑points: `src/qt/receivecoinsdialog.cpp`,
+        `src/qt/forms/receivecoinsdialog.ui`, `src/qt/sendcoinsdialog.cpp`,
+        `src/qt/forms/sendcoinsdialog.ui`, `src/qt/addresstablemodel.{h,cpp}`,
+        `src/interfaces/wallet.h`, `src/wallet/interfaces.cpp`.
+- [x] Async on-demand descriptor creation (prevents Qt freeze):
+      - Run `getNewDestination` in a worker thread when a scheme override is used.
+      - Show progress via `CWallet::ShowProgress` when a new PQHD descriptor is created.
+      - Touch-points: `src/qt/addresstablemodel.cpp`, `src/wallet/wallet.cpp`.
+- [ ] Add RPC tests:
+      - Pre‑auxpow override rejects with error.
+      - Post‑auxpow override accepts and creates address.
+
+Acceptance tests:
+- `sendtoaddress` / `getnewaddress` override behavior matches gating rule.
+
+### PR‑A6 — Cross‑doc alignment + progress tracking
+- [x] Update `ai-docs/pqhd-integration-progress.md`:
+      - Add a “Auxpow-gated scheme activation” section with sub‑bullets for
+        PR‑A1..PR‑A5.
+- [x] Add a “gating rule” snippet in `ai-docs/pqhd-removal-plan.md` pointing to
+      this section.
 
 ---
 
@@ -1399,8 +1450,9 @@ large rework:
   cleanly (labels, not truncated IDs).
 
 ### 17.6 External signer / hardware wallet ecosystem
-- Standard PSBT `bip32_derivs` and `global_xpubs` won’t be populated for PQHD.
-  Any external tooling must understand `tidecoin/PQHD_ORIGIN` proprietary fields.
+- PSBT `global_xpubs` are rejected and `bip32_derivs` are not emitted/exposed for
+  PQHD. Any external tooling must understand `tidecoin/PQHD_ORIGIN` proprietary
+  fields.
 
 ---
 
@@ -1408,6 +1460,6 @@ large rework:
 
 - Scheme registry: `src/pq/pq_scheme.h`
 - PQ pubkey encode/decode: `src/pq/pq_api.h`
-- Existing origin metadata structures: `src/script/keyorigin.h`
+- PSBT PQHD origin structures: `src/psbt.h`, `src/psbt.cpp`
 - Wallet key metadata: `src/wallet/walletdb.h`
 - oldtidecoin legacy wallet behavior: `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin/src/wallet/wallet.cpp`

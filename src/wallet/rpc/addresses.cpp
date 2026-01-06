@@ -27,6 +27,7 @@ RPCHelpMan getnewaddress()
                 {
                     {"label", RPCArg::Type::STR, RPCArg::Default{""}, "The label name for the address to be linked to. It can also be set to the empty string \"\" to represent the default label. The label does not need to exist, it will be created if there is no label by the given name."},
                     {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are " + FormatAllOutputTypes() + "."},
+                    {"scheme", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Optional PQ scheme override (name or numeric prefix)."},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "address", "The new bitcoin address"
@@ -58,7 +59,8 @@ RPCHelpMan getnewaddress()
         output_type = parsed.value();
     }
 
-    auto op_dest = pwallet->GetNewDestination(output_type, label);
+    const std::optional<uint8_t> scheme_override = ParsePQSchemePrefix(request.params[2]);
+    auto op_dest = pwallet->GetNewDestination(output_type, label, scheme_override);
     if (!op_dest) {
         throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, util::ErrorString(op_dest).original);
     }
@@ -76,6 +78,7 @@ RPCHelpMan getrawchangeaddress()
                 "This is for use with raw transactions, NOT normal use.\n",
                 {
                     {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The address type to use. Options are " + FormatAllOutputTypes() + "."},
+                    {"scheme", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Optional PQ scheme override (name or numeric prefix)."},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "address", "The address"
@@ -104,7 +107,8 @@ RPCHelpMan getrawchangeaddress()
         output_type = parsed.value();
     }
 
-    auto op_dest = pwallet->GetNewChangeDestination(output_type);
+    const std::optional<uint8_t> scheme_override = ParsePQSchemePrefix(request.params[1]);
+    auto op_dest = pwallet->GetNewChangeDestination(output_type, scheme_override);
     if (!op_dest) {
         throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, util::ErrorString(op_dest).original);
     }

@@ -1,6 +1,8 @@
 #ifndef TIDECOIN_PQ_SCHEME_H
 #define TIDECOIN_PQ_SCHEME_H
 
+#include <consensus/params.h>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -122,6 +124,15 @@ constexpr const SchemeInfo* SchemeFromPrefix(uint8_t prefix)
 constexpr const SchemeInfo* SchemeFromId(SchemeId id)
 {
     return SchemeFromPrefix(static_cast<uint8_t>(id));
+}
+
+inline bool IsSchemeAllowedAtHeight(SchemeId id, const Consensus::Params& params, int height)
+{
+    if (SchemeFromId(id) == nullptr) return false;
+    if (height < params.nAuxpowStartHeight) {
+        return id == SchemeId::FALCON_512;
+    }
+    return true;
 }
 
 } // namespace pq

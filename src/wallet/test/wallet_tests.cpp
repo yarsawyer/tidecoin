@@ -14,6 +14,7 @@
 #include <key_io.h>
 #include <node/blockstorage.h>
 #include <policy/policy.h>
+#include <pq/pq_scheme.h>
 #include <rpc/server.h>
 #include <script/solver.h>
 #include <test/util/logging.h>
@@ -91,6 +92,30 @@ BOOST_FIXTURE_TEST_CASE(update_non_range_descriptor, TestingSetup)
         // Wallet should update the non-range descriptor successfully
         BOOST_CHECK(wallet.AddWalletDescriptor(w_desc, provider, "", false));
     }
+}
+
+BOOST_FIXTURE_TEST_CASE(pqhd_policy_clamps_pre_auxpow, WalletTestingSetup)
+{
+    LOCK(m_wallet.cs_wallet);
+    const int target_height = m_wallet.GetTargetHeightForOutputs();
+    const Consensus::Params& params = Params().GetConsensus();
+    PQHDPolicy policy;
+    policy.default_receive_scheme = static_cast<uint8_t>(pq::SchemeId::MLDSA_44);
+    policy.default_change_scheme = static_cast<uint8_t>(pq::SchemeId::MLDSA_65);
+    policy.default_seed_id = uint256::ONE;
+    policy.default_change_seed_id = uint256::ONE;
+    m_wallet.LoadPQHDPolicy(std::move(policy));
+
+    auto loaded = m_wallet.GetPQHDPolicy();
+    BOOST_REQUIRE(loaded);
+    const uint8_t expected_receive = pq::IsSchemeAllowedAtHeight(pq::SchemeId::MLDSA_44, params, target_height)
+        ? static_cast<uint8_t>(pq::SchemeId::MLDSA_44)
+        : static_cast<uint8_t>(pq::SchemeId::FALCON_512);
+    const uint8_t expected_change = pq::IsSchemeAllowedAtHeight(pq::SchemeId::MLDSA_65, params, target_height)
+        ? static_cast<uint8_t>(pq::SchemeId::MLDSA_65)
+        : static_cast<uint8_t>(pq::SchemeId::FALCON_512);
+    BOOST_CHECK_EQUAL(loaded->default_receive_scheme, expected_receive);
+    BOOST_CHECK_EQUAL(loaded->default_change_scheme, expected_change);
 }
 
 BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)

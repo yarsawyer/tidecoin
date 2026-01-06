@@ -5,12 +5,17 @@
 #include <wallet/rpc/util.h>
 
 #include <common/url.h>
+#include <pq/pq_scheme.h>
 #include <rpc/util.h>
 #include <util/any.h>
+#include <util/strencodings.h>
 #include <util/translation.h>
 #include <wallet/context.h>
 #include <wallet/wallet.h>
 
+#include <algorithm>
+#include <cctype>
+#include <limits>
 #include <string_view>
 #include <univalue.h>
 
@@ -109,6 +114,54 @@ std::string LabelFromValue(const UniValue& value)
     if (label == "*")
         throw JSONRPCError(RPC_WALLET_INVALID_LABEL_NAME, "Invalid label name");
     return label;
+}
+
+std::optional<uint8_t> ParsePQSchemePrefix(const UniValue& value)
+{
+    if (value.isNull()) return std::nullopt;
+
+    std::optional<uint64_t> scheme;
+    if (value.isNum()) {
+        const auto numeric = value.getInt<int64_t>();
+        if (numeric < 0) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Scheme id must be between 0 and 255");
+        }
+        scheme = static_cast<uint64_t>(numeric);
+    } else if (value.isStr()) {
+        std::string input = value.get_str();
+        std::string normalized;
+        normalized.reserve(input.size());
+        for (char ch : input) {
+            if (ch == '-' || ch == '_' || ch == ' ') continue;
+            normalized.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        }
+        if (auto parsed = ToIntegral<uint64_t>(normalized)) {
+            scheme = *parsed;
+        } else if (normalized == "falcon512") {
+            scheme = static_cast<uint64_t>(pq::SchemeId::FALCON_512);
+        } else if (normalized == "falcon1024") {
+            scheme = static_cast<uint64_t>(pq::SchemeId::FALCON_1024);
+        } else if (normalized == "mldsa44") {
+            scheme = static_cast<uint64_t>(pq::SchemeId::MLDSA_44);
+        } else if (normalized == "mldsa65") {
+            scheme = static_cast<uint64_t>(pq::SchemeId::MLDSA_65);
+        } else if (normalized == "mldsa87") {
+            scheme = static_cast<uint64_t>(pq::SchemeId::MLDSA_87);
+        }
+    } else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Scheme id must be a string or number");
+    }
+
+    if (!scheme || *scheme > std::numeric_limits<uint8_t>::max()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown scheme id");
+    }
+
+    const uint8_t prefix = static_cast<uint8_t>(*scheme);
+    if (!pq::SchemeFromPrefix(prefix)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown scheme id");
+    }
+
+    return prefix;
 }
 
 void PushParentDescriptors(const CWallet& wallet, const CScript& script_pubkey, UniValue& entry)

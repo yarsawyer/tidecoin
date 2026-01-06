@@ -79,6 +79,7 @@ public:
     RecentRequestsTableModel* getRecentRequestsTableModel() const;
 
     EncryptionStatus getEncryptionStatus() const;
+    bool isHDEnabled() const;
 
     // Check address for validity
     bool validateAddress(const QString& address) const;

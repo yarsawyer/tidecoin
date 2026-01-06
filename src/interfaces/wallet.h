@@ -21,6 +21,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -95,7 +96,7 @@ public:
     virtual std::string getWalletName() = 0;
 
     // Get a new address.
-    virtual util::Result<CTxDestination> getNewDestination(const OutputType type, const std::string& label) = 0;
+    virtual util::Result<CTxDestination> getNewDestination(const OutputType type, const std::string& label, std::optional<uint8_t> scheme_override = std::nullopt) = 0;
 
     //! Get public key.
     virtual bool getPubKey(const CScript& script, const CKeyID& address, CPubKey& pub_key) = 0;
@@ -259,6 +260,8 @@ public:
     // Return whether private keys enabled.
     virtual bool privateKeysDisabled() = 0;
 
+    // Return whether the wallet has PQHD seed material available.
+    virtual bool hasPQHDSeeds() = 0;
 
     // Return whether wallet uses an external signer.
     virtual bool hasExternalSigner() = 0;

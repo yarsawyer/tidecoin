@@ -121,6 +121,7 @@ private:
     WalletFrame* walletFrame = nullptr;
 
     UnitDisplayStatusBarControl* unitDisplayControl = nullptr;
+    GUIUtil::ThemedLabel* labelWalletHDStatus = nullptr;
     GUIUtil::ThemedLabel* labelWalletEncryptionIcon = nullptr;
     GUIUtil::ClickableLabel* labelProxyIcon = nullptr;
     GUIUtil::ClickableLabel* connectionsControl = nullptr;
@@ -253,6 +254,7 @@ private:
        @see WalletModel::EncryptionStatus
     */
     void setEncryptionStatus(int status);
+    void setHDStatus(bool enabled);
 
 public Q_SLOTS:
     bool handlePaymentRequest(const SendCoinsRecipient& recipient);

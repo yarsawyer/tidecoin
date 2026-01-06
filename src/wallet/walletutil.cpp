@@ -34,9 +34,22 @@ fs::path GetWalletDir()
     return path;
 }
 
-WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id, uint8_t scheme_prefix, const OutputType& addr_type, bool internal)
+WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id,
+                                              uint8_t scheme_prefix,
+                                              const OutputType& addr_type,
+                                              bool internal,
+                                              const Consensus::Params& consensus,
+                                              int target_height)
 {
     int64_t creation_time = GetTime();
+
+    const auto* scheme = pq::SchemeFromPrefix(scheme_prefix);
+    if (scheme == nullptr) {
+        throw std::runtime_error(strprintf("Unknown PQ scheme prefix: %u", scheme_prefix));
+    }
+    if (!pq::IsSchemeAllowedAtHeight(scheme->id, consensus, target_height)) {
+        throw std::runtime_error(strprintf("PQ scheme %s not allowed at height %i", scheme->name, target_height));
+    }
 
     // pqhd(SEEDID32)/purposeh/cointypeh/schemeh/accounth/changeh/*h
     const uint32_t scheme_u32{scheme_prefix};

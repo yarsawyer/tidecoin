@@ -15,12 +15,52 @@
 #include <qt/recentrequeststablemodel.h>
 #include <qt/walletmodel.h>
 
+#include <pq/pq_scheme.h>
+
+#include <array>
+#include <optional>
+
 #include <QAction>
+#include <QComboBox>
 #include <QCursor>
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QSettings>
 #include <QTextDocument>
+
+namespace {
+
+constexpr std::array<const pq::SchemeInfo*, 5> kSchemeOptions{
+    &pq::kFalcon512Info,
+    &pq::kFalcon1024Info,
+    &pq::kMLDSA44Info,
+    &pq::kMLDSA65Info,
+    &pq::kMLDSA87Info,
+};
+
+void PopulateSchemeCombo(QComboBox* combo)
+{
+    if (!combo) return;
+    combo->clear();
+    combo->addItem(QObject::tr("Wallet default"), QVariant());
+    for (const auto* scheme : kSchemeOptions) {
+        combo->addItem(QString::fromLatin1(scheme->name), static_cast<int>(scheme->prefix));
+    }
+    combo->setCurrentIndex(0);
+}
+
+std::optional<uint8_t> SchemeOverrideFromCombo(const QComboBox* combo)
+{
+    if (!combo) return std::nullopt;
+    const QVariant data = combo->currentData();
+    if (!data.isValid()) return std::nullopt;
+    bool ok = false;
+    const int value = data.toInt(&ok);
+    if (!ok) return std::nullopt;
+    return static_cast<uint8_t>(value);
+}
+
+} // namespace
 
 ReceiveCoinsDialog::ReceiveCoinsDialog(const PlatformStyle *_platformStyle, QWidget *parent) :
     QDialog(parent, GUIUtil::dialog_flags),
@@ -77,6 +117,7 @@ void ReceiveCoinsDialog::setModel(WalletModel *_model)
         _model->getRecentRequestsTableModel()->sort(RecentRequestsTableModel::Date, Qt::DescendingOrder);
         connect(_model->getOptionsModel(), &OptionsModel::displayUnitChanged, this, &ReceiveCoinsDialog::updateDisplayUnit);
         updateDisplayUnit();
+        PopulateSchemeCombo(ui->schemeCombo);
 
         QTableView* tableView = ui->recentRequestsView;
         tableView->setModel(_model->getRecentRequestsTableModel());
@@ -118,6 +159,9 @@ void ReceiveCoinsDialog::clear()
     ui->reqAmount->clear();
     ui->reqLabel->setText("");
     ui->reqMessage->setText("");
+    if (ui->schemeCombo) {
+        ui->schemeCombo->setCurrentIndex(0);
+    }
     updateDisplayUnit();
 }
 
@@ -148,7 +192,8 @@ void ReceiveCoinsDialog::on_receiveButton_clicked()
     QString label = ui->reqLabel->text();
     /* Generate new receiving address */
     const OutputType address_type = (OutputType)ui->addressType->currentData().toInt();
-    address = model->getAddressTableModel()->addRow(AddressTableModel::Receive, label, "", address_type);
+    const std::optional<uint8_t> scheme_override = SchemeOverrideFromCombo(ui->schemeCombo);
+    address = model->getAddressTableModel()->addRow(AddressTableModel::Receive, label, "", address_type, scheme_override);
 
     switch(model->getAddressTableModel()->getEditStatus())
     {

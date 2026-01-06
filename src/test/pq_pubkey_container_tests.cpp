@@ -1,3 +1,4 @@
+#include <consensus/params.h>
 #include <pq/pq_api.h>
 #include <pq/pqhd_kdf.h>
 #include <pq/pqhd_params.h>
@@ -108,6 +109,16 @@ BOOST_AUTO_TEST_CASE(cpubkey_rejects_hybrid_07_len_33)
     hybrid_like[0] = 0x07;
     CPubKey pk(hybrid_like);
     BOOST_CHECK(!pk.IsValid());
+}
+
+BOOST_AUTO_TEST_CASE(pq_scheme_auxpow_gate)
+{
+    Consensus::Params params;
+    params.nAuxpowStartHeight = 100;
+
+    BOOST_CHECK(pq::IsSchemeAllowedAtHeight(pq::SchemeId::FALCON_512, params, 0));
+    BOOST_CHECK(!pq::IsSchemeAllowedAtHeight(pq::SchemeId::MLDSA_44, params, 0));
+    BOOST_CHECK(pq::IsSchemeAllowedAtHeight(pq::SchemeId::MLDSA_44, params, 100));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

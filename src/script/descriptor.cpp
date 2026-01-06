@@ -216,6 +216,10 @@ public:
 
     /** Return the non-extended public key for this PubkeyProvider, if it has one. */
     virtual std::optional<CPubKey> GetRootPubKey() const = 0;
+    /** Return the PQ scheme prefix if this PubkeyProvider maps to a single scheme. */
+    virtual std::optional<uint8_t> GetSchemePrefix() const { return std::nullopt; }
+    /** Return PQHD key path info if this PubkeyProvider represents a single PQHD key path. */
+    virtual std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const { return std::nullopt; }
     /** Make a deep copy of this PubkeyProvider */
     virtual std::unique_ptr<PubkeyProvider> Clone() const = 0;
 
@@ -264,6 +268,13 @@ public:
     std::optional<CPubKey> GetRootPubKey() const override
     {
         return m_pubkey;
+    }
+    std::optional<uint8_t> GetSchemePrefix() const override
+    {
+        if (m_pubkey.size() == 0) return std::nullopt;
+        const uint8_t prefix = m_pubkey[0];
+        if (pq::SchemeFromPrefix(prefix) == nullptr) return std::nullopt;
+        return prefix;
     }
     std::unique_ptr<PubkeyProvider> Clone() const override
     {
@@ -438,6 +449,15 @@ public:
         out.keys.emplace(pubkey.GetID(), key);
     }
     std::optional<CPubKey> GetRootPubKey() const override { return std::nullopt; }
+    std::optional<uint8_t> GetSchemePrefix() const override
+    {
+        if (pq::SchemeFromPrefix(m_scheme_prefix) == nullptr) return std::nullopt;
+        return m_scheme_prefix;
+    }
+    std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const override
+    {
+        return PQHDKeyPathInfo{m_seed_id, m_path, m_derive == DeriveType::HARDENED};
+    }
     std::unique_ptr<PubkeyProvider> Clone() const override
     {
         return std::make_unique<PQHDPubkeyProvider>(m_expr_index, m_seed_id, m_path, m_derive, m_scheme_prefix);
@@ -646,6 +666,50 @@ public:
         for (const auto& arg : m_subdescriptor_args) {
             arg->GetPubKeys(pubkeys);
         }
+    }
+
+    // NOLINTNEXTLINE(misc-no-recursion)
+    std::optional<uint8_t> GetPQHDSchemePrefix() const override
+    {
+        std::optional<uint8_t> prefix;
+        for (const auto& p : m_pubkey_args) {
+            const auto pfx = p->GetSchemePrefix();
+            if (!pfx) continue;
+            if (prefix && *prefix != *pfx) return std::nullopt;
+            prefix = pfx;
+        }
+        for (const auto& arg : m_subdescriptor_args) {
+            const auto pfx = arg->GetPQHDSchemePrefix();
+            if (!pfx) continue;
+            if (prefix && *prefix != *pfx) return std::nullopt;
+            prefix = pfx;
+        }
+        return prefix;
+    }
+
+    std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const override
+    {
+        std::optional<PQHDKeyPathInfo> info;
+        auto merge = [&info](const std::optional<PQHDKeyPathInfo>& candidate) -> bool {
+            if (!candidate) return true;
+            if (!info) {
+                info = *candidate;
+                return true;
+            }
+            if (info->seed_id != candidate->seed_id || info->path != candidate->path || info->is_range != candidate->is_range) {
+                info.reset();
+                return false;
+            }
+            return true;
+        };
+
+        for (const auto& p : m_pubkey_args) {
+            if (!merge(p->GetPQHDKeyPathInfo())) return std::nullopt;
+        }
+        for (const auto& arg : m_subdescriptor_args) {
+            if (!merge(arg->GetPQHDKeyPathInfo())) return std::nullopt;
+        }
+        return info;
     }
 
     virtual std::unique_ptr<DescriptorImpl> Clone() const = 0;

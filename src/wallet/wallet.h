@@ -193,10 +193,11 @@ class ReserveDestination
 {
 protected:
     //! The wallet to reserve from
-    const CWallet* const pwallet;
+    CWallet* const pwallet;
     //! The ScriptPubKeyMan to reserve from. Based on type when GetReservedDestination is called
     ScriptPubKeyMan* m_spk_man{nullptr};
     OutputType const type;
+    std::optional<uint8_t> m_scheme_override;
     //! The index of the address's key in the keypool
     int64_t nIndex{-1};
     //! The destination
@@ -206,9 +207,10 @@ protected:
 
 public:
     //! Construct a ReserveDestination object. This does NOT reserve an address yet
-    explicit ReserveDestination(CWallet* pwallet, OutputType type)
+    explicit ReserveDestination(CWallet* pwallet, OutputType type, std::optional<uint8_t> scheme_override = std::nullopt)
       : pwallet(pwallet)
-      , type(type) { }
+      , type(type)
+      , m_scheme_override(scheme_override) { }
 
     ReserveDestination(const ReserveDestination&) = delete;
     ReserveDestination& operator=(const ReserveDestination&) = delete;
@@ -321,8 +323,10 @@ private:
     std::atomic<uint64_t> m_wallet_creation_progress_total{0};
     std::atomic<uint64_t> m_wallet_creation_progress_done{0};
     std::atomic<int> m_wallet_creation_progress_last_percent{-1};
+    std::string m_wallet_creation_progress_title;
     std::string WalletCreationProgressTitle() const;
     void StartWalletCreationProgress(uint64_t total_steps);
+    void StartWalletCreationProgress(uint64_t total_steps, const std::string& title);
     void FinishWalletCreationProgress();
 
     /** The next scheduled rebroadcast of wallet transactions. */
@@ -515,6 +519,7 @@ public:
     bool HavePQHDSeed(const uint256& seed_id) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     size_t GetPQHDSeedCount() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     std::optional<PQHDPolicy> GetPQHDPolicy() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    int GetTargetHeightForOutputs() const override;
 
     /** Interface to assert chain access */
     bool HaveChain() const { return m_chain ? true : false; }
@@ -805,7 +810,9 @@ public:
     void MarkDestinationsDirty(const std::set<CTxDestination>& destinations) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     util::Result<CTxDestination> GetNewDestination(const OutputType type, const std::string label);
+    util::Result<CTxDestination> GetNewDestination(const OutputType type, const std::string label, std::optional<uint8_t> scheme_override);
     util::Result<CTxDestination> GetNewChangeDestination(const OutputType type);
+    util::Result<CTxDestination> GetNewChangeDestination(const OutputType type, std::optional<uint8_t> scheme_override);
 
     bool IsMine(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool IsMine(const CScript& script) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -965,6 +972,7 @@ public:
 
     //! Get the ScriptPubKeyMan for the given OutputType and internal/external chain.
     ScriptPubKeyMan* GetScriptPubKeyMan(const OutputType& type, bool internal) const;
+    ScriptPubKeyMan* GetScriptPubKeyMan(const OutputType& type, bool internal, std::optional<uint8_t> scheme_override);
 
     //! Get all the ScriptPubKeyMans for a script
     std::set<ScriptPubKeyMan*> GetScriptPubKeyMans(const CScript& script) const;

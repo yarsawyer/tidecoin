@@ -13,8 +13,10 @@
 
 #include <algorithm>
 
+#include <QEventLoop>
 #include <QFont>
 #include <QDebug>
+#include <QThread>
 
 const QString AddressTableModel::Send = "S";
 const QString AddressTableModel::Receive = "R";
@@ -339,7 +341,7 @@ void AddressTableModel::updateEntry(const QString &address,
     priv->updateEntry(address, label, isMine, purpose, status);
 }
 
-QString AddressTableModel::addRow(const QString &type, const QString &label, const QString &address, const OutputType address_type)
+QString AddressTableModel::addRow(const QString &type, const QString &label, const QString &address, const OutputType address_type, std::optional<uint8_t> scheme_override)
 {
     std::string strLabel = label.toStdString();
     std::string strAddress = address.toStdString();
@@ -368,8 +370,41 @@ QString AddressTableModel::addRow(const QString &type, const QString &label, con
     }
     else if(type == Receive)
     {
+        auto get_new_destination_async = [&]() -> std::optional<CTxDestination> {
+            std::optional<CTxDestination> dest;
+            QThread worker_thread;
+            QObject worker;
+            worker.moveToThread(&worker_thread);
+
+            QObject::connect(&worker_thread, &QThread::started, &worker, [&]() {
+                auto result = walletModel->wallet().getNewDestination(address_type, strLabel, scheme_override);
+                if (result) {
+                    dest = *result;
+                }
+                worker_thread.quit();
+            });
+
+            QEventLoop loop;
+            QObject::connect(&worker_thread, &QThread::finished, &loop, &QEventLoop::quit);
+            worker_thread.start();
+            loop.exec();
+            worker_thread.wait();
+
+            return dest;
+        };
+
+        auto get_new_destination = [&]() -> std::optional<CTxDestination> {
+            if (scheme_override) {
+                return get_new_destination_async();
+            }
+            if (auto dest{walletModel->wallet().getNewDestination(address_type, strLabel, scheme_override)}) {
+                return *dest;
+            }
+            return std::nullopt;
+        };
+
         // Generate a new address to associate with given label
-        if (auto dest{walletModel->wallet().getNewDestination(address_type, strLabel)}) {
+        if (auto dest{get_new_destination()}) {
             strAddress = EncodeDestination(*dest);
         } else {
             WalletModel::UnlockContext ctx(walletModel->requestUnlock());
@@ -378,7 +413,7 @@ QString AddressTableModel::addRow(const QString &type, const QString &label, con
                 editStatus = WALLET_UNLOCK_FAILURE;
                 return QString();
             }
-            if (auto dest_retry{walletModel->wallet().getNewDestination(address_type, strLabel)}) {
+            if (auto dest_retry{get_new_destination()}) {
                 strAddress = EncodeDestination(*dest_retry);
             } else {
                 editStatus = KEY_GENERATION_FAILURE;

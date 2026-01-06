@@ -36,6 +36,8 @@ public:
     std::optional<int64_t> MaxSatisfactionWeight(bool) const override { return {}; }
     std::optional<int64_t> MaxSatisfactionElems() const override { return {}; }
     void GetPubKeys(std::set<CPubKey>& pubkeys) const override {}
+    std::optional<uint8_t> GetPQHDSchemePrefix() const override { return std::nullopt; }
+    std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const override { return std::nullopt; }
 };
 
 BOOST_FIXTURE_TEST_CASE(wallet_load_descriptors, TestingSetup)

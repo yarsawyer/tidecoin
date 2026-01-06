@@ -94,6 +94,7 @@ private:
     bool signWithExternalSigner(PartiallySignedTransaction& psbt, CMutableTransaction& mtx, bool& complete);
     void updateFeeMinimizedLabel();
     void updateCoinControlState();
+    void updateChangeSchemeOverride();
 
 private Q_SLOTS:
     void sendButtonClicked(bool checked);
@@ -110,6 +111,7 @@ private Q_SLOTS:
     void coinControlChangeChecked(int);
 #endif
     void coinControlChangeEdited(const QString &);
+    void coinControlChangeSchemeChanged(int index);
     void coinControlUpdateLabels();
     void coinControlClipboardQuantity();
     void coinControlClipboardAmount();

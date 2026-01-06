@@ -85,6 +85,10 @@ public:
     CTxDestination destChange = CNoDestination();
     //! Override the default change type if set, ignored if destChange is set
     std::optional<OutputType> m_change_type;
+    //! Override the default scheme for receive outputs (when supported by wallet/SPKM selection)
+    std::optional<uint8_t> m_scheme_override;
+    //! Override the default scheme for change outputs (when supported by wallet/SPKM selection)
+    std::optional<uint8_t> m_change_scheme_override;
     //! If false, only safe inputs will be used
     bool m_include_unsafe_inputs = false;
     //! If true, the selection process can add extra unselected inputs from the wallet

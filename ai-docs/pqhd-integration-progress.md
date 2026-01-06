@@ -1,6 +1,7 @@
 # PQHD Integration Progress
 
 Authoritative spec: `ai-docs/pqhd.md`
+Related cleanup/removal plan: `ai-docs/pqhd-removal-plan.md`
 
 This file tracks implementation status by requirement ID (`PQHD-REQ-xxxx`).
 
@@ -27,6 +28,7 @@ Legend:
 
 - None for the current PR chain.
 - PQHD seed lifecycle RPC/Qt surface is explicitly deferred; the plan is to refactor/extend existing wallet RPC/Qt flows later (no new “seed management” RPC family now).
+- PQHD‑only removal work is tracked in `ai-docs/pqhd-removal-plan.md` and is reflected here under “Cleanup alignment”.
 
 ---
 
@@ -52,6 +54,13 @@ Legend:
     - `src/test/psbt_pqhd_origin_tests.cpp`
   - Verify:
     - `cmake --build build -j12 --target test_bitcoin`
+    - `./build/bin/test_tidecoin -t psbt_pqhd_origin_tests`
+- PQHD-REQ-0026 — PQHD‑only PSBT surface (xpub hard‑reject + no BIP32 derivation output)
+  - Touch-points:
+    - `src/psbt.h` (hard‑reject `PSBT_GLOBAL_XPUB`)
+    - `src/rpc/rawtransaction.cpp` (`decodepsbt` omits `global_xpubs`/`bip32_derivs`)
+    - `src/rpc/rawtransaction.cpp` (`descriptorprocesspsbt` has no `bip32derivs`)
+  - Verify:
     - `./build/bin/test_tidecoin -t psbt_pqhd_origin_tests`
 - PQHD-REQ-0009 — PQHD path constants and semantics are fixed (`src/pq/pqhd_params.h` for purpose/coin_type; hardened-only enforcement in `src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`; vectors in `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0010 — NodeSecret/ChainCode derivation (hardened-only CKD) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
@@ -90,7 +99,20 @@ Legend:
 
 ## In Progress
 
-- PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation (documented; enforcement pending)
+- PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation (core enforcement done; RPC/Qt overrides pending)
+  - Implemented:
+    - Central rule `pq::IsSchemeAllowedAtHeight(...)` in `src/pq/pq_scheme.h`
+    - Wallet policy clamp in `CWallet::LoadPQHDPolicy` (`src/wallet/wallet.cpp`)
+    - Descriptor creation gating in `GeneratePQHDWalletDescriptor` (`src/wallet/walletutil.cpp`)
+    - Output generation gating in `DescriptorScriptPubKeyMan::GetNewDestination` (`src/wallet/scriptpubkeyman.cpp`)
+    - Internal vs external descriptor scheme selection uses policy defaults (`src/wallet/wallet.cpp`)
+    - Qt scheme override uses async descriptor creation with progress (`src/qt/addresstablemodel.cpp`, `src/wallet/wallet.cpp`)
+  - Tests:
+    - `./build/bin/test_tidecoin -t pq_pubkey_container_tests` (rule coverage)
+    - `./build/bin/test_tidecoin -t walletdb_tests` (policy clamp)
+    - `./build/bin/test_tidecoin -t scriptpubkeyman_tests` (PQHD scheme gate + internal scheme default)
+  - Missing:
+    - RPC test coverage for override behavior (pre‑auxpow reject, post‑auxpow accept).
 - PQHD-REQ-0003 — Wallet policy decides scheme (vs `pq::ActiveScheme()`) (documented; enforcement pending)
 - PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin (wallet lock semantics exist; PQHD seed semantics pending)
 - PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
@@ -116,7 +138,6 @@ Legend:
   - Note: inherited upstream `descriptor_tests` vectors are secp256k1/WIF/BIP32-centric and are skipped in Tidecoin (PQ `CKey`). We still need a small PQ-native descriptor test suite for explicit pubkeys (raw hex `TidePubKey` bytes).
 
 ### PSBT + RPC/Qt Integration
-- (implemented) PQHD-REQ-0020 — Define `tidecoin/PQHD_ORIGIN` proprietary record encoding
 - PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
 
 ### Migration + Tests
@@ -136,7 +157,7 @@ Legend:
 - [x] PR-3 — `CPubKey` variable-length refactor (scheme-aware)
   - Touch-points: `src/pubkey.h`, `src/pubkey.cpp`, `src/key.cpp`, `src/psbt.h`, `src/script/solver.cpp`, `src/test/pq_pubkey_container_tests.cpp`, `src/test/psbt_pq_keypaths_tests.cpp`
   - Verify: `./build/bin/test_tidecoin -t pq_pubkey_container_tests` and `./build/bin/test_tidecoin -t psbt_pq_keypaths_tests`
-- [x] PR-4 — Wallet DB PQHD seed/policy records + auxpow scheme gating semantics
+- [x] PR-4 — Wallet DB PQHD seed/policy records
   - Touch-points: `src/wallet/pqhd.h`, `src/wallet/walletdb.h`, `src/wallet/walletdb.cpp`, `src/wallet/wallet.h`, `src/wallet/wallet.cpp`, `src/wallet/test/walletdb_tests.cpp`
   - Verify: `./build/bin/test_tidecoin -t walletdb_tests`
 - [x] PR-5 — Descriptors: `pqhd(<SeedID32>)/...` parsing + canonical printing + tests
@@ -145,3 +166,19 @@ Legend:
 - [x] PR-6 — PSBT `PQHD_ORIGIN` (inputs + outputs) + parsed RPC display
   - Touch-points: `src/psbt.h`, `src/psbt.cpp`, `src/rpc/rawtransaction.cpp`, `src/test/psbt_pqhd_origin_tests.cpp`
   - Verify: `./build/bin/test_tidecoin -t psbt_pqhd_origin_tests`
+
+---
+
+## Cleanup Alignment (PQHD‑Only Removal Plan)
+
+The following cleanup items are already complete and are tracked in
+`ai-docs/pqhd-removal-plan.md`:
+
+- BIP32/xpub public surface removed (no xpub/xprv parsing or prefixes).
+- `src/util/bip32.*`, `BIP32Hash`, and `script/keyorigin.h` removed.
+- `CExtKey`/`CExtPubKey` removed; wallet HD/xpub APIs removed.
+- secp256k1 subtree removed; ECC context initialization removed.
+- RPC help text updated to drop xpub/xprv references.
+
+These cleanup steps are now part of the baseline and should be assumed in
+all future PQHD work.

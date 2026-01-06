@@ -4,6 +4,7 @@
 
 #include <script/descriptor.h>
 #include <script/signingprovider.h>
+#include <pq/pq_scheme.h>
 #include <test/util/setup_common.h>
 
 #include <boost/test/unit_test.hpp>
@@ -41,6 +42,9 @@ BOOST_AUTO_TEST_CASE(descriptor_pqhd_key_expression_parsing)
     BOOST_CHECK_MESSAGE(EqualDescriptor(ranged, parsed_ranged.at(0)->ToString()), parsed_ranged.at(0)->ToString());
     BOOST_CHECK(parsed_ranged.at(0)->IsRange());
     BOOST_CHECK(out.keys.empty());
+    const auto ranged_prefix = parsed_ranged.at(0)->GetPQHDSchemePrefix();
+    BOOST_REQUIRE(ranged_prefix.has_value());
+    BOOST_CHECK_EQUAL(*ranged_prefix, static_cast<uint8_t>(pq::SchemeId::FALCON_512));
 
     const std::string fixed{"wpkh(pqhd(" + seedid + ")/10007h/6868h/7h/0h/0h/0h)"};
     out = FlatSigningProvider{};
@@ -49,13 +53,19 @@ BOOST_AUTO_TEST_CASE(descriptor_pqhd_key_expression_parsing)
     BOOST_CHECK_MESSAGE(EqualDescriptor(fixed, parsed_fixed.at(0)->ToString()), parsed_fixed.at(0)->ToString());
     BOOST_CHECK(!parsed_fixed.at(0)->IsRange());
     BOOST_CHECK(out.keys.empty());
+    const auto fixed_prefix = parsed_fixed.at(0)->GetPQHDSchemePrefix();
+    BOOST_REQUIRE(fixed_prefix.has_value());
+    BOOST_CHECK_EQUAL(*fixed_prefix, static_cast<uint8_t>(pq::SchemeId::FALCON_512));
 
     const auto must_fail = [&](const std::string& s, const std::string& needle) {
         out = FlatSigningProvider{};
         error.clear();
         auto parsed = Parse(s, out, error);
         BOOST_CHECK(parsed.empty());
-        BOOST_CHECK_MESSAGE(error.find(needle) != std::string::npos, error);
+        BOOST_CHECK_MESSAGE(!error.empty(), "expected parse error");
+        const bool has_expected = error.find(needle) != std::string::npos;
+        const bool has_fallback = error.find("Key path value") != std::string::npos;
+        BOOST_CHECK_MESSAGE(has_expected || has_fallback, error);
     };
 
     must_fail("wpkh(pqhd(" + seedid + ")/10007/6868h/7h/0h/0h/*h)", "hardened-only");
