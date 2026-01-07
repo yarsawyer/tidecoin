@@ -1734,7 +1734,7 @@ inline NodeRef<Key> Parse(std::span<const char> in, const Ctx& ctx)
         if (!k_to_integral.has_value()) return false;
         const int64_t k{k_to_integral.value()};
         in = in.subspan(next_comma + 1);
-        // Get keys. It is compatible for both compressed and x-only keys.
+        // Get keys. It supports variable-length pubkeys.
         std::vector<Key> keys;
         while (next_comma != -1) {
             next_comma = FindNextChar(in, ',');
@@ -1747,7 +1747,13 @@ inline NodeRef<Key> Parse(std::span<const char> in, const Ctx& ctx)
         }
         if (keys.size() < 1 || keys.size() > MAX_PUBKEYS_PER_MULTISIG) return false;
         if (k < 1 || k > (int64_t)keys.size()) return false;
-        script_size += 2 + (keys.size() > 16) + (k > 16) + 34 * keys.size();
+        size_t keys_size = 0;
+        for (const auto& key : keys) {
+            const size_t key_size = key.size();
+            const size_t push_size = key_size < 0x4c ? 1 : (key_size <= 0xff ? 2 : (key_size <= 0xffff ? 3 : 5));
+            keys_size += push_size + key_size;
+        }
+        script_size += 2 + (keys.size() > 16) + (k > 16) + keys_size;
         constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::MULTI, std::move(keys), k));
         return true;
     };

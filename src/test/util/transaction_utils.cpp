@@ -49,7 +49,7 @@ std::vector<CMutableTransaction> SetupDummyInputs(FillableSigningProvider& keyst
     // Add some keys to the keystore:
     CKey key[4];
     for (int i = 0; i < 4; i++) {
-        key[i].MakeNewKey(i % 2);
+        key[i].MakeNewKey(pq::SchemeId::FALCON_512);
         keystoreRet.AddKey(key[i]);
     }
 

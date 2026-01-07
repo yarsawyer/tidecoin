@@ -33,7 +33,7 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
 
     // Create a bunch of keys / UTXOs to avoid signing with the same key repeatedly
     for (int i = 0; i < 32; i++) {
-        CKey privkey = GenerateRandomKey();
+        CKey privkey = GenerateRandomKey(pq::SchemeId::FALCON_512);
         CPubKey pubkey = privkey.GetPubKey();
         CKeyID key_id = pubkey.GetID();
         keystore.keys.emplace(key_id, privkey);

@@ -112,14 +112,9 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
 
     for (const CTxIn& txin : tx.vin)
     {
-        // Biggest 'standard' txin involving only keys is a 15-of-15 P2SH
-        // multisig with compressed keys (remember the MAX_SCRIPT_ELEMENT_SIZE byte limit on
-        // redeemScript size). That works out to a (15*(33+1))+3=513 byte
-        // redeemScript, 513+1+15*(73+1)+3=1627 bytes of scriptSig, which
-        // we round off to 1650(MAX_STANDARD_SCRIPTSIG_SIZE) bytes for
-        // some minor future-proofing. That's also enough to spend a
-        // 20-of-20 CHECKMULTISIG scriptPubKey, though such a scriptPubKey
-        // is not considered standard.
+        // Biggest 'standard' txin involving only keys is a 15-of-15 P2SH multisig.
+        // The MAX_SCRIPT_ELEMENT_SIZE byte limit on redeemScript size bounds this,
+        // and MAX_STANDARD_SCRIPTSIG_SIZE leaves some future-proofing room.
         if (txin.scriptSig.size() > MAX_STANDARD_SCRIPTSIG_SIZE) {
             reason = "scriptsig-size";
             return false;

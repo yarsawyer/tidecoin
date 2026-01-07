@@ -31,7 +31,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     CKey keys[3];
     CPubKey pubkeys[3];
     for (int i = 0; i < 3; i++) {
-        keys[i].MakeNewKey(true);
+        keys[i].MakeNewKey(pq::SchemeId::FALCON_512);
         pubkeys[i] = keys[i].GetPubKey();
     }
 
@@ -122,7 +122,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
 
 BOOST_AUTO_TEST_CASE(script_standard_Solver_failure)
 {
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CPubKey pubkey = key.GetPubKey();
 
     CScript s;
@@ -177,7 +177,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_failure)
 
 BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
 {
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CPubKey pubkey = key.GetPubKey();
 
     CScript s;
@@ -235,7 +235,7 @@ BOOST_AUTO_TEST_CASE(script_standard_GetScriptFor_)
     CKey keys[3];
     CPubKey pubkeys[3];
     for (int i = 0; i < 3; i++) {
-        keys[i].MakeNewKey(true);
+        keys[i].MakeNewKey(pq::SchemeId::FALCON_512);
         pubkeys[i] = keys[i].GetPubKey();
     }
 

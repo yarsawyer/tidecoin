@@ -5,6 +5,7 @@
 #include <bench/bench.h>
 #include <hash.h>
 #include <key.h>
+#include <pq/pq_api.h>
 #include <primitives/transaction.h>
 #include <pubkey.h>
 #include <script/interpreter.h>
@@ -33,7 +34,13 @@ static void VerifyScriptBench(benchmark::Bench& bench)
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
         }
     };
-    key.Set(vchKey.begin(), vchKey.end(), false);
+    std::array<unsigned char, 64> material{};
+    CSHA512().Write(vchKey.data(), vchKey.size()).Finalize(material.data());
+    std::vector<unsigned char> pubkey_bytes;
+    pq::SecureKeyBytes seckey_bytes;
+    const bool ok = pq::KeyGenFromSeed(1, pq::SchemeId::FALCON_512, material, pubkey_bytes, seckey_bytes);
+    assert(ok);
+    key.Set(seckey_bytes.begin(), seckey_bytes.end());
     CPubKey pubkey = key.GetPubKey();
     uint160 pubkeyHash;
     CHash160().Write(pubkey).Finalize(pubkeyHash);

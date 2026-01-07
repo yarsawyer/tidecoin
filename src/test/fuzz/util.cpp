@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <memory>
 
-std::vector<uint8_t> ConstructPubKeyBytes(FuzzedDataProvider& fuzzed_data_provider, std::span<const uint8_t> byte_data, const bool /*compressed*/) noexcept
+std::vector<uint8_t> ConstructPubKeyBytes(FuzzedDataProvider& fuzzed_data_provider, std::span<const uint8_t> byte_data) noexcept
 {
     const pq::SchemeInfo* scheme = fuzzed_data_provider.PickValueInArray<const pq::SchemeInfo*>({
         &pq::kFalcon512Info,
@@ -122,7 +122,7 @@ CScript ConsumeScript(FuzzedDataProvider& fuzzed_data_provider, const bool maybe
                     r_script << fuzzed_data_provider.ConsumeIntegralInRange<int64_t>(0, 22);
                     int num_data{fuzzed_data_provider.ConsumeIntegralInRange(1, 22)};
                     while (num_data--) {
-                        auto pubkey_bytes{ConstructPubKeyBytes(fuzzed_data_provider, buffer, fuzzed_data_provider.ConsumeBool())};
+                        auto pubkey_bytes{ConstructPubKeyBytes(fuzzed_data_provider, buffer)};
                         if (fuzzed_data_provider.ConsumeBool()) {
                             pubkey_bytes.back() = num_data; // Make each pubkey different
                         }
@@ -196,11 +196,9 @@ CTxDestination ConsumeTxDestination(FuzzedDataProvider& fuzzed_data_provider) no
             tx_destination = CNoDestination{};
         },
         [&] {
-            const bool compressed = fuzzed_data_provider.ConsumeBool();
             CPubKey pk{ConstructPubKeyBytes(
                     fuzzed_data_provider,
-                    ConsumeFixedLengthByteVector(fuzzed_data_provider, CPubKey::MAX_SIZE),
-                    compressed
+                    ConsumeFixedLengthByteVector(fuzzed_data_provider, CPubKey::MAX_SIZE)
             )};
             tx_destination = PubKeyDestination{pk};
         },
@@ -221,13 +219,12 @@ CTxDestination ConsumeTxDestination(FuzzedDataProvider& fuzzed_data_provider) no
     return tx_destination;
 }
 
-CKey ConsumePrivateKey(FuzzedDataProvider& fuzzed_data_provider, std::optional<bool> compressed) noexcept
+CKey ConsumePrivateKey(FuzzedDataProvider& fuzzed_data_provider) noexcept
 {
     auto key_data = fuzzed_data_provider.ConsumeBytes<uint8_t>(32);
     key_data.resize(32);
     CKey key;
-    bool compressed_value = compressed ? *compressed : fuzzed_data_provider.ConsumeBool();
-    key.Set(key_data.begin(), key_data.end(), compressed_value);
+    key.Set(key_data.begin(), key_data.end());
     return key;
 }
 

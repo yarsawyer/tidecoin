@@ -39,8 +39,8 @@ BOOST_AUTO_TEST_CASE(generate_random_key_smoke)
 {
     // Ensure we can generate a non-empty private key and access its pubkey
     // without triggering assertions used by wallet create paths.
-    CKey key = GenerateRandomKey();
-    BOOST_REQUIRE_MESSAGE(key.IsValid(), "GenerateRandomKey() produced an invalid key");
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
+    BOOST_REQUIRE_MESSAGE(key.IsValid(), "GenerateRandomKey(pq::SchemeId::FALCON_512) produced an invalid key");
 
     const CPubKey pubkey = key.GetPubKey();
     BOOST_CHECK(pubkey.IsValid());

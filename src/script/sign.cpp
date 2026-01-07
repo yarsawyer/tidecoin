@@ -195,7 +195,7 @@ struct WshSatisfier: Satisfier<CPubKey> {
                           const BaseSignatureCreator& creator LIFETIMEBOUND, const CScript& witscript LIFETIMEBOUND)
                           : Satisfier(provider, sig_data, creator, witscript, miniscript::MiniscriptContext::P2WSH) {}
 
-    //! Conversion from a raw compressed public key.
+    //! Conversion from a raw public key.
     template <typename I>
     std::optional<CPubKey> FromPKBytes(I first, I last) const {
         CPubKey pubkey{first, last};
@@ -203,7 +203,7 @@ struct WshSatisfier: Satisfier<CPubKey> {
         return {};
     }
 
-    //! Conversion from a raw compressed public key hash.
+    //! Conversion from a raw public key hash.
     template<typename I>
     std::optional<CPubKey> FromPKHBytes(I first, I last) const {
         return Satisfier::CPubFromPKHBytes(first, last);

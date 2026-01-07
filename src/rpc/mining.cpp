@@ -206,10 +206,10 @@ static bool getScriptFromDescriptor(const std::string& descriptor, CScript& scri
     if (scripts.size() == 1) {
         script = scripts.at(0);
     } else if (scripts.size() == 4) {
-        // For uncompressed keys, take the 3rd script, since it is p2wpkh
+        // Prefer the segwit script when multiple outputs are available.
         script = scripts.at(2);
     } else {
-        // Else take the 2nd script, since it is p2pkh
+        // Otherwise pick the standard p2pkh script.
         script = scripts.at(1);
     }
 

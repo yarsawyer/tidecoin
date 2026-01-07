@@ -179,7 +179,7 @@ public:
         return size() > 0;
     }
 
-    /** Check if a public key is a syntactically valid compressed or uncompressed key. */
+    /** Check if a public key is syntactically valid for a known PQ scheme. */
     bool IsValidNonHybrid() const noexcept
     {
         return IsValid() && pq::SchemeFromPrefix(vch[0]) != nullptr;

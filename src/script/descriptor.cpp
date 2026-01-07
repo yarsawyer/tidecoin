@@ -1030,10 +1030,14 @@ public:
     }
 };
 
-/* We instantiate Miniscript here with a simple integer as key type.
- * The value of these key integers are an index in the
- * DescriptorImpl::m_pubkey_args vector.
+/* We instantiate Miniscript with a key type that carries both an index into
+ * DescriptorImpl::m_pubkey_args and the serialized pubkey size for script sizing.
  */
+struct MiniscriptKey {
+    uint32_t index;
+    size_t key_size;
+    size_t size() const { return key_size; }
+};
 
 /**
  * The context for converting a Miniscript descriptor into a Script.
@@ -1043,18 +1047,18 @@ class ScriptMaker {
     const std::vector<CPubKey>& m_keys;
 
     //! Get the ripemd160(sha256()) hash of this key.
-    uint160 GetHash160(uint32_t key) const {
-        return m_keys[key].GetID();
+    uint160 GetHash160(const MiniscriptKey& key) const {
+        return m_keys[key.index].GetID();
     }
 
 public:
     explicit ScriptMaker(const std::vector<CPubKey>& keys LIFETIMEBOUND) : m_keys(keys) {}
 
-    std::vector<unsigned char> ToPKBytes(uint32_t key) const {
-        return {m_keys[key].begin(), m_keys[key].end()};
+    std::vector<unsigned char> ToPKBytes(const MiniscriptKey& key) const {
+        return {m_keys[key.index].begin(), m_keys[key.index].end()};
     }
 
-    std::vector<unsigned char> ToPKHBytes(uint32_t key) const {
+    std::vector<unsigned char> ToPKHBytes(const MiniscriptKey& key) const {
         auto id = GetHash160(key);
         return {id.begin(), id.end()};
     }
@@ -1075,13 +1079,13 @@ public:
     StringMaker(const SigningProvider* arg LIFETIMEBOUND, const std::vector<std::unique_ptr<PubkeyProvider>>& pubkeys LIFETIMEBOUND, bool priv)
         : m_arg(arg), m_pubkeys(pubkeys), m_private(priv) {}
 
-    std::optional<std::string> ToString(uint32_t key) const
+    std::optional<std::string> ToString(const MiniscriptKey& key) const
     {
         std::string ret;
         if (m_private) {
-            if (!m_pubkeys[key]->ToPrivateString(*m_arg, ret)) return {};
+            if (!m_pubkeys[key.index]->ToPrivateString(*m_arg, ret)) return {};
         } else {
-            ret = m_pubkeys[key]->ToString();
+            ret = m_pubkeys[key.index]->ToString();
         }
         return ret;
     }
@@ -1090,7 +1094,7 @@ public:
 class MiniscriptDescriptor final : public DescriptorImpl
 {
 private:
-    miniscript::NodeRef<uint32_t> m_node;
+    miniscript::NodeRef<MiniscriptKey> m_node;
 
 protected:
     std::vector<CScript> MakeScripts(const std::vector<CPubKey>& keys, std::span<const CScript> scripts,
@@ -1103,7 +1107,7 @@ protected:
     }
 
 public:
-    MiniscriptDescriptor(std::vector<std::unique_ptr<PubkeyProvider>> providers, miniscript::NodeRef<uint32_t> node)
+    MiniscriptDescriptor(std::vector<std::unique_ptr<PubkeyProvider>> providers, miniscript::NodeRef<MiniscriptKey> node)
         : DescriptorImpl(std::move(providers), "?"), m_node(std::move(node)) {}
 
     bool ToStringHelper(const SigningProvider* arg, std::string& out, const StringType type,
@@ -1332,8 +1336,8 @@ std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptCo
  * The context for parsing a Miniscript descriptor (either from Script or from its textual representation).
  */
 struct KeyParser {
-    //! The Key type is an index in DescriptorImpl::m_pubkey_args
-    using Key = uint32_t;
+    //! The Key type for miniscript parsing.
+    using Key = MiniscriptKey;
     //! Must not be nullptr if parsing from string.
     FlatSigningProvider* m_out;
     //! Must not be nullptr if parsing from Script.
@@ -1352,7 +1356,7 @@ struct KeyParser {
         : m_out(out), m_in(in), m_script_ctx(ctx), m_offset(offset) {}
 
     bool KeyCompare(const Key& a, const Key& b) const {
-        return *m_keys.at(a).at(0) < *m_keys.at(b).at(0);
+        return *m_keys.at(a.index).at(0) < *m_keys.at(b.index).at(0);
     }
 
     ParseScriptContext ParseContext() const {
@@ -1362,26 +1366,28 @@ struct KeyParser {
     template<typename I> std::optional<Key> FromString(I begin, I end) const
     {
         assert(m_out);
-        Key key = m_keys.size();
-        uint32_t exp_index = m_offset + key;
+        Key key{static_cast<uint32_t>(m_keys.size()), 0};
+        uint32_t exp_index = m_offset + key.index;
         auto pk = ParsePubkey(exp_index, {&*begin, &*end}, ParseContext(), *m_out, m_key_parsing_error);
         if (pk.empty()) return {};
+        key.key_size = pk.at(0)->GetSize();
         m_keys.emplace_back(std::move(pk));
         return key;
     }
 
     std::optional<std::string> ToString(const Key& key) const
     {
-        return m_keys.at(key).at(0)->ToString();
+        return m_keys.at(key.index).at(0)->ToString();
     }
 
     template<typename I> std::optional<Key> FromPKBytes(I begin, I end) const
     {
         assert(m_in);
-        Key key = m_keys.size();
+        Key key{static_cast<uint32_t>(m_keys.size()), 0};
         CPubKey pubkey(begin, end);
         if (auto pubkey_provider = InferPubkey(pubkey, ParseContext(), *m_in)) {
             m_keys.emplace_back();
+            key.key_size = pubkey_provider->GetSize();
             m_keys.back().push_back(std::move(pubkey_provider));
             return key;
         }
@@ -1398,7 +1404,8 @@ struct KeyParser {
         CPubKey pubkey;
         if (m_in->GetPubKey(keyid, pubkey)) {
             if (auto pubkey_provider = InferPubkey(pubkey, ParseContext(), *m_in)) {
-                Key key = m_keys.size();
+                Key key{static_cast<uint32_t>(m_keys.size()), 0};
+                key.key_size = pubkey_provider->GetSize();
                 m_keys.emplace_back();
                 m_keys.back().push_back(std::move(pubkey_provider));
                 return key;
@@ -1472,6 +1479,12 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             return {};
         }
         size_t script_size = 0;
+        const auto push_size = [](size_t len) -> size_t {
+            if (len < 0x4c) return 1;
+            if (len <= 0xff) return 2;
+            if (len <= 0xffff) return 3;
+            return 5;
+        };
         size_t max_providers_len = 0;
         while (expr.size()) {
             if (!Const(",", expr)) {
@@ -1484,7 +1497,8 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
                 error = strprintf("Multi: %s", error);
                 return {};
             }
-            script_size += pks.at(0)->GetSize() + 1;
+            const size_t key_size = pks.at(0)->GetSize();
+            script_size += push_size(key_size) + key_size;
             max_providers_len = std::max(max_providers_len, pks.size());
             providers.emplace_back(std::move(pks));
             key_exp_index++;
@@ -1506,7 +1520,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             }
         }
         if (ctx == ParseScriptContext::P2SH) {
-            // This limits the maximum number of compressed pubkeys to 15.
+            // Enforce the P2SH script size limit.
             if (script_size + 3 > MAX_SCRIPT_ELEMENT_SIZE) {
                 error = strprintf("P2SH script is too large, %d bytes is larger than %d bytes", script_size + 3, MAX_SCRIPT_ELEMENT_SIZE);
                 return {};

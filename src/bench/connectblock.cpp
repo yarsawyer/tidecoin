@@ -73,7 +73,7 @@ std::pair<std::vector<CKey>, std::vector<CTxOut>> CreateKeysAndOutputs(const CKe
     outputs.reserve(num_keys);
 
     for (size_t i{0}; i < num_keys; ++i) {
-        keys.emplace_back(GenerateRandomKey());
+        keys.emplace_back(GenerateRandomKey(pq::SchemeId::FALCON_512));
         outputs.emplace_back(COIN, GetScriptForDestination(WitnessV0KeyHash{keys.back().GetPubKey()}));
     }
 

@@ -224,10 +224,11 @@ CPubKey HexToPubKey(const std::string& hex_in)
     if (!IsHex(hex_in)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Pubkey \"" + hex_in + "\" must be a hex string");
     }
-    if (hex_in.length() != 66 && hex_in.length() != 130) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Pubkey \"" + hex_in + "\" must have a length of either 33 or 65 bytes");
+    const std::vector<unsigned char> pubkey_bytes = ParseHex(hex_in);
+    if (!CPubKey::ValidSize(pubkey_bytes)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Pubkey \"" + hex_in + "\" has an invalid length");
     }
-    CPubKey vchPubKey(ParseHex(hex_in));
+    CPubKey vchPubKey(pubkey_bytes);
     if (!vchPubKey.IsFullyValid()) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Pubkey \"" + hex_in + "\" must be cryptographically valid.");
     }
@@ -249,14 +250,6 @@ CTxDestination AddAndGetMultisigDestination(const int required, const std::vecto
     }
 
     script_out = GetScriptForMultisig(required, pubkeys);
-
-    // Check if any keys are uncompressed. If so, the type is legacy
-    // for (const CPubKey& pk : pubkeys) {
-    //     if (!pk.IsCompressed()) {
-    //         type = OutputType::LEGACY;
-    //         break;
-    //     }
-    // }
 
     if (type == OutputType::LEGACY && script_out.size() > MAX_SCRIPT_ELEMENT_SIZE) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, (strprintf("redeemScript exceeds size limit: %d > %d", script_out.size(), MAX_SCRIPT_ELEMENT_SIZE)));

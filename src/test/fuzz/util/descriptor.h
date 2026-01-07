@@ -20,7 +20,7 @@
  */
 class MockedDescriptorConverter {
 private:
-    //! Types are raw (un)compressed pubkeys and raw privkeys (WIF).
+//! Types are raw pubkeys and raw privkeys (WIF).
     static constexpr uint8_t KEY_TYPES_COUNT{3};
     //! How many keys we'll generate in total.
     static constexpr size_t TOTAL_KEYS_GENERATED{std::numeric_limits<uint8_t>::max() + 1};

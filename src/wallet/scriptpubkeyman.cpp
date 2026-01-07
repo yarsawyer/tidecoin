@@ -74,13 +74,8 @@ enum class IsMineResult
     NO = 0,         //!< Not ours
     WATCH_ONLY = 1, //!< Included in watch-only balance
     SPENDABLE = 2,  //!< Included in all balances
-    INVALID = 3,    //!< Not spendable by anyone (uncompressed pubkey in segwit, P2SH inside P2SH or witness, witness inside witness)
+    INVALID = 3,    //!< Not spendable by anyone (P2SH inside P2SH or witness, witness inside witness)
 };
-
-bool PermitsUncompressed(IsMineSigVersion sigversion)
-{
-    return sigversion == IsMineSigVersion::TOP || sigversion == IsMineSigVersion::P2SH;
-}
 
 bool HaveKeys(const std::vector<valtype>& pubkeys, const LegacyDataSPKM& keystore)
 {
@@ -114,9 +109,6 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
         break;
     case TxoutType::PUBKEY:
         keyID = CPubKey(vSolutions[0]).GetID();
-        if (!PermitsUncompressed(sigversion) && vSolutions[0].size() != 33) {
-            return IsMineResult::INVALID;
-        }
         if (keystore.HaveKey(keyID)) {
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }
@@ -138,12 +130,6 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
     }
     case TxoutType::PUBKEYHASH:
         keyID = CKeyID(uint160(vSolutions[0]));
-        if (!PermitsUncompressed(sigversion)) {
-            CPubKey pubkey;
-            if (keystore.GetPubKey(keyID, pubkey)) {
-                return IsMineResult::INVALID;
-            }
-        }
         if (keystore.HaveKey(keyID)) {
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }
@@ -191,13 +177,6 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
         // them) enable spend-out-from-under-you attacks, especially
         // in shared-wallet situations.
         std::vector<valtype> keys(vSolutions.begin()+1, vSolutions.begin()+vSolutions.size()-1);
-        if (!PermitsUncompressed(sigversion)) {
-            for (size_t i = 0; i < keys.size(); i++) {
-                if (keys[i].size() != 33) {
-                    return IsMineResult::INVALID;
-                }
-            }
-        }
         if (HaveKeys(keys, keystore)) {
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }

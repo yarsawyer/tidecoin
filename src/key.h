@@ -151,7 +151,7 @@ public:
     bool IsValid() const { return !keydata.empty(); }
 
     //! Generate a new private key using a cryptographic PRNG.
-    void MakeNewKey(bool fCompressed);
+    void MakeNewKey(pq::SchemeId scheme_id);
 
     /**
      * Convert the private key to a CPrivKey (serialized OpenSSL private key data).
@@ -182,6 +182,6 @@ public:
 
 };
 
-CKey GenerateRandomKey(bool compressed = true) noexcept;
+CKey GenerateRandomKey(pq::SchemeId scheme_id) noexcept;
 
 #endif // BITCOIN_KEY_H

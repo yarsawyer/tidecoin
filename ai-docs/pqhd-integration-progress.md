@@ -35,6 +35,14 @@ Legend:
 ## Implemented
 
 - PQHD-REQ-0001 — Scheme registry is canonical and stable (`src/pq/pq_scheme.h`, `src/pq/pq_api.h`)
+- PQHD-REQ-0003 — Wallet policy decides scheme (no global default scheme)
+  - Touch-points:
+    - `src/key.h` (`CKey::MakeNewKey(SchemeId, ...)`, `GenerateRandomKey(SchemeId, ...)`)
+    - `src/key.cpp` (keygen uses `pq::SchemeFromId`, no implicit default)
+    - `src/pq/pq_api.h` (removed `pq::ActiveScheme()`)
+    - Tests/benches updated to pass explicit `pq::SchemeId::FALCON_512`
+  - Verify:
+    - `cmake --build build -j12` (ensures no scheme-less keygen remains)
 - PQHD-REQ-0004 — SeedID32 is the only seed identifier (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0008 — Wallet DB schema for PQHD seeds and policy
   - Touch-points:
@@ -99,7 +107,7 @@ Legend:
 
 ## In Progress
 
-- PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation (core enforcement done; RPC/Qt overrides pending)
+- PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation (core enforcement done; RPC/Qt overrides implemented; RPC test coverage missing)
   - Implemented:
     - Central rule `pq::IsSchemeAllowedAtHeight(...)` in `src/pq/pq_scheme.h`
     - Wallet policy clamp in `CWallet::LoadPQHDPolicy` (`src/wallet/wallet.cpp`)
@@ -117,11 +125,17 @@ Legend:
     - `./build/bin/test_tidecoin -t scriptpubkeyman_tests` (PQHD scheme gate + internal scheme default)
   - Missing:
     - RPC test coverage for override behavior (pre‑auxpow reject, post‑auxpow accept).
-- PQHD-REQ-0003 — Wallet policy decides scheme (vs `pq::ActiveScheme()`) (documented; enforcement pending)
-- PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin (wallet lock semantics exist; PQHD seed semantics pending)
+- PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin (partial; semantics not fully verified/tested)
+  - Present in code:
+    - Seeds stored in `m_pqhd_seeds` (plaintext or `crypted_seed`) (`src/wallet/pqhd.h`, `src/wallet/wallet.cpp`).
+    - Decryption uses `DecryptSecret` with `seed_id` as IV (`src/wallet/wallet.cpp`, `GetPQHDSeedForID` path).
+  - Missing:
+    - Explicit tests/verification for lock/unlock semantics (locked wallet cannot derive new PQHD keys).
 - PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
-  - Partial: `decodepsbt` reads and formats `tidecoin/PQHD_ORIGIN` into `pqhd_origins`.
-  - Missing: wallet emission during `walletprocesspsbt` / PSBT creation and analysis.
+  - Partial:
+    - `decodepsbt` reads and formats `tidecoin/PQHD_ORIGIN` into `pqhd_origins` (`src/rpc/rawtransaction.cpp`).
+  - Missing:
+    - Wallet emission during `walletprocesspsbt` / PSBT creation and analysis (no PQHD_ORIGIN added in `CWallet::FillPSBT` or `walletprocesspsbt` path).
 
 ---
 
@@ -138,8 +152,8 @@ Legend:
 <!-- (implemented; see above) -->
 
 ### Descriptors
-- PQHD-REQ-0018 — Explicit pubkeys in descriptors remain usable for PQ
-  - Note: inherited upstream `descriptor_tests` vectors are secp256k1/WIF/BIP32-centric and are skipped in Tidecoin (PQ `CKey`). We still need a small PQ-native descriptor test suite for explicit pubkeys (raw hex `TidePubKey` bytes).
+- PQHD-REQ-0018 — Explicit PQ pubkeys in descriptors use raw prefixed hex only (no xpub/xprv)
+  - Note: upstream `descriptor_tests` vectors are secp256k1/WIF/BIP32-centric and are skipped in Tidecoin. We still need a small PQ-native descriptor test suite that exercises explicit raw-hex prefixed `TidePubKey` bytes (no xpub/xprv surface).
 
 ### PSBT + RPC/Qt Integration
 - PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT

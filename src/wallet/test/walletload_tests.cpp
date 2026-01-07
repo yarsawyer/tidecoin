@@ -93,7 +93,7 @@ BOOST_FIXTURE_TEST_CASE(wallet_load_legacy_keys, TestingSetup)
     WalletBatch batch(*database);
 
     CKey key;
-    key.MakeNewKey(/*fCompressed=*/false);
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
     const CPubKey pubkey = key.GetPubKey();
     const CPrivKey privkey = key.GetPrivKey();
     CKeyMetadata meta;

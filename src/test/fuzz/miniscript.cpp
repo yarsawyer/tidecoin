@@ -5,6 +5,7 @@
 #include <core_io.h>
 #include <hash.h>
 #include <key.h>
+#include <pq/pq_api.h>
 #include <script/miniscript.h>
 #include <script/script.h>
 #include <script/signingprovider.h>
@@ -14,6 +15,7 @@
 #include <util/strencodings.h>
 
 #include <algorithm>
+#include <array>
 
 namespace {
 
@@ -51,7 +53,14 @@ struct TestData {
         for (size_t i = 0; i < 256; i++) {
             keydata[31] = i;
             CKey privkey;
-            privkey.Set(keydata, keydata + 32, true);
+            std::array<unsigned char, 64> material{};
+            CSHA512().Write(keydata, 32).Finalize(material.data());
+            std::vector<unsigned char> pubkey_bytes;
+            pq::SecureKeyBytes seckey_bytes;
+            if (!pq::KeyGenFromSeed(1, pq::SchemeId::FALCON_512, material, pubkey_bytes, seckey_bytes)) {
+                continue;
+            }
+            privkey.Set(seckey_bytes.begin(), seckey_bytes.end());
             const Key pubkey = privkey.GetPubKey();
 
             dummy_keys.push_back(pubkey);

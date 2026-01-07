@@ -66,7 +66,7 @@ BOOST_AUTO_TEST_CASE(compress_amounts)
 BOOST_AUTO_TEST_CASE(compress_script_to_ckey_id)
 {
     // case CKeyID
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CPubKey pubkey = key.GetPubKey();
 
     CScript script = CScript() << OP_DUP << OP_HASH160 << ToByteVector(pubkey.GetID()) << OP_EQUALVERIFY << OP_CHECKSIG;
@@ -97,78 +97,6 @@ BOOST_AUTO_TEST_CASE(compress_script_to_cscript_id)
     BOOST_CHECK_EQUAL(out.size(), 21U);
     BOOST_CHECK_EQUAL(out[0], 0x01);
     BOOST_CHECK_EQUAL(memcmp(out.data() + 1, script.data() + 2, 20), 0); // compare the 20 relevant chars of the CScriptId in the script
-}
-
-BOOST_AUTO_TEST_CASE(compress_script_to_compressed_pubkey_id)
-{
-    CKey key = GenerateRandomKey(); // case compressed PubKeyID
-
-    CScript script = CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIG; // COMPRESSED_PUBLIC_KEY_SIZE (33)
-    BOOST_CHECK_EQUAL(script.size(), 35U);
-
-    CompressedScript out;
-    bool done = CompressScript(script, out);
-    BOOST_CHECK_EQUAL(done, true);
-
-    // Check compressed script
-    BOOST_CHECK_EQUAL(out.size(), 33U);
-    BOOST_CHECK_EQUAL(memcmp(out.data(), script.data() + 1, 1), 0);
-    BOOST_CHECK_EQUAL(memcmp(out.data() + 1, script.data() + 2, 32), 0); // compare the 32 chars of the compressed CPubKey
-}
-
-BOOST_AUTO_TEST_CASE(compress_script_to_uncompressed_pubkey_id)
-{
-    CKey key = GenerateRandomKey(/*compressed=*/false); // case uncompressed PubKeyID
-    CScript script =  CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIG; // PUBLIC_KEY_SIZE (65)
-    BOOST_CHECK_EQUAL(script.size(), 67U);                   // 1 char code + 65 char pubkey + OP_CHECKSIG
-
-    CompressedScript out;
-    bool done = CompressScript(script, out);
-    BOOST_CHECK_EQUAL(done, true);
-
-    // Check compressed script
-    BOOST_CHECK_EQUAL(out.size(), 33U);
-    BOOST_CHECK_EQUAL(memcmp(out.data() + 1, script.data() + 2, 32), 0); // first 32 chars of CPubKey are copied into out[1:]
-    BOOST_CHECK_EQUAL(out[0], 0x04 | (script[65] & 0x01)); // least significant bit (lsb) of last char of pubkey is mapped into out[0]
-}
-
-BOOST_AUTO_TEST_CASE(compress_p2pk_scripts_not_on_curve)
-{
-    CPubKey pubkey_not_on_curve;
-    bool found = false;
-    for (int i = 0; i < 100; ++i) {
-        std::vector<unsigned char> pubkey_raw(65);
-        pubkey_raw[0] = 4;
-        auto random_bytes = m_rng.randbytes(64);
-        std::copy(random_bytes.begin(), random_bytes.end(), pubkey_raw.begin() + 1);
-        CPubKey candidate(pubkey_raw);
-        if (candidate.IsValid() && !candidate.IsFullyValid()) {
-            pubkey_not_on_curve = candidate;
-            found = true;
-            break;
-        }
-    }
-    BOOST_REQUIRE(found);
-
-    // Check that P2PK script with uncompressed pubkey [=> OP_PUSH65 <0x04 .....> OP_CHECKSIG]
-    // which is not fully valid (i.e. point is not on curve) can't be compressed
-    assert(pubkey_not_on_curve.IsValid());
-    assert(!pubkey_not_on_curve.IsFullyValid());
-    CScript script = CScript() << ToByteVector(pubkey_not_on_curve) << OP_CHECKSIG;
-    BOOST_CHECK_EQUAL(script.size(), 67U);
-
-    CompressedScript out;
-    bool done = CompressScript(script, out);
-    BOOST_CHECK_EQUAL(done, false);
-
-    // Check that compressed P2PK script with uncompressed pubkey that is not fully
-    // valid (i.e. x coordinate of the pubkey is not on curve) can't be decompressed
-    CompressedScript compressed_script(pubkey_not_on_curve.begin() + 1, pubkey_not_on_curve.begin() + 33);
-    for (unsigned int compression_id : {4, 5}) {
-        CScript uncompressed_script;
-        bool success = DecompressScript(uncompressed_script, compression_id, compressed_script);
-        BOOST_CHECK_EQUAL(success, false);
-    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

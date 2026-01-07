@@ -572,13 +572,6 @@ static RPCHelpMan decodescript()
             switch (which_type) {
             case TxoutType::MULTISIG:
             case TxoutType::PUBKEY:
-            // Uncompressed pubkeys cannot be used with segwit checksigs.
-            // If the script contains an uncompressed pubkey, skip encoding of a segwit program.
-                for (const auto& solution : solutions_data) {
-                    if (solution.size() != 1) {
-                        return false;
-                    }
-                }
                 return true;
             case TxoutType::NONSTANDARD:
             case TxoutType::PUBKEYHASH:

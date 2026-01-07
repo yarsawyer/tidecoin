@@ -65,7 +65,6 @@ static std::map<std::string, unsigned int> mapFlagNames = {
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
     {std::string("WITNESS"), (unsigned int)SCRIPT_VERIFY_WITNESS},
     {std::string("DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM"), (unsigned int)SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM},
-    {std::string("WITNESS_PUBKEYTYPE"), (unsigned int)0},
     {std::string("CONST_SCRIPTCODE"), (unsigned int)SCRIPT_VERIFY_CONST_SCRIPTCODE},
     {std::string("PQ_STRICT"), (unsigned int)SCRIPT_VERIFY_PQ_STRICT},
 };
@@ -526,7 +525,7 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
     CMutableTransaction mtx;
     mtx.version = 1;
 
-    CKey key = GenerateRandomKey(); // Need to use compressed keys in segwit or the signing will fail
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     FillableSigningProvider keystore;
     BOOST_CHECK(keystore.AddKeyPubKey(key, key.GetPubKey()));
     CKeyID hash = key.GetPubKey().GetID();
@@ -604,44 +603,30 @@ SignatureData CombineSignatures(const CMutableTransaction& input1, const CMutabl
 BOOST_AUTO_TEST_CASE(test_witness)
 {
     FillableSigningProvider keystore, keystore2;
-    CKey key1 = GenerateRandomKey();
-    CKey key2 = GenerateRandomKey();
-    CKey key3 = GenerateRandomKey();
-    CKey key1L = GenerateRandomKey(/*compressed=*/false);
-    CKey key2L = GenerateRandomKey(/*compressed=*/false);
+    CKey key1 = GenerateRandomKey(pq::SchemeId::FALCON_512);
+    CKey key2 = GenerateRandomKey(pq::SchemeId::FALCON_512);
+    CKey key3 = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CPubKey pubkey1 = key1.GetPubKey();
     CPubKey pubkey2 = key2.GetPubKey();
     CPubKey pubkey3 = key3.GetPubKey();
-    CPubKey pubkey1L = key1L.GetPubKey();
-    CPubKey pubkey2L = key2L.GetPubKey();
     BOOST_CHECK(keystore.AddKeyPubKey(key1, pubkey1));
     BOOST_CHECK(keystore.AddKeyPubKey(key2, pubkey2));
-    BOOST_CHECK(keystore.AddKeyPubKey(key1L, pubkey1L));
-    BOOST_CHECK(keystore.AddKeyPubKey(key2L, pubkey2L));
-    CScript scriptPubkey1, scriptPubkey2, scriptPubkey1L, scriptPubkey2L, scriptMulti;
+    CScript scriptPubkey1, scriptPubkey2, scriptMulti;
     scriptPubkey1 << ToByteVector(pubkey1) << OP_CHECKSIG;
     scriptPubkey2 << ToByteVector(pubkey2) << OP_CHECKSIG;
-    scriptPubkey1L << ToByteVector(pubkey1L) << OP_CHECKSIG;
-    scriptPubkey2L << ToByteVector(pubkey2L) << OP_CHECKSIG;
     std::vector<CPubKey> oneandthree;
     oneandthree.push_back(pubkey1);
     oneandthree.push_back(pubkey3);
     scriptMulti = GetScriptForMultisig(2, oneandthree);
     BOOST_CHECK(keystore.AddCScript(scriptPubkey1));
     BOOST_CHECK(keystore.AddCScript(scriptPubkey2));
-    BOOST_CHECK(keystore.AddCScript(scriptPubkey1L));
-    BOOST_CHECK(keystore.AddCScript(scriptPubkey2L));
     BOOST_CHECK(keystore.AddCScript(scriptMulti));
-    CScript destination_script_1, destination_script_2, destination_script_1L, destination_script_2L, destination_script_multi;
+    CScript destination_script_1, destination_script_2, destination_script_multi;
     destination_script_1 = GetScriptForDestination(WitnessV0KeyHash(pubkey1));
     destination_script_2 = GetScriptForDestination(WitnessV0KeyHash(pubkey2));
-    destination_script_1L = GetScriptForDestination(WitnessV0KeyHash(pubkey1L));
-    destination_script_2L = GetScriptForDestination(WitnessV0KeyHash(pubkey2L));
     destination_script_multi = GetScriptForDestination(WitnessV0ScriptHash(scriptMulti));
     BOOST_CHECK(keystore.AddCScript(destination_script_1));
     BOOST_CHECK(keystore.AddCScript(destination_script_2));
-    BOOST_CHECK(keystore.AddCScript(destination_script_1L));
-    BOOST_CHECK(keystore.AddCScript(destination_script_2L));
     BOOST_CHECK(keystore.AddCScript(destination_script_multi));
     BOOST_CHECK(keystore2.AddCScript(scriptMulti));
     BOOST_CHECK(keystore2.AddCScript(destination_script_multi));
@@ -650,7 +635,7 @@ BOOST_AUTO_TEST_CASE(test_witness)
     CTransactionRef output1, output2;
     CMutableTransaction input1, input2;
 
-    // Normal pay-to-compressed-pubkey.
+    // Normal pay-to-pubkey.
     CreateCreditAndSpend(keystore, scriptPubkey1, output1, input1);
     CreateCreditAndSpend(keystore, scriptPubkey2, output2, input2);
     CheckWithFlag(output1, input1, SCRIPT_VERIFY_NONE, true);
@@ -662,7 +647,7 @@ BOOST_AUTO_TEST_CASE(test_witness)
     CheckWithFlag(output1, input2, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false);
     CheckWithFlag(output1, input2, STANDARD_SCRIPT_VERIFY_FLAGS, false);
 
-    // P2SH pay-to-compressed-pubkey.
+    // P2SH pay-to-pubkey.
     CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(scriptPubkey1)), output1, input1);
     CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(scriptPubkey2)), output2, input2);
     ReplaceRedeemScript(input2.vin[0].scriptSig, scriptPubkey1);
@@ -675,7 +660,7 @@ BOOST_AUTO_TEST_CASE(test_witness)
     CheckWithFlag(output1, input2, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false);
     CheckWithFlag(output1, input2, STANDARD_SCRIPT_VERIFY_FLAGS, false);
 
-    // Witness pay-to-compressed-pubkey (v0).
+    // Witness pay-to-pubkey (v0).
     CreateCreditAndSpend(keystore, destination_script_1, output1, input1);
     CreateCreditAndSpend(keystore, destination_script_2, output2, input2);
     CheckWithFlag(output1, input1, SCRIPT_VERIFY_NONE, true);
@@ -687,7 +672,7 @@ BOOST_AUTO_TEST_CASE(test_witness)
     CheckWithFlag(output1, input2, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false);
     CheckWithFlag(output1, input2, STANDARD_SCRIPT_VERIFY_FLAGS, false);
 
-    // P2SH witness pay-to-compressed-pubkey (v0).
+    // P2SH witness pay-to-pubkey (v0).
     CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(destination_script_1)), output1, input1);
     CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(destination_script_2)), output2, input2);
     ReplaceRedeemScript(input2.vin[0].scriptSig, destination_script_1);
@@ -699,39 +684,6 @@ BOOST_AUTO_TEST_CASE(test_witness)
     CheckWithFlag(output1, input2, SCRIPT_VERIFY_P2SH, true);
     CheckWithFlag(output1, input2, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false);
     CheckWithFlag(output1, input2, STANDARD_SCRIPT_VERIFY_FLAGS, false);
-
-    // Normal pay-to-uncompressed-pubkey.
-    CreateCreditAndSpend(keystore, scriptPubkey1L, output1, input1);
-    CreateCreditAndSpend(keystore, scriptPubkey2L, output2, input2);
-    CheckWithFlag(output1, input1, SCRIPT_VERIFY_NONE, true);
-    CheckWithFlag(output1, input1, SCRIPT_VERIFY_P2SH, true);
-    CheckWithFlag(output1, input1, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, true);
-    CheckWithFlag(output1, input1, STANDARD_SCRIPT_VERIFY_FLAGS, true);
-    CheckWithFlag(output1, input2, SCRIPT_VERIFY_NONE, false);
-    CheckWithFlag(output1, input2, SCRIPT_VERIFY_P2SH, false);
-    CheckWithFlag(output1, input2, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false);
-    CheckWithFlag(output1, input2, STANDARD_SCRIPT_VERIFY_FLAGS, false);
-
-    // P2SH pay-to-uncompressed-pubkey.
-    CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(scriptPubkey1L)), output1, input1);
-    CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(scriptPubkey2L)), output2, input2);
-    ReplaceRedeemScript(input2.vin[0].scriptSig, scriptPubkey1L);
-    CheckWithFlag(output1, input1, SCRIPT_VERIFY_NONE, true);
-    CheckWithFlag(output1, input1, SCRIPT_VERIFY_P2SH, true);
-    CheckWithFlag(output1, input1, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, true);
-    CheckWithFlag(output1, input1, STANDARD_SCRIPT_VERIFY_FLAGS, true);
-    CheckWithFlag(output1, input2, SCRIPT_VERIFY_NONE, true);
-    CheckWithFlag(output1, input2, SCRIPT_VERIFY_P2SH, false);
-    CheckWithFlag(output1, input2, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false);
-    CheckWithFlag(output1, input2, STANDARD_SCRIPT_VERIFY_FLAGS, false);
-
-    // Signing disabled for witness pay-to-uncompressed-pubkey (v1).
-    CreateCreditAndSpend(keystore, destination_script_1L, output1, input1, false);
-    CreateCreditAndSpend(keystore, destination_script_2L, output2, input2, false);
-
-    // Signing disabled for P2SH witness pay-to-uncompressed-pubkey (v1).
-    CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(destination_script_1L)), output1, input1, false);
-    CreateCreditAndSpend(keystore, GetScriptForDestination(ScriptHash(destination_script_2L)), output2, input2, false);
 
     // Normal 2-of-2 multisig
     CreateCreditAndSpend(keystore, scriptMulti, output1, input1, false);
@@ -794,7 +746,7 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     t.vin[0].scriptSig << std::vector<unsigned char>(65, 0);
     t.vout.resize(1);
     t.vout[0].nValue = 90*CENT;
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     t.vout[0].scriptPubKey = GetScriptForDestination(PKHash(key.GetPubKey()));
 
     constexpr auto CheckIsStandard = [](const auto& t, const unsigned int max_op_return_relay = MAX_OP_RETURN_RELAY) {
@@ -985,18 +937,12 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     assert(t.vout.size() == 1);
     t.vout.insert(t.vout.end(), MAX_DUST_OUTPUTS_PER_TX, {0, t.vout[0].scriptPubKey});
 
-    // Check compressed P2PK outputs dust threshold (must have leading 02 or 03)
-    t.vout[0].scriptPubKey = CScript() << std::vector<unsigned char>(33, 0x02) << OP_CHECKSIG;
-    t.vout[0].nValue = 576;
+    // Check P2PK outputs dust threshold for PQ pubkeys.
+    const CScript p2pk_script = GetScriptForRawPubKey(key.GetPubKey());
+    t.vout[0].scriptPubKey = p2pk_script;
+    t.vout[0].nValue = GetDustThreshold(t.vout[0], g_dust);
     CheckIsStandard(t);
-    t.vout[0].nValue = 575;
-    CheckIsNotStandard(t, "dust");
-
-    // Check uncompressed P2PK outputs dust threshold (must have leading 04/06/07)
-    t.vout[0].scriptPubKey = CScript() << std::vector<unsigned char>(65, 0x04) << OP_CHECKSIG;
-    t.vout[0].nValue = 672;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 671;
+    t.vout[0].nValue--;
     CheckIsNotStandard(t, "dust");
 
     // Check P2PKH outputs dust threshold
@@ -1034,7 +980,7 @@ BOOST_AUTO_TEST_CASE(max_standard_legacy_sigops)
     CCoinsView coins_dummy;
     CCoinsViewCache coins(&coins_dummy);
     CKey key;
-    key.MakeNewKey(true);
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
 
     // Create a pathological P2SH script padded with as many sigops as is standard.
     CScript max_sigops_redeem_script{CScript() << std::vector<unsigned char>{} << key.GetPubKey()};
@@ -1129,7 +1075,7 @@ BOOST_AUTO_TEST_CASE(spends_witness_prog)
     CCoinsView coins_dummy;
     CCoinsViewCache coins(&coins_dummy);
     CKey key;
-    key.MakeNewKey(true);
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
     const CPubKey pubkey{key.GetPubKey()};
     CMutableTransaction tx_create{}, tx_spend{};
     tx_create.vout.emplace_back(0, CScript{});

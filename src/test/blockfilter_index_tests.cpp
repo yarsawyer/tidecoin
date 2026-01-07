@@ -162,8 +162,8 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, BuildChainTestingSetup)
         LOCK(cs_main);
         tip = m_node.chainman->ActiveChain().Tip();
     }
-    CKey coinbase_key_A = GenerateRandomKey();
-    CKey coinbase_key_B = GenerateRandomKey();
+    CKey coinbase_key_A = GenerateRandomKey(pq::SchemeId::FALCON_512);
+    CKey coinbase_key_B = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript coinbase_script_pub_key_A = GetScriptForDestination(PKHash(coinbase_key_A.GetPubKey()));
     CScript coinbase_script_pub_key_B = GetScriptForDestination(PKHash(coinbase_key_B.GetPubKey()));
     std::vector<std::shared_ptr<CBlock>> chainA, chainB;
@@ -370,7 +370,7 @@ BOOST_FIXTURE_TEST_CASE(index_reorg_crash, BuildChainTestingSetup)
     // Create a fork to trigger the reorg
     std::vector<std::shared_ptr<CBlock>> fork;
     const CBlockIndex* prev_tip = WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->pprev);
-    BOOST_REQUIRE(BuildChain(prev_tip, GetScriptForDestination(PKHash(GenerateRandomKey().GetPubKey())), 3, fork));
+    BOOST_REQUIRE(BuildChain(prev_tip, GetScriptForDestination(PKHash(GenerateRandomKey(pq::SchemeId::FALCON_512).GetPubKey())), 3, fork));
 
     for (const auto& block : fork) {
         BOOST_REQUIRE(m_node.chainman->ProcessNewBlock(block, /*force_processing=*/true, /*min_pow_checked=*/true, nullptr));

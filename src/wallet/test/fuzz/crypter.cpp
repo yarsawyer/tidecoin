@@ -44,7 +44,7 @@ FUZZ_TARGET(crypter, .init = initialize_crypter)
     }
 
     CKey random_ckey;
-    random_ckey.Set(random_key.begin(), random_key.end(), /*fCompressedIn=*/fuzzed_data_provider.ConsumeBool());
+    random_ckey.Set(random_key.begin(), random_key.end());
     if (!random_ckey.IsValid()) return;
     CPubKey pubkey{random_ckey.GetPubKey()};
 

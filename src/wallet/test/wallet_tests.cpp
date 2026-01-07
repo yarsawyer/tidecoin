@@ -79,7 +79,7 @@ BOOST_FIXTURE_TEST_CASE(update_non_range_descriptor, TestingSetup)
     {
         LOCK(wallet.cs_wallet);
         wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
-        auto key{GenerateRandomKey()};
+        auto key{GenerateRandomKey(pq::SchemeId::FALCON_512)};
         const CPubKey pubkey{key.GetPubKey()};
         FlatSigningProvider provider;
         provider.keys.emplace(pubkey.GetID(), key);
@@ -531,7 +531,7 @@ BOOST_FIXTURE_TEST_CASE(wallet_disableprivkeys, TestChain100Setup)
 static size_t CalculateNestedKeyhashInputSize(bool use_max_sig)
 {
     // Generate ephemeral valid pubkey
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CPubKey pubkey = key.GetPubKey();
 
     // Generate pubkey hash
@@ -615,7 +615,7 @@ BOOST_FIXTURE_TEST_CASE(CreateWallet, TestChain100Setup)
     context.args = &m_args;
     context.chain = m_node.chain.get();
     auto wallet = TestLoadWallet(context);
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     AddKey(*wallet, key);
     TestUnloadWallet(std::move(wallet));
 
@@ -723,7 +723,7 @@ BOOST_FIXTURE_TEST_CASE(RemoveTxs, TestChain100Setup)
     context.args = &m_args;
     context.chain = m_node.chain.get();
     auto wallet = TestLoadWallet(context);
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     AddKey(*wallet, key);
 
     std::string error;

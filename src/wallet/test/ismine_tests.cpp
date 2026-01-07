@@ -25,18 +25,16 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
     CKey keys[2];
     CPubKey pubkeys[2];
     for (int i = 0; i < 2; i++) {
-        keys[i].MakeNewKey(true);
+        keys[i].MakeNewKey(pq::SchemeId::FALCON_512);
         pubkeys[i] = keys[i].GetPubKey();
     }
 
-    CKey uncompressedKey = GenerateRandomKey(/*compressed=*/false);
-    CPubKey uncompressedPubkey = uncompressedKey.GetPubKey();
     std::unique_ptr<interfaces::Chain>& chain = m_node.chain;
 
     CScript scriptPubKey;
     bool result;
 
-    // P2PK compressed - Descriptor
+    // P2PK - Descriptor
     {
         CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
         std::string desc_str = "pk(" + EncodeSecret(keys[0]) + ")";
@@ -48,19 +46,7 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK(result);
     }
 
-    // P2PK uncompressed - Descriptor
-    {
-        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-        std::string desc_str = "pk(" + EncodeSecret(uncompressedKey) + ")";
-
-        auto spk_manager = CreateDescriptor(keystore, desc_str, true);
-
-        scriptPubKey = GetScriptForRawPubKey(uncompressedPubkey);
-        result = spk_manager->IsMine(scriptPubKey);
-        BOOST_CHECK(result);
-    }
-
-    // P2PKH compressed - Descriptor
+    // P2PKH - Descriptor
     {
         CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
         std::string desc_str = "pkh(" + EncodeSecret(keys[0]) + ")";
@@ -68,18 +54,6 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         auto spk_manager = CreateDescriptor(keystore, desc_str, true);
 
         scriptPubKey = GetScriptForDestination(PKHash(pubkeys[0]));
-        result = spk_manager->IsMine(scriptPubKey);
-        BOOST_CHECK(result);
-    }
-
-    // P2PKH uncompressed - Descriptor
-    {
-        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-        std::string desc_str = "pkh(" + EncodeSecret(uncompressedKey) + ")";
-
-        auto spk_manager = CreateDescriptor(keystore, desc_str, true);
-
-        scriptPubKey = GetScriptForDestination(PKHash(uncompressedPubkey));
         result = spk_manager->IsMine(scriptPubKey);
         BOOST_CHECK(result);
     }
@@ -133,7 +107,7 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK_EQUAL(spk_manager, nullptr);
     }
 
-    // P2WPKH compressed - Descriptor
+    // P2WPKH - Descriptor
     {
         CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
         std::string desc_str = "wpkh(" + EncodeSecret(keys[0]) + ")";
@@ -145,42 +119,7 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK(result);
     }
 
-    // P2WPKH uncompressed (invalid) - Descriptor
-    {
-        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-        std::string desc_str = "wpkh(" + EncodeSecret(uncompressedKey) + ")";
-
-        auto spk_manager = CreateDescriptor(keystore, desc_str, false);
-        BOOST_CHECK_EQUAL(spk_manager, nullptr);
-    }
-
-    // scriptPubKey multisig - Descriptor
-    {
-        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-        std::string desc_str = "multi(2," + EncodeSecret(uncompressedKey) + "," + EncodeSecret(keys[1]) + ")";
-
-        auto spk_manager = CreateDescriptor(keystore, desc_str, true);
-
-        scriptPubKey = GetScriptForMultisig(2, {uncompressedPubkey, pubkeys[1]});
-        result = spk_manager->IsMine(scriptPubKey);
-        BOOST_CHECK(result);
-    }
-
-    // P2SH multisig - Descriptor
-    {
-        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-
-        std::string desc_str = "sh(multi(2," + EncodeSecret(uncompressedKey) + "," + EncodeSecret(keys[1]) + "))";
-
-        auto spk_manager = CreateDescriptor(keystore, desc_str, true);
-
-        CScript redeemScript = GetScriptForMultisig(2, {uncompressedPubkey, pubkeys[1]});
-        scriptPubKey = GetScriptForDestination(ScriptHash(redeemScript));
-        result = spk_manager->IsMine(scriptPubKey);
-        BOOST_CHECK(result);
-    }
-
-    // P2WSH multisig with compressed keys - Descriptor
+    // P2WSH multisig - Descriptor
     {
         CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
 
@@ -192,16 +131,6 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         scriptPubKey = GetScriptForDestination(WitnessV0ScriptHash(redeemScript));
         result = spk_manager->IsMine(scriptPubKey);
         BOOST_CHECK(result);
-    }
-
-    // P2WSH multisig with uncompressed key (invalid) - Descriptor
-    {
-        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-
-        std::string desc_str = "wsh(multi(2," + EncodeSecret(uncompressedKey) + "," + EncodeSecret(keys[1]) + "))";
-
-        auto spk_manager = CreateDescriptor(keystore, desc_str, false);
-        BOOST_CHECK_EQUAL(spk_manager, nullptr);
     }
 
     // P2WSH multisig wrapped in P2SH - Descriptor

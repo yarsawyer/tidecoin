@@ -154,7 +154,7 @@ static RPCHelpMan createmultisig()
             UniValue warnings(UniValue::VARR);
             if (descriptor->GetOutputType() != output_type) {
                 // Only warns if the user has explicitly chosen an address type we cannot generate
-                warnings.push_back("Unable to make chosen address type, please ensure no uncompressed public keys are present.");
+                warnings.push_back("Unable to make chosen address type for the provided keys.");
             }
             PushWarnings(warnings, result);
 

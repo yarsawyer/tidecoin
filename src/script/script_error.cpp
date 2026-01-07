@@ -74,7 +74,7 @@ std::string ScriptErrorString(const ScriptError serror)
         case SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM:
             return "Witness version reserved for soft-fork upgrades";
         case SCRIPT_ERR_PUBKEYTYPE:
-            return "Public key is neither compressed or uncompressed";
+            return "Public key type is invalid";
         case SCRIPT_ERR_CLEANSTACK:
             return "Stack size must be exactly one after execution";
         case SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH:
@@ -89,8 +89,6 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Witness requires only-redeemscript scriptSig";
         case SCRIPT_ERR_WITNESS_UNEXPECTED:
             return "Witness provided for non-witness script";
-        case SCRIPT_ERR_WITNESS_PUBKEYTYPE:
-            return "Using non-compressed keys in segwit";
         case SCRIPT_ERR_OP_CODESEPARATOR:
             return "Using OP_CODESEPARATOR in non-witness script";
         case SCRIPT_ERR_SIG_FINDANDDELETE:

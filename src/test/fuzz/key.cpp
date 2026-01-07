@@ -40,7 +40,7 @@ FUZZ_TARGET(key, .init = initialize_key)
     SeedRandomStateForTest(SeedRand::ZEROS);
     const CKey key = [&] {
         CKey k;
-        k.Set(buffer.begin(), buffer.end(), true);
+        k.Set(buffer.begin(), buffer.end());
         return k;
     }();
     if (!key.IsValid()) {
@@ -60,16 +60,8 @@ FUZZ_TARGET(key, .init = initialize_key)
     }
 
     {
-        CKey uncompressed_key;
-        uncompressed_key.Set(buffer.begin(), buffer.end(), false);
-        assert(!(uncompressed_key == key));
-        assert(uncompressed_key.begin() + uncompressed_key.size() == uncompressed_key.end());
-        assert(uncompressed_key.IsValid());
-    }
-
-    {
         CKey copied_key;
-        copied_key.Set(key.begin(), key.end(), true);
+        copied_key.Set(key.begin(), key.end());
         assert(copied_key == key);
     }
 

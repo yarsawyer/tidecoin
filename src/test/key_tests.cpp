@@ -17,8 +17,8 @@ BOOST_FIXTURE_TEST_SUITE(key_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(pq_key_sign_verify_roundtrip)
 {
-    CKey key1 = GenerateRandomKey();
-    CKey key2 = GenerateRandomKey();
+    CKey key1 = GenerateRandomKey(pq::SchemeId::FALCON_512);
+    CKey key2 = GenerateRandomKey(pq::SchemeId::FALCON_512);
 
     BOOST_CHECK(key1.IsValid());
     BOOST_CHECK(key2.IsValid());
@@ -45,7 +45,7 @@ BOOST_AUTO_TEST_CASE(pq_key_sign_verify_roundtrip)
 
 BOOST_AUTO_TEST_CASE(pq_pubkey_serialize_roundtrip)
 {
-    CKey key = GenerateRandomKey();
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CPubKey pubkey = key.GetPubKey();
     BOOST_CHECK(pubkey.IsValid());
 

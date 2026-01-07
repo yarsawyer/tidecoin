@@ -42,28 +42,33 @@ PQHD‑only cleanup/removal work is tracked in `ai-docs/pqhd-removal-plan.md`.
 - `SchemeId` is a `uint8_t` and equals the serialized prefix byte.
 - The prefix byte is part of the pubkey bytes (scheme selection is a parsing
   problem; see `src/pq/pq_api.h` and `src/pq/pq_scheme.h`).
+- PQHD KDF primitives + vectors exist (`src/pq/pqhd_kdf.*`,
+  `src/pq/pqhd_params.h`, `src/test/pqhd_kdf_tests.cpp`).
+- Versioned per-scheme `KeyGenFromSeed` wrappers are implemented
+  (`src/pq/pqhd_keygen.cpp`, `src/test/pqhd_keygen_tests.cpp`).
+- `CPubKey` is scheme-aware and variable-length, and fixed-size assumptions
+  have been contained (see `src/pubkey.h`, `src/pubkey.cpp`).
+- `pqhd(<SeedID32>)/...` descriptor parsing + canonical printing are implemented
+  (`src/script/descriptor.cpp`, `src/test/descriptor_tests.cpp`).
+- PQHD seed/policy records exist in wallet DB and load paths
+  (`src/wallet/pqhd.h`, `src/wallet/walletdb.*`, `src/wallet/wallet.cpp`).
+- `decodepsbt` parses and displays `tidecoin/PQHD_ORIGIN`
+  (`src/psbt.*`, `src/rpc/rawtransaction.cpp`,
+  `src/test/psbt_pqhd_origin_tests.cpp`).
 
-### Not implemented yet (big gaps)
-- PQHD seed storage (encrypted) + derivation logic (NodeSecret/ChainCode).
-- Deterministic key generation contract:
-  - versioned per-scheme `KeyGenFromSeed` wrappers (see §7.5) so wallet restore
-    is stable across Tidecoin/PQClean upgrades.
-- Descriptor language support for `pqhd(...)` key expressions.
-- Per-scheme keypool refill and change/external tracking driven by PQHD.
-- PSBT proprietary field integration for PQHD origin metadata.
-- Any explicit seed identity rules (SeedID32 storage + de-dup semantics).
-- **Multi-scheme public key container support**:
-  - Current `CPubKey` is effectively Falcon-512-only:
-    - `CPubKey::SIZE` is fixed to Falcon-512 pubkey bytes + 1 prefix.
-    - `CPubKey::GetLen()` only recognizes `pq::kFalcon512Info.prefix` (`0x07`).
-    - See `src/pubkey.h`.
-  - Many existing subsystems assume a fixed `CPubKey::SIZE` (descriptors, PSBT
-    partial sig key parsing, etc.). Supporting multiple PQ schemes in-wallet
-    requires refactoring `CPubKey` to be scheme-aware/variable-length.
-    Decision: **refactor `CPubKey`** (see §16.2).
-  - `CPubKey` still exposes legacy BIP32-oriented APIs (e.g. `Derive(...)` in
-    `src/pubkey.h`). PQHD will not use these; PQHD derivation state lives in
-    wallet-managed seed material, not in CPubKey objects.
+### Remaining gaps (as of current code)
+- PQHD seed lock/unlock semantics need explicit tests and verification
+  (locked wallet cannot derive new PQHD keys; behavior should match Bitcoin).
+  (REQ‑0007)
+- PQHD origin metadata emission is still missing in wallet PSBT flows:
+  - `walletprocesspsbt` / `CWallet::FillPSBT` do not write
+    `tidecoin/PQHD_ORIGIN` yet. (REQ‑0021)
+- RPC test coverage for scheme override gating (pre‑auxpow reject,
+  post‑auxpow accept) is missing. (REQ‑0002)
+- Explicit PQ pubkey descriptor surface for raw prefixed hex (no xpub/xprv)
+  still needs full test coverage and clear error behavior. (REQ‑0018)
+- Multi-seed behavior and seed de‑dup rules are not implemented yet
+  (SeedID32 de‑dup + multiple roots per wallet). (REQ‑0005/REQ‑0006)
 
 ---
 
@@ -634,6 +639,11 @@ Consistency rules:
 
 We keep existing RPC names and payloads (base64 PSBT). We extend interpretation:
 
+Status snapshot (current code):
+- `decodepsbt` parses and displays `tidecoin/PQHD_ORIGIN`.
+- Wallet emission of `tidecoin/PQHD_ORIGIN` is still missing in
+  `walletprocesspsbt` / `CWallet::FillPSBT`.
+
 - `walletprocesspsbt`:
   - `bip32derivs=true` is **rejected** (must be false).
   - Planned: add `tidecoin/PQHD_ORIGIN` proprietary records for all PQHD-derived
@@ -698,25 +708,20 @@ Note:
 - multi-scheme support does not require multiple seeds; scheme separation is a
   path component and domain separation input.
 
-### 12.3 Scheme selection policy (wallet vs `pq::ActiveScheme`)
+### 12.3 Scheme selection policy (wallet-only)
 
-The codebase currently has a notion of an “active scheme” in the PQ API:
-- `pq::ActiveScheme()` returns Falcon-512 unconditionally (`src/pq/pq_api.h:72`).
-- It is used as a default scheme when generating a new random key in
-  `CKey::MakeNewKey()` (`src/key.cpp:37`).
-
-This is acceptable for the current single-scheme world, but it does not scale
-to a multi-scheme PQHD wallet. For PQHD:
-- **Scheme selection must be a wallet policy decision**, not a crypto-library
-  global.
-- **Signing/verifying must always be per-key**, driven by the key’s scheme
-  (ultimately: the prefix byte in the serialized TidePubKey).
+Scheme selection is wallet policy, not a crypto-library global. The keygen
+layer now requires an explicit scheme id (no implicit default), so new keys
+cannot bypass wallet policy.
 
 Practical design:
 - Wallets can hold keys for multiple schemes simultaneously (legacy imports +
   PQHD-derived keys + future scheme keys).
 - The wallet needs an explicit policy for **which scheme to use for new keys**
   (receive addresses) and **which scheme to use for change outputs**.
+Status (current code):
+- `pq::ActiveScheme()` removed; `CKey::MakeNewKey` requires `SchemeId`.
+- Tests/benches use explicit `pq::SchemeId::FALCON_512`.
 
 #### 12.3.1 Default scheme (receive addresses)
 
@@ -1106,8 +1111,7 @@ Value: `CPQHDPolicy` (new struct; versioned)
   - `map<uint8_t scheme_id, SeedID32> seedid32_for_scheme` (so schemes can be partitioned across roots)
 
 Notes:
-- This is the persistent representation of what today is “kind of” implied by
-  `pq::ActiveScheme()`. PQHD requires it to be explicit and wallet-local.
+- This is the persistent representation of wallet policy for scheme selection.
 - This record is small and can also be redundantly mirrored in `DBKeys::SETTINGS`
   if we prefer, but we should pick exactly one canonical location to avoid drift.
 

@@ -23,10 +23,10 @@ BOOST_AUTO_TEST_CASE(DescriptorScriptPubKeyManTests)
     std::unique_ptr<interfaces::Chain>& chain = m_node.chain;
 
     CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
-    auto key_scriptpath = GenerateRandomKey();
+    auto key_scriptpath = GenerateRandomKey(pq::SchemeId::FALCON_512);
 
     // Verify that a SigningProvider for a pubkey is only returned if its corresponding private key is available
-    auto key_internal = GenerateRandomKey();
+    auto key_internal = GenerateRandomKey(pq::SchemeId::FALCON_512);
     std::string desc_str = "wpkh(" + EncodeSecret(key_internal) + ")";
     auto spk_man1 = CreateDescriptor(keystore, desc_str, true);
     BOOST_CHECK(spk_man1 != nullptr);

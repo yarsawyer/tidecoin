@@ -79,11 +79,6 @@ bool MLKEM512Decaps(std::span<const uint8_t> ct,
                     std::span<const uint8_t> sk,
                     std::span<uint8_t> ss);
 
-inline const SchemeInfo& ActiveScheme()
-{
-    return kFalcon512Info;
-}
-
 inline bool ComputeMLDSA44PublicKey(std::span<const unsigned char> sk,
                                     std::span<unsigned char> pk_out)
 {

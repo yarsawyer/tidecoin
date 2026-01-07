@@ -44,7 +44,7 @@ static void WalletIsMine(benchmark::Bench& bench, int num_combo = 0)
         LOCK(wallet->cs_wallet);
         for (int i = 0; i < num_combo; ++i) {
             CKey key;
-            key.MakeNewKey(/*fCompressed=*/true);
+            key.MakeNewKey(pq::SchemeId::FALCON_512);
             FlatSigningProvider keys;
             std::string error;
             std::vector<std::unique_ptr<Descriptor>> desc = Parse("combo(" + EncodeSecret(key) + ")", keys, error, /*require_checksum=*/false);

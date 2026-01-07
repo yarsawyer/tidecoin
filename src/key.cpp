@@ -29,12 +29,15 @@ bool CKey::SetPubKeyFromSecret()
                                           std::span<unsigned char>{pubkeydata.data(), pubkeydata.size()});
 }
 
-void CKey::MakeNewKey(bool fCompressedIn) {
-    const auto& scheme = pq::ActiveScheme();
-    (void)fCompressedIn;
-    m_scheme = &scheme;
+void CKey::MakeNewKey(pq::SchemeId scheme_id) {
+    const pq::SchemeInfo* scheme = pq::SchemeFromId(scheme_id);
+    if (scheme == nullptr) {
+        ClearKeyData();
+        return;
+    }
+    m_scheme = scheme;
     MakeKeyData();
-    const bool ok = pq::GenerateKeyPair(scheme,
+    const bool ok = pq::GenerateKeyPair(*scheme,
                                         std::span<unsigned char>{pubkeydata.data(), pubkeydata.size()},
                                         std::span<unsigned char>{keydata.data(), keydata.size()});
     if (!ok) {
@@ -93,9 +96,9 @@ bool CKey::Load(const CPrivKey &seckey, const CPubKey &vchPubKey, bool fSkipChec
     return VerifyPubKey(vchPubKey);
 }
 
-CKey GenerateRandomKey(bool compressed) noexcept
+CKey GenerateRandomKey(pq::SchemeId scheme_id) noexcept
 {
     CKey key;
-    key.MakeNewKey(/*fCompressed=*/compressed);
+    key.MakeNewKey(scheme_id);
     return key;
 }

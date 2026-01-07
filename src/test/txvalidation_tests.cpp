@@ -67,7 +67,7 @@ static inline std::vector<CPubKey> random_keys(size_t num_keys) {
     keys.reserve(num_keys);
     for (size_t i{0}; i < num_keys; ++i) {
         CKey key;
-        key.MakeNewKey(true);
+        key.MakeNewKey(pq::SchemeId::FALCON_512);
         keys.emplace_back(key.GetPubKey());
     }
     return keys;

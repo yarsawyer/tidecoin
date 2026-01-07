@@ -38,7 +38,7 @@ static void WalletMigration(benchmark::Bench& bench)
     // Add watch-only addresses
     std::vector<CScript> scripts_watch_only;
     for (int w = 0; w < NUM_WATCH_ONLY_ADDR; ++w) {
-        CKey key = GenerateRandomKey();
+        CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
         LOCK(wallet->cs_wallet);
         const PKHash dest{key.GetPubKey()};
         const CScript& script = scripts_watch_only.emplace_back(GetScriptForDestination(dest));
@@ -49,7 +49,7 @@ static void WalletMigration(benchmark::Bench& bench)
 
     // Generate transactions and local addresses
     for (int j = 0; j < 500; ++j) {
-        CKey key = GenerateRandomKey();
+        CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
         CPubKey pubkey = key.GetPubKey();
         // Load key, scripts and create address book record
         Assert(legacy_spkm->LoadKey(key, pubkey));

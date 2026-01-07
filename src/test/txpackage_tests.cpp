@@ -206,7 +206,7 @@ BOOST_AUTO_TEST_CASE(package_validation_tests)
     unsigned int initialPoolSize = m_node.mempool->size();
 
     // Parent and Child Package
-    CKey parent_key = GenerateRandomKey();
+    CKey parent_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript parent_locking_script = GetScriptForDestination(PKHash(parent_key.GetPubKey()));
     auto mtx_parent = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[0], /*input_vout=*/0,
                                                     /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
@@ -214,7 +214,7 @@ BOOST_AUTO_TEST_CASE(package_validation_tests)
                                                     /*output_amount=*/CAmount(49 * COIN), /*submit=*/false);
     CTransactionRef tx_parent = MakeTransactionRef(mtx_parent);
 
-    CKey child_key = GenerateRandomKey();
+    CKey child_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript child_locking_script = GetScriptForDestination(PKHash(child_key.GetPubKey()));
     auto mtx_child = CreateValidMempoolTransaction(/*input_transaction=*/tx_parent, /*input_vout=*/0,
                                                    /*input_height=*/101, /*input_signing_key=*/parent_key,
@@ -258,9 +258,9 @@ BOOST_AUTO_TEST_CASE(package_validation_tests)
 BOOST_AUTO_TEST_CASE(noncontextual_package_tests)
 {
     // The signatures won't be verified so we can just use a placeholder
-    CKey placeholder_key = GenerateRandomKey();
+    CKey placeholder_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript spk = GetScriptForDestination(PKHash(placeholder_key.GetPubKey()));
-    CKey placeholder_key_2 = GenerateRandomKey();
+    CKey placeholder_key_2 = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript spk2 = GetScriptForDestination(PKHash(placeholder_key_2.GetPubKey()));
 
     // Parent and Child Package
@@ -360,7 +360,7 @@ BOOST_AUTO_TEST_CASE(package_submission_tests)
     MockMempoolMinFee(CFeeRate(5000));
     LOCK(cs_main);
     unsigned int expected_pool_size = m_node.mempool->size();
-    CKey parent_key = GenerateRandomKey();
+    CKey parent_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript parent_locking_script = GetScriptForDestination(PKHash(parent_key.GetPubKey()));
 
     // Unrelated transactions are not allowed in package submission.
@@ -391,7 +391,7 @@ BOOST_AUTO_TEST_CASE(package_submission_tests)
     package_parent_child.push_back(tx_parent);
     package_3gen.push_back(tx_parent);
 
-    CKey child_key = GenerateRandomKey();
+    CKey child_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript child_locking_script = GetScriptForDestination(PKHash(child_key.GetPubKey()));
     auto mtx_child = CreateValidMempoolTransaction(/*input_transaction=*/tx_parent, /*input_vout=*/0,
                                                    /*input_height=*/101, /*input_signing_key=*/parent_key,
@@ -401,7 +401,7 @@ BOOST_AUTO_TEST_CASE(package_submission_tests)
     package_parent_child.push_back(tx_child);
     package_3gen.push_back(tx_child);
 
-    CKey grandchild_key = GenerateRandomKey();
+    CKey grandchild_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript grandchild_locking_script = GetScriptForDestination(PKHash(grandchild_key.GetPubKey()));
     auto mtx_grandchild = CreateValidMempoolTransaction(/*input_transaction=*/tx_child, /*input_vout=*/0,
                                                        /*input_height=*/101, /*input_signing_key=*/child_key,
@@ -548,7 +548,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
     const CAmount high_fee{1000};
 
     // No unconfirmed parents
-    CKey single_key = GenerateRandomKey();
+    CKey single_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript single_locking_script = GetScriptForDestination(PKHash(single_key.GetPubKey()));
     auto mtx_single = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[0], /*input_vout=*/0,
                                                     /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
@@ -564,7 +564,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
     BOOST_CHECK_EQUAL(m_node.mempool->size(), expected_pool_size);
 
     // Parent and Child. Both submitted by themselves through the ProcessNewPackage interface.
-    CKey parent_key = GenerateRandomKey();
+    CKey parent_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript parent_locking_script = GetScriptForDestination(WitnessV0KeyHash(parent_key.GetPubKey()));
     auto mtx_parent = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[1], /*input_vout=*/0,
                                                     /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
@@ -585,7 +585,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
     expected_pool_size += 1;
     BOOST_CHECK_EQUAL(m_node.mempool->size(), expected_pool_size);
 
-    CKey child_key = GenerateRandomKey();
+    CKey child_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript child_locking_script = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
     auto mtx_child = CreateValidMempoolTransaction(/*input_transaction=*/tx_parent, /*input_vout=*/0,
                                                    /*input_height=*/101, /*input_signing_key=*/parent_key,
@@ -656,7 +656,7 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     witness2.stack.emplace_back(2);
     witness2.stack.emplace_back(witnessScript.begin(), witnessScript.end());
 
-    CKey child_key = GenerateRandomKey();
+    CKey child_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript child_locking_script = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
     CMutableTransaction mtx_child1;
     mtx_child1.version = 1;
@@ -727,7 +727,7 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     // This tests a potential censorship vector in which an attacker broadcasts a competing package
     // where a parent's witness is mutated. The honest package should be accepted despite the fact
     // that we don't allow witness replacement.
-    CKey grandchild_key = GenerateRandomKey();
+    CKey grandchild_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript grandchild_locking_script = GetScriptForDestination(WitnessV0KeyHash(grandchild_key.GetPubKey()));
     auto mtx_grandchild = CreateValidMempoolTransaction(/*input_transaction=*/ptx_child2, /*input_vout=*/0,
                                                         /*input_height=*/0, /*input_signing_key=*/child_key,
@@ -818,7 +818,7 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     BOOST_CHECK(m_node.mempool->m_opts.min_relay_feerate.GetFee(GetVirtualTransactionSize(*ptx_parent3)) <= low_fee_amt);
 
     // child spends parent1, parent2, and parent3
-    CKey mixed_grandchild_key = GenerateRandomKey();
+    CKey mixed_grandchild_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript mixed_child_spk = GetScriptForDestination(WitnessV0KeyHash(mixed_grandchild_key.GetPubKey()));
 
     CMutableTransaction mtx_mixed_child;
@@ -870,9 +870,9 @@ BOOST_AUTO_TEST_CASE(package_cpfp_tests)
     MockMempoolMinFee(CFeeRate(5000));
     LOCK(::cs_main);
     size_t expected_pool_size = m_node.mempool->size();
-    CKey child_key = GenerateRandomKey();
+    CKey child_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript parent_spk = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
-    CKey grandchild_key = GenerateRandomKey();
+    CKey grandchild_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript child_spk = GetScriptForDestination(WitnessV0KeyHash(grandchild_key.GetPubKey()));
 
     // low-fee parent and high-fee child package
@@ -1080,9 +1080,9 @@ BOOST_AUTO_TEST_CASE(package_rbf_tests)
     mineBlocks(5);
     LOCK(::cs_main);
     size_t expected_pool_size = m_node.mempool->size();
-    CKey child_key{GenerateRandomKey()};
+    CKey child_key{GenerateRandomKey(pq::SchemeId::FALCON_512)};
     CScript parent_spk = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
-    CKey grandchild_key{GenerateRandomKey()};
+    CKey grandchild_key{GenerateRandomKey(pq::SchemeId::FALCON_512)};
     CScript child_spk = GetScriptForDestination(WitnessV0KeyHash(grandchild_key.GetPubKey()));
 
     const CAmount coinbase_value{50 * COIN};

@@ -70,7 +70,7 @@ BOOST_AUTO_TEST_CASE(sign)
     CKey key[4];
     for (int i = 0; i < 4; i++)
     {
-        key[i].MakeNewKey(true);
+        key[i].MakeNewKey(pq::SchemeId::FALCON_512);
         BOOST_CHECK(keystore.AddKey(key[i]));
     }
 
@@ -169,7 +169,7 @@ BOOST_AUTO_TEST_CASE(set)
     keys.reserve(4);
     for (int i = 0; i < 4; i++)
     {
-        key[i].MakeNewKey(true);
+        key[i].MakeNewKey(pq::SchemeId::FALCON_512);
         BOOST_CHECK(keystore.AddKey(key[i]));
         keys.push_back(key[i].GetPubKey());
     }
@@ -285,7 +285,7 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     CKey key[6];
     for (int i = 0; i < 6; i++)
     {
-        key[i].MakeNewKey(true);
+        key[i].MakeNewKey(pq::SchemeId::FALCON_512);
         BOOST_CHECK(keystore.AddKey(key[i]));
     }
     std::vector<CPubKey> keys;
