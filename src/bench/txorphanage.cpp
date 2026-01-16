@@ -18,7 +18,7 @@
 #include <memory>
 
 static constexpr node::TxOrphanage::Usage TINY_TX_WEIGHT{240};
-static constexpr int64_t APPROX_WEIGHT_PER_INPUT{200};
+static constexpr int64_t APPROX_WEIGHT_PER_INPUT{4000};
 
 // Creates a transaction with num_inputs inputs and 1 output, padded to target_weight. Use this function to maximize m_outpoint_to_orphan_it operations.
 // If num_inputs is 0, we maximize the number of inputs.

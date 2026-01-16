@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <core_io.h>
+#include <crypto/sha512.h>
 #include <hash.h>
 #include <key.h>
 #include <pq/pq_api.h>

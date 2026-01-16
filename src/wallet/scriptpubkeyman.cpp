@@ -722,7 +722,7 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
             if (scheme != nullptr) {
                 const int target_height = m_storage.GetTargetHeightForOutputs();
                 if (!pq::IsSchemeAllowedAtHeight(scheme->id, Params().GetConsensus(), target_height)) {
-                    return util::Error{strprintf("%s not allowed at height %i", scheme->name, target_height)};
+                    return util::Error{strprintf(_("%s not allowed at height %i"), scheme->name, target_height)};
                 }
             }
         }

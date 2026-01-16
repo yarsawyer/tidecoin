@@ -4,6 +4,7 @@
 
 #include <bip324_pq.h>
 #include <chainparams.h>
+#include <random.h>
 #include <span.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>

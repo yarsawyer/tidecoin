@@ -31,7 +31,7 @@ static constexpr unsigned int MINIMUM_BLOCK_RESERVED_WEIGHT{2000};
 /** Default for -blockmintxfee, which sets the minimum feerate for a transaction in blocks created by mining code **/
 static constexpr unsigned int DEFAULT_BLOCK_MIN_TX_FEE{1};
 /** The maximum weight for transactions we're willing to relay/mine */
-static constexpr int32_t MAX_STANDARD_TX_WEIGHT{400000};
+static constexpr int32_t MAX_STANDARD_TX_WEIGHT{800000};
 /** The minimum non-witness size for transactions we're willing to relay/mine: one larger than 64  */
 static constexpr unsigned int MIN_STANDARD_TX_NONWITNESS_SIZE{65};
 /** Maximum number of signature check operations in an IsStandard() P2SH script */
@@ -45,15 +45,15 @@ static constexpr unsigned int DEFAULT_INCREMENTAL_RELAY_FEE{100};
 /** Default for -bytespersigop */
 static constexpr unsigned int DEFAULT_BYTES_PER_SIGOP{20};
 /** Default for -permitbaremultisig */
-static constexpr bool DEFAULT_PERMIT_BAREMULTISIG{true};
+static constexpr bool DEFAULT_PERMIT_BAREMULTISIG{false};
 /** The maximum number of witness stack items in a standard P2WSH script */
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEMS{100};
 /** The maximum size in bytes of each witness stack item in a standard P2WSH script */
-static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{80};
+static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{5000};
 /** The maximum size in bytes of a standard witnessScript */
-static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{3600};
+static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{65536};
 /** The maximum size of a standard ScriptSig */
-static constexpr unsigned int MAX_STANDARD_SCRIPTSIG_SIZE{1650};
+static constexpr unsigned int MAX_STANDARD_SCRIPTSIG_SIZE{8192};
 /** Min feerate for defining dust.
  * Changing the dust limit changes which transactions are
  * standard and should be done with care and ideally rarely. It makes sense to
@@ -65,11 +65,11 @@ static constexpr unsigned int DEFAULT_MIN_RELAY_TX_FEE{100};
 /** Default for -limitancestorcount, max number of in-mempool ancestors */
 static constexpr unsigned int DEFAULT_ANCESTOR_LIMIT{25};
 /** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors */
-static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{101};
+static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{202};
 /** Default for -limitdescendantcount, max number of in-mempool descendants */
 static constexpr unsigned int DEFAULT_DESCENDANT_LIMIT{25};
 /** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants */
-static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{101};
+static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{202};
 /** Default for -datacarrier */
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
 /**
@@ -81,7 +81,7 @@ static const unsigned int MAX_OP_RETURN_RELAY = MAX_STANDARD_TX_WEIGHT / WITNESS
  * ancestor and is no larger than this. Not really any reason to make this
  * configurable as it doesn't materially change DoS parameters.
  */
-static constexpr unsigned int EXTRA_DESCENDANT_TX_SIZE_LIMIT{10000};
+static constexpr unsigned int EXTRA_DESCENDANT_TX_SIZE_LIMIT{40000};
 
 /**
  * Maximum number of ephemeral dust outputs allowed.

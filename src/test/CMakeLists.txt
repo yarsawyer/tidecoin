@@ -78,6 +78,7 @@ add_executable(test_bitcoin
   pqhd_keygen_tests.cpp
   pq_random_key_tests.cpp
   pq_pubkey_container_tests.cpp
+  pq_multisig_tests.cpp
   psbt_pqhd_origin_tests.cpp
   prevector_tests.cpp
   raii_event_tests.cpp

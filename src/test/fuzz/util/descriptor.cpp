@@ -15,7 +15,8 @@ void MockedDescriptorConverter::Init() {
         key_data[31] = std::byte(i);
 
         CKey privkey;
-        privkey.Set(key_data.begin(), key_data.end(), !IdIsUnCompPubKey(i));
+        // PQ keys don't have compressed/uncompressed distinction
+        privkey.Set(key_data.begin(), key_data.end());
         if (IdIsCompPubKey(i) || IdIsUnCompPubKey(i)) {
             CPubKey pubkey{privkey.GetPubKey()};
             keys_str[i] = HexStr(pubkey);
