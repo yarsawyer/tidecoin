@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <span>
 #include <vector>
 
@@ -37,6 +38,33 @@ namespace pq {
 
 /** Secure byte container (locked + cleansed on deallocation). */
 using SecureKeyBytes = std::vector<uint8_t, secure_allocator<uint8_t>>;
+
+constexpr unsigned int kFalconSignMaxAttempts = 10000;
+
+// Test-only override to force Falcon sign attempts to fail (simulates PQClean failures).
+inline std::atomic<int> g_falcon_sign_test_fail_count{0};
+
+inline void SetFalconSignTestFailCount(int count)
+{
+    g_falcon_sign_test_fail_count.store(count, std::memory_order_relaxed);
+}
+
+inline int GetFalconSignTestFailCount()
+{
+    return g_falcon_sign_test_fail_count.load(std::memory_order_relaxed);
+}
+
+inline bool ConsumeFalconSignTestFail()
+{
+    int expected = g_falcon_sign_test_fail_count.load(std::memory_order_relaxed);
+    while (expected > 0) {
+        if (g_falcon_sign_test_fail_count.compare_exchange_weak(
+                expected, expected - 1, std::memory_order_relaxed)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 constexpr size_t MLKEM512_PUBLICKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_PUBLICKEYBYTES;
 constexpr size_t MLKEM512_SECRETKEY_BYTES = PQCLEAN_MLKEM512_CLEAN_CRYPTO_SECRETKEYBYTES;
@@ -307,30 +335,47 @@ inline bool Sign(const SchemeInfo& info,
     }
     switch (info.id) {
     case SchemeId::FALCON_512: {
-        size_t sig_len = 0;
         sig_out.resize(info.sig_bytes_max);
-        const int r = legacy_mode
-            ? tidecoin_falcon512_sign_legacy(sig_out.data(), &sig_len,
-                                             msg32.data(), msg32.size(),
-                                             sk.data(), sk.size())
-            : PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
-                  sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
-        if (r != 0) {
-            return false;
+        if (legacy_mode) {
+            size_t sig_len = 0;
+            const int r = tidecoin_falcon512_sign_legacy(sig_out.data(), &sig_len,
+                                                         msg32.data(), msg32.size(),
+                                                         sk.data(), sk.size());
+            if (r != 0) {
+                return false;
+            }
+            sig_out.resize(sig_len);
+            return true;
         }
-        sig_out.resize(sig_len);
-        return true;
+        for (unsigned int attempt = 0; attempt < kFalconSignMaxAttempts; ++attempt) {
+            if (ConsumeFalconSignTestFail()) {
+                continue;
+            }
+            size_t sig_len = 0;
+            const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
+                sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
+            if (r == 0) {
+                sig_out.resize(sig_len);
+                return true;
+            }
+        }
+        return false;
     }
     case SchemeId::FALCON_1024: {
-        size_t sig_len = 0;
         sig_out.resize(info.sig_bytes_max);
-        const int r = PQCLEAN_FALCON1024_CLEAN_crypto_sign_signature(
-            sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
-        if (r != 0) {
-            return false;
+        for (unsigned int attempt = 0; attempt < kFalconSignMaxAttempts; ++attempt) {
+            if (ConsumeFalconSignTestFail()) {
+                continue;
+            }
+            size_t sig_len = 0;
+            const int r = PQCLEAN_FALCON1024_CLEAN_crypto_sign_signature(
+                sig_out.data(), &sig_len, msg32.data(), msg32.size(), sk.data());
+            if (r == 0) {
+                sig_out.resize(sig_len);
+                return true;
+            }
         }
-        sig_out.resize(sig_len);
-        return true;
+        return false;
     }
     case SchemeId::MLDSA_44: {
         size_t sig_len = 0;

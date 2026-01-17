@@ -898,6 +898,32 @@ creation calls can override behavior without changing wallet policy.
 
 ---
 
+#### 12.3.7 Falcon strict signing retry behavior (post-auxpow)
+
+Falcon signatures can fail to encode in a single attempt (compressed encoding
+may exceed the scheme’s max length). We therefore enforce a strict retry loop
+for **non-legacy** Falcon signing.
+
+Implementation (current code):
+- Strict signing uses a bounded retry loop for:
+  - Falcon-512 and Falcon-1024 in `pq::Sign` (`src/pq/pq_api.h`)
+  - `kFalconSignMaxAttempts = 10000`
+- Legacy Falcon-512 signing remains **size-capped** (<= 688 bytes) and uses the
+  legacy wrapper with its own retry loop (`src/pq/falcon512.c`).
+- Deterministic PQHD keygen uses the strict deterministic keypair functions
+  and **does not retry**; seed length is enforced strictly.
+
+Testing hook:
+- A test-only override (`pq::SetFalconSignTestFailCount`) forces the first N
+  strict signing attempts to fail, verifying the retry loop without touching
+  production behavior (`src/pq/pq_api.h`, `src/test/pq_random_key_tests.cpp`).
+
+Rationale:
+- Post-auxpow strict mode should be robust to transient encoding failures while
+  keeping deterministic PQHD flows fixed and auditable.
+
+---
+
 ### 12.4 Multiple PQHD seeds (multiple roots) — decided
 
 Decision:

@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 BOOST_AUTO_TEST_SUITE(pq_random_key_tests)
@@ -47,5 +48,51 @@ BOOST_AUTO_TEST_CASE(generate_random_key_smoke)
     BOOST_CHECK(key.VerifyPubKey(pubkey));
 }
 
-BOOST_AUTO_TEST_SUITE_END()
+BOOST_AUTO_TEST_CASE(falcon_strict_sign_retry)
+{
+    constexpr std::array<pq::SchemeId, 2> schemes{
+        pq::SchemeId::FALCON_512,
+        pq::SchemeId::FALCON_1024,
+    };
 
+    std::array<unsigned char, 32> msg{};
+    for (const auto scheme_id : schemes) {
+        const pq::SchemeInfo* info = pq::SchemeFromId(scheme_id);
+        BOOST_REQUIRE(info);
+
+        std::vector<unsigned char> pk(info->pubkey_bytes);
+        std::vector<unsigned char> sk(info->seckey_bytes);
+        BOOST_REQUIRE(pq::GenerateKeyPair(*info, pk, sk));
+
+        pq::SetFalconSignTestFailCount(1);
+        std::vector<unsigned char> sig;
+        BOOST_CHECK(pq::Sign(*info,
+                             std::span<const unsigned char>(msg),
+                             std::span<const unsigned char>(sk),
+                             sig,
+                             /*legacy_mode=*/false));
+        BOOST_CHECK_EQUAL(pq::GetFalconSignTestFailCount(), 0);
+        BOOST_CHECK(!sig.empty());
+    }
+}
+
+BOOST_AUTO_TEST_CASE(falcon_strict_sign_exhausts_failures)
+{
+    const pq::SchemeInfo* info = pq::SchemeFromId(pq::SchemeId::FALCON_512);
+    BOOST_REQUIRE(info);
+
+    std::vector<unsigned char> pk(info->pubkey_bytes);
+    std::vector<unsigned char> sk(info->seckey_bytes);
+    BOOST_REQUIRE(pq::GenerateKeyPair(*info, pk, sk));
+
+    std::array<unsigned char, 32> msg{};
+    pq::SetFalconSignTestFailCount(static_cast<int>(pq::kFalconSignMaxAttempts));
+    std::vector<unsigned char> sig;
+    BOOST_CHECK(!pq::Sign(*info,
+                          std::span<const unsigned char>(msg),
+                          std::span<const unsigned char>(sk),
+                          sig,
+                          /*legacy_mode=*/false));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
