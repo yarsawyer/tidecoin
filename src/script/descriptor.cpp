@@ -1030,6 +1030,51 @@ public:
     }
 };
 
+/** A parsed wsh512(...) descriptor. */
+class WSH512Descriptor final : public DescriptorImpl
+{
+protected:
+    std::vector<CScript> MakeScripts(const std::vector<CPubKey>&, std::span<const CScript> scripts, FlatSigningProvider& out) const override
+    {
+        WitnessV1ScriptHash512 wit_hash{scripts[0]};
+        auto ret = Vector(GetScriptForDestination(wit_hash));
+        if (ret.size()) {
+            const CScriptID script_id{RIPEMD160(std::span<const unsigned char>{wit_hash.begin(), wit_hash.size()})};
+            out.scripts.emplace(script_id, scripts[0]);
+        }
+        return ret;
+    }
+public:
+    WSH512Descriptor(std::unique_ptr<DescriptorImpl> desc) : DescriptorImpl({}, std::move(desc), "wsh512") {}
+    std::optional<OutputType> GetOutputType() const override { return OutputType::BECH32PQ; }
+    bool IsSingleType() const final { return true; }
+
+    std::optional<int64_t> ScriptSize() const override { return 1 + 1 + 64; }
+
+    std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
+        if (const auto sat_size = m_subdescriptor_args[0]->MaxSatSize(use_max_sig)) {
+            if (const auto subscript_size = m_subdescriptor_args[0]->ScriptSize()) {
+                return GetSizeOfCompactSize(*subscript_size) + *subscript_size + *sat_size;
+            }
+        }
+        return {};
+    }
+
+    std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
+        return MaxSatSize(use_max_sig);
+    }
+
+    std::optional<int64_t> MaxSatisfactionElems() const override {
+        if (const auto sub_elems = m_subdescriptor_args[0]->MaxSatisfactionElems()) return 1 + *sub_elems;
+        return {};
+    }
+
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<WSH512Descriptor>(m_subdescriptor_args.at(0)->Clone());
+    }
+};
+
 /* We instantiate Miniscript with a key type that carries both an index into
  * DescriptorImpl::m_pubkey_args and the serialized pubkey size for script sizing.
  */
@@ -1552,7 +1597,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         }
         return ret;
     } else if (multi || sortedmulti) {
-        error = "Can only have multi/sortedmulti at top level, in sh(), or in wsh()";
+        error = "Can only have multi/sortedmulti at top level, in sh(), wsh(), or wsh512()";
         return {};
     }
     if ((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH) && Func("wpkh", expr)) {
@@ -1594,6 +1639,17 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "Can only have wsh() at top level or inside sh()";
         return {};
     }
+    if (ctx == ParseScriptContext::TOP && Func("wsh512", expr)) {
+        auto descs = ParseScript(key_exp_index, expr, ParseScriptContext::P2WSH, out, error);
+        if (descs.empty() || expr.size()) return {};
+        for (auto& desc : descs) {
+            ret.emplace_back(std::make_unique<WSH512Descriptor>(std::move(desc)));
+        }
+        return ret;
+    } else if (Func("wsh512", expr)) {
+        error = "Can only have wsh512() at top level";
+        return {};
+    }
     if (ctx == ParseScriptContext::TOP && Func("addr", expr)) {
         CTxDestination dest = DecodeDestination(std::string(expr.begin(), expr.end()));
         if (!IsValidDestination(dest)) {
@@ -1630,7 +1686,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         }
         if (node) {
             if (ctx != ParseScriptContext::P2WSH) {
-                error = "Miniscript expressions can only be used in wsh.";
+                error = "Miniscript expressions can only be used in wsh()/wsh512().";
                 return {};
             }
             if (!node->IsSane() || node->IsNotSatisfiable()) {
@@ -1697,7 +1753,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "A function is needed within P2SH";
         return {};
     } else if (ctx == ParseScriptContext::P2WSH) {
-        error = "A function is needed within P2WSH";
+        error = "A function is needed within wsh()/wsh512()";
         return {};
     }
     error = strprintf("'%s' is not a valid descriptor function", std::string(expr.begin(), expr.end()));
@@ -1765,6 +1821,14 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
         if (provider.GetCScript(scriptid, subscript)) {
             auto sub = InferScript(subscript, ParseScriptContext::P2WSH, provider);
             if (sub) return std::make_unique<WSHDescriptor>(std::move(sub));
+        }
+    }
+    if (txntype == TxoutType::WITNESS_V1_SCRIPTHASH_512 && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
+        CScriptID scriptid{RIPEMD160(data[0])};
+        CScript subscript;
+        if (provider.GetCScript(scriptid, subscript)) {
+            auto sub = InferScript(subscript, ParseScriptContext::P2WSH, provider);
+            if (sub) return std::make_unique<WSH512Descriptor>(std::move(sub));
         }
     }
     if (ctx == ParseScriptContext::P2WSH) {

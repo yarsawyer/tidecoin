@@ -12,6 +12,7 @@
 #include <serialize.h>
 #include <span.h>
 #include <uint256.h>
+#include <uint512.h>
 
 #include <cstring>
 #include <vector>
@@ -194,6 +195,11 @@ public:
      * If this public key is not fully valid, the return value will be false.
      */
     bool Verify(const uint256& hash, const std::vector<unsigned char>& vchSig, bool legacy_mode = false) const;
+
+    /**
+     * Verify a signature for 64-byte sighashes (v1_512).
+     */
+    bool Verify512(const uint512& hash, const std::vector<unsigned char>& vchSig, bool legacy_mode = false) const;
 
 
     //! Recover a public key from a signature.

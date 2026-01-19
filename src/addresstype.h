@@ -9,6 +9,7 @@
 #include <pubkey.h>
 #include <script/script.h>
 #include <uint256.h>
+#include <uint512.h>
 #include <util/check.h>
 #include <util/hash_type.h>
 
@@ -76,6 +77,13 @@ struct WitnessV0ScriptHash : public BaseHash<uint256>
     explicit WitnessV0ScriptHash(const CScript& script);
 };
 
+struct WitnessV1ScriptHash512 : public BaseHash<uint512>
+{
+    WitnessV1ScriptHash512() : BaseHash() {}
+    explicit WitnessV1ScriptHash512(const uint512& hash) : BaseHash(hash) {}
+    explicit WitnessV1ScriptHash512(const CScript& script);
+};
+
 struct WitnessV0KeyHash : public BaseHash<uint160>
 {
     WitnessV0KeyHash() : BaseHash() {}
@@ -93,9 +101,10 @@ CKeyID ToKeyID(const WitnessV0KeyHash& key_hash);
  *  * ScriptHash: TxoutType::SCRIPTHASH destination (P2SH address)
  *  * WitnessV0ScriptHash: TxoutType::WITNESS_V0_SCRIPTHASH destination (P2WSH address)
  *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH address)
+ *  * WitnessV1ScriptHash512: TxoutType::WITNESS_V1_SCRIPTHASH_512 destination (P2WSH-512 address)
  *  A CTxDestination is the internal data type encoded in a bitcoin address
  */
-using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash>;
+using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1ScriptHash512>;
 
 /** Check whether a CTxDestination corresponds to one with an address. */
 bool IsValidDestination(const CTxDestination& dest);

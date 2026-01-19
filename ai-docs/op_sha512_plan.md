@@ -20,7 +20,10 @@ security** by committing to **64-byte SHA-512** hashes, and add an
 3) **Consensus gating**: feature activates at `nAuxpowStartHeight`.
    - Pre-auxpow (consensus): v1 witness programs are **accepted as anyone-can-spend**,
      matching Bitcoin’s softfork behavior (no v1 enforcement).
-   - Pre-auxpow (policy/mempool/wallet): **reject v1 outputs** to avoid footguns.
+   - Pre-auxpow (policy/mempool/wallet): **reject creation of v1 outputs** to avoid footguns.
+     This is enforced in mempool accept (height-aware policy gate), not in consensus.
+     `IsStandard()` / `IsStandardTx()` remain height-agnostic; the gate lives in
+     mempool acceptance (Bitcoin-style for height-aware policy).
 
 4) **OP_SHA512 opcode**: **mandatory** for committed-hash multisig templates.
    - It must be **gated by height**.
@@ -179,8 +182,11 @@ Proposed construction (BIP143-style structure, SHA-512):
 
 ### 2.3 Standardness / Policy
 - `src/policy/policy.cpp`
-  - `IsStandard`: accept new TxoutType for v1 64-byte programs
+  - `IsStandard`: accept new TxoutType for v1 64-byte programs (no height logic here)
   - No changes to scriptSig size rules (witness-based)
+- `src/validation.cpp`
+  - Mempool policy gate: pre-auxpow, reject any tx that creates v1 outputs
+    (use next_height vs `nAuxpowStartHeight`).
 
 ### 2.4 Wallet + Output Types
 - `src/outputtype.h/.cpp`
@@ -218,6 +224,7 @@ Proposed construction (BIP143-style structure, SHA-512):
   - Mixed v0/v1 inputs in same tx
   - OP_SHA512 empty-stack failure
   - OP_SHA512 input size boundary
+  - Policy: pre-auxpow mempool rejects txs that create v1 outputs
 
 **Functional tests**
 - `test/functional/wallet_address_types.py` (or new):
@@ -236,6 +243,7 @@ Proposed construction (BIP143-style structure, SHA-512):
 - Update `CScript::IsWitnessProgram`
 - Add `SCRIPT_VERIFY_WITNESS_V1_512` and height gating
 - Update `VerifyWitnessProgram` with v1 scripthash logic
+- Add mempool policy gate to reject v1 outputs pre-auxpow (height-aware)
 - Add unit tests for v1 program validation
 
 **PR-3: Address types + encoding**

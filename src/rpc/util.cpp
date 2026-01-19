@@ -50,7 +50,7 @@ std::string GetAllOutputTypes()
 {
     std::vector<std::string> ret;
     using U = std::underlying_type_t<TxoutType>;
-    for (U i = (U)TxoutType::NONSTANDARD; i <= (U)TxoutType::WITNESS_V0_KEYHASH; ++i) {
+    for (U i = (U)TxoutType::NONSTANDARD; i <= (U)TxoutType::WITNESS_V1_SCRIPTHASH_512; ++i) {
         ret.emplace_back(GetTxnOutputType(static_cast<TxoutType>(i)));
     }
     return Join(ret, ", ");
@@ -308,6 +308,16 @@ public:
         obj.pushKV("isscript", true);
         obj.pushKV("iswitness", true);
         obj.pushKV("witness_version", 0);
+        obj.pushKV("witness_program", HexStr(id));
+        return obj;
+    }
+
+    UniValue operator()(const WitnessV1ScriptHash512& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", true);
+        obj.pushKV("iswitness", true);
+        obj.pushKV("witness_version", 1);
         obj.pushKV("witness_program", HexStr(id));
         return obj;
     }

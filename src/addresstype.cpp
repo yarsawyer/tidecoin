@@ -5,6 +5,7 @@
 #include <addresstype.h>
 
 #include <crypto/sha256.h>
+#include <crypto/sha512.h>
 #include <hash.h>
 #include <pubkey.h>
 #include <script/script.h>
@@ -46,6 +47,11 @@ WitnessV0ScriptHash::WitnessV0ScriptHash(const CScript& in)
     CSHA256().Write(in.data(), in.size()).Finalize(begin());
 }
 
+WitnessV1ScriptHash512::WitnessV1ScriptHash512(const CScript& in)
+{
+    CSHA512().Write(in.data(), in.size()).Finalize(begin());
+}
+
 bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
 {
     std::vector<valtype> vSolutions;
@@ -77,6 +83,12 @@ bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
     }
     case TxoutType::WITNESS_V0_SCRIPTHASH: {
         WitnessV0ScriptHash hash;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
+        addressRet = hash;
+        return true;
+    }
+    case TxoutType::WITNESS_V1_SCRIPTHASH_512: {
+        WitnessV1ScriptHash512 hash;
         std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
         addressRet = hash;
         return true;
@@ -123,6 +135,11 @@ public:
     {
         return CScript() << OP_0 << ToByteVector(id);
     }
+
+    CScript operator()(const WitnessV1ScriptHash512& id) const
+    {
+        return CScript() << OP_1 << ToByteVector(id);
+    }
 };
 
 class ValidDestinationVisitor
@@ -134,6 +151,7 @@ public:
     bool operator()(const ScriptHash& dest) const { return true; }
     bool operator()(const WitnessV0KeyHash& dest) const { return true; }
     bool operator()(const WitnessV0ScriptHash& dest) const { return true; }
+    bool operator()(const WitnessV1ScriptHash512& dest) const { return true; }
 };
 } // namespace
 

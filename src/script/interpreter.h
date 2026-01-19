@@ -12,6 +12,7 @@
 #include <script/script_error.h> // IWYU pragma: export
 #include <span.h>
 #include <uint256.h>
+#include <uint512.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -114,6 +115,12 @@ enum : uint32_t {
     //
     SCRIPT_VERIFY_PQ_STRICT = (1U << 13),
 
+    // Enable witness v1 64-byte scripthash validation (post-auxpow).
+    SCRIPT_VERIFY_WITNESS_V1_512 = (1U << 14),
+
+    // Enable OP_SHA512 opcode (post-auxpow).
+    SCRIPT_VERIFY_SHA512 = (1U << 15),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER
@@ -130,6 +137,11 @@ struct PrecomputedTransactionData
     uint256 hashPrevouts, hashSequence, hashOutputs;
     //! Whether the 3 fields above are initialized.
     bool m_bip143_segwit_ready = false;
+
+    // SHA-512 precomputed data for witness v1_512 sighash.
+    uint512 hashPrevouts_512, hashSequence_512, hashOutputs_512;
+    //! Whether the 3 fields above are initialized.
+    bool m_bip143_segwit512_ready = false;
 
     std::vector<CTxOut> m_spent_outputs;
     //! Whether m_spent_outputs is initialized.
@@ -155,6 +167,7 @@ enum class SigVersion
 {
     BASE = 0,        //!< Bare scripts and BIP16 P2SH-wrapped redeemscripts
     WITNESS_V0 = 1,  //!< Witness v0 (P2WPKH and P2WSH); see BIP 141
+    WITNESS_V1_512 = 2, //!< Witness v1 (P2WSH-512)
 };
 
 struct ScriptExecutionData
@@ -164,6 +177,7 @@ struct ScriptExecutionData
 /** Signature hash sizes */
 static constexpr size_t WITNESS_V0_SCRIPTHASH_SIZE = 32;
 static constexpr size_t WITNESS_V0_KEYHASH_SIZE = 20;
+static constexpr size_t WITNESS_V1_SCRIPTHASH_512_SIZE = 64;
 
 /** Data structure to cache SHA256 midstates for the Post Quantum sighash calculations
  *  (bare, P2SH, P2WPKH, P2WSH). */
@@ -186,6 +200,9 @@ public:
 
 template <class T>
 uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int32_t nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr, SigHashCache* sighash_cache = nullptr);
+
+template <class T>
+uint512 SignatureHash512(const CScript& scriptCode, const T& txTo, unsigned int nIn, int32_t nHashType, const CAmount& amount, const PrecomputedTransactionData* cache = nullptr);
 
 class BaseSignatureChecker
 {

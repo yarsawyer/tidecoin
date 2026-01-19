@@ -272,12 +272,28 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
         if (!prevScript.IsWitnessProgram(witnessversion, witnessprogram))
             return false;
 
-        if (witnessversion != 0) {
-            return false;
+        if (witnessversion == 0) {
+            // Check P2WSH standard limits
+            if (witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
+                if (tx.vin[i].scriptWitness.stack.empty()) return false;
+                if (tx.vin[i].scriptWitness.stack.back().size() > MAX_STANDARD_P2WSH_SCRIPT_SIZE)
+                    return false;
+                size_t sizeWitnessStack = tx.vin[i].scriptWitness.stack.size() - 1;
+                if (sizeWitnessStack > MAX_STANDARD_P2WSH_STACK_ITEMS)
+                    return false;
+                for (unsigned int j = 0; j < sizeWitnessStack; j++) {
+                    if (tx.vin[i].scriptWitness.stack[j].size() > MAX_STANDARD_P2WSH_STACK_ITEM_SIZE)
+                        return false;
+                }
+            }
+            continue;
         }
 
-        // Check P2WSH standard limits
-        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
+        if (witnessversion == 1) {
+            if (witnessprogram.size() != WITNESS_V1_SCRIPTHASH_512_SIZE) {
+                return false;
+            }
+            if (tx.vin[i].scriptWitness.stack.empty()) return false;
             if (tx.vin[i].scriptWitness.stack.back().size() > MAX_STANDARD_P2WSH_SCRIPT_SIZE)
                 return false;
             size_t sizeWitnessStack = tx.vin[i].scriptWitness.stack.size() - 1;
@@ -287,7 +303,10 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 if (tx.vin[i].scriptWitness.stack[j].size() > MAX_STANDARD_P2WSH_STACK_ITEM_SIZE)
                     return false;
             }
+            continue;
         }
+
+        return false;
 
     }
     return true;

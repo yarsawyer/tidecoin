@@ -415,6 +415,97 @@ inline bool Sign(const SchemeInfo& info,
     }
 }
 
+inline bool Sign64(const SchemeInfo& info,
+                   std::span<const unsigned char> msg64,
+                   std::span<const unsigned char> sk,
+                   std::vector<unsigned char>& sig_out,
+                   bool legacy_mode)
+{
+    if (msg64.size() != 64 || sk.size() != info.seckey_bytes) {
+        return false;
+    }
+    switch (info.id) {
+    case SchemeId::FALCON_512: {
+        sig_out.resize(info.sig_bytes_max);
+        if (legacy_mode) {
+            size_t sig_len = 0;
+            const int r = tidecoin_falcon512_sign_legacy(sig_out.data(), &sig_len,
+                                                         msg64.data(), msg64.size(),
+                                                         sk.data(), sk.size());
+            if (r != 0) {
+                return false;
+            }
+            sig_out.resize(sig_len);
+            return true;
+        }
+        for (unsigned int attempt = 0; attempt < kFalconSignMaxAttempts; ++attempt) {
+            if (ConsumeFalconSignTestFail()) {
+                continue;
+            }
+            size_t sig_len = 0;
+            const int r = PQCLEAN_FALCON512_CLEAN_crypto_sign_signature(
+                sig_out.data(), &sig_len, msg64.data(), msg64.size(), sk.data());
+            if (r == 0) {
+                sig_out.resize(sig_len);
+                return true;
+            }
+        }
+        return false;
+    }
+    case SchemeId::FALCON_1024: {
+        sig_out.resize(info.sig_bytes_max);
+        for (unsigned int attempt = 0; attempt < kFalconSignMaxAttempts; ++attempt) {
+            if (ConsumeFalconSignTestFail()) {
+                continue;
+            }
+            size_t sig_len = 0;
+            const int r = PQCLEAN_FALCON1024_CLEAN_crypto_sign_signature(
+                sig_out.data(), &sig_len, msg64.data(), msg64.size(), sk.data());
+            if (r == 0) {
+                sig_out.resize(sig_len);
+                return true;
+            }
+        }
+        return false;
+    }
+    case SchemeId::MLDSA_44: {
+        size_t sig_len = 0;
+        sig_out.resize(info.sig_bytes_max);
+        const int r = PQCLEAN_MLDSA44_CLEAN_crypto_sign_signature(
+            sig_out.data(), &sig_len, msg64.data(), msg64.size(), sk.data());
+        if (r != 0) {
+            return false;
+        }
+        sig_out.resize(sig_len);
+        return true;
+    }
+    case SchemeId::MLDSA_65: {
+        size_t sig_len = 0;
+        sig_out.resize(info.sig_bytes_max);
+        const int r = PQCLEAN_MLDSA65_CLEAN_crypto_sign_signature(
+            sig_out.data(), &sig_len, msg64.data(), msg64.size(), sk.data());
+        if (r != 0) {
+            return false;
+        }
+        sig_out.resize(sig_len);
+        return true;
+    }
+    case SchemeId::MLDSA_87: {
+        size_t sig_len = 0;
+        sig_out.resize(info.sig_bytes_max);
+        const int r = PQCLEAN_MLDSA87_CLEAN_crypto_sign_signature(
+            sig_out.data(), &sig_len, msg64.data(), msg64.size(), sk.data());
+        if (r != 0) {
+            return false;
+        }
+        sig_out.resize(sig_len);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 inline bool Verify(const SchemeInfo& info,
                    std::span<const unsigned char> msg32,
                    std::span<const unsigned char> sig,
@@ -448,6 +539,39 @@ inline bool Verify(const SchemeInfo& info,
     }
 }
 
+inline bool Verify64(const SchemeInfo& info,
+                     std::span<const unsigned char> msg64,
+                     std::span<const unsigned char> sig,
+                     std::span<const unsigned char> pk,
+                     bool legacy_mode)
+{
+    (void)legacy_mode;
+    if (msg64.size() != 64 || pk.size() != info.pubkey_bytes) {
+        return false;
+    }
+    switch (info.id) {
+    case SchemeId::FALCON_512:
+        return tidecoin_falcon512_verify(sig.data(), sig.size(),
+                                         msg64.data(), msg64.size(),
+                                         pk.data(), pk.size(),
+                                         legacy_mode) == 0;
+    case SchemeId::FALCON_1024:
+        return PQCLEAN_FALCON1024_CLEAN_crypto_sign_verify(
+            sig.data(), sig.size(), msg64.data(), msg64.size(), pk.data()) == 0;
+    case SchemeId::MLDSA_44:
+        return PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify(
+            sig.data(), sig.size(), msg64.data(), msg64.size(), pk.data()) == 0;
+    case SchemeId::MLDSA_65:
+        return PQCLEAN_MLDSA65_CLEAN_crypto_sign_verify(
+            sig.data(), sig.size(), msg64.data(), msg64.size(), pk.data()) == 0;
+    case SchemeId::MLDSA_87:
+        return PQCLEAN_MLDSA87_CLEAN_crypto_sign_verify(
+            sig.data(), sig.size(), msg64.data(), msg64.size(), pk.data()) == 0;
+    default:
+        return false;
+    }
+}
+
 inline bool VerifyPrefixed(std::span<const unsigned char> msg32,
                            std::span<const unsigned char> sig,
                            std::span<const unsigned char> prefixed_pubkey,
@@ -460,6 +584,20 @@ inline bool VerifyPrefixed(std::span<const unsigned char> msg32,
     }
     const SchemeInfo* info = SchemeFromId(id);
     return info && Verify(*info, msg32, sig, raw, legacy_mode);
+}
+
+inline bool VerifyPrefixed64(std::span<const unsigned char> msg64,
+                             std::span<const unsigned char> sig,
+                             std::span<const unsigned char> prefixed_pubkey,
+                             bool legacy_mode)
+{
+    SchemeId id{};
+    std::span<const unsigned char> raw;
+    if (!DecodePubKey(prefixed_pubkey, id, raw)) {
+        return false;
+    }
+    const SchemeInfo* info = SchemeFromId(id);
+    return info && Verify64(*info, msg64, sig, raw, legacy_mode);
 }
 
 /** PQHD v1+ deterministic key generation. */

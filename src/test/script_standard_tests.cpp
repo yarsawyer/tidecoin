@@ -6,6 +6,7 @@
 #include <addresstype.h>
 #include <key.h>
 #include <key_io.h>
+#include <policy/policy.h>
 #include <script/script.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
@@ -114,6 +115,16 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     BOOST_CHECK_EQUAL(solutions.size(), 1U);
     BOOST_CHECK(solutions[0] == ToByteVector(scriptHash));
 
+    // TxoutType::WITNESS_V1_SCRIPTHASH_512
+    CScript witnessScript512;
+    witnessScript512 << ToByteVector(pubkeys[0]) << OP_CHECKSIG;
+    WitnessV1ScriptHash512 scriptHash512(witnessScript512);
+    s.clear();
+    s << OP_1 << ToByteVector(scriptHash512);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V1_SCRIPTHASH_512);
+    BOOST_CHECK_EQUAL(solutions.size(), 1U);
+    BOOST_CHECK(solutions[0] == ToByteVector(scriptHash512));
+
     // TxoutType::NONSTANDARD
     s.clear();
     s << OP_9 << OP_ADD << OP_11 << OP_EQUAL;
@@ -173,6 +184,11 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_failure)
     s << OP_0 << std::vector<unsigned char>(19, 0x01);
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::NONSTANDARD);
 
+    // TxoutType::WITNESS_V1_SCRIPTHASH_512 with incorrect program size
+    s.clear();
+    s << OP_1 << std::vector<unsigned char>(63, 0x01);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::NONSTANDARD);
+
 }
 
 BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
@@ -227,6 +243,15 @@ BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
     s << OP_0 << ToByteVector(scripthash);
     BOOST_CHECK(ExtractDestination(s, address));
     BOOST_CHECK(std::get<WitnessV0ScriptHash>(address) == scripthash);
+
+    // TxoutType::WITNESS_V1_SCRIPTHASH_512
+    CScript witnessScript512;
+    witnessScript512 << ToByteVector(pubkey) << OP_CHECKSIG;
+    WitnessV1ScriptHash512 scripthash512(witnessScript512);
+    s.clear();
+    s << OP_1 << ToByteVector(scripthash512);
+    BOOST_CHECK(ExtractDestination(s, address));
+    BOOST_CHECK(std::get<WitnessV1ScriptHash512>(address) == scripthash512);
 
 }
 
@@ -296,6 +321,31 @@ BOOST_AUTO_TEST_CASE(script_standard_GetScriptFor_)
     result = GetScriptForDestination(WitnessV0ScriptHash(witnessScript));
     BOOST_CHECK(result == expected);
 
+    // WitnessV1ScriptHash512 (single-sig script)
+    CScript witnessScript512;
+    witnessScript512 << ToByteVector(pubkeys[0]) << OP_CHECKSIG;
+    WitnessV1ScriptHash512 hash512(witnessScript512);
+    expected.clear();
+    expected << OP_1 << ToByteVector(hash512);
+    result = GetScriptForDestination(hash512);
+    BOOST_CHECK(result == expected);
+
+}
+
+BOOST_AUTO_TEST_CASE(script_standard_IsStandard_v1_scripthash_512)
+{
+    CScript witnessScript;
+    witnessScript << OP_TRUE;
+    const WitnessV1ScriptHash512 hash512(witnessScript);
+    const CScript spk = GetScriptForDestination(hash512);
+
+    TxoutType which_type;
+    BOOST_CHECK(IsStandard(spk, which_type));
+    BOOST_CHECK_EQUAL(which_type, TxoutType::WITNESS_V1_SCRIPTHASH_512);
+
+    CScript invalid;
+    invalid << OP_1 << std::vector<unsigned char>(63, 0x01);
+    BOOST_CHECK(!IsStandard(invalid, which_type));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

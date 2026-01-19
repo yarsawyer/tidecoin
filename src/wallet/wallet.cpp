@@ -2404,12 +2404,15 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
     }
 
     bool any_wpkh{false};
+    bool any_wsh512{false};
     bool any_sh{false};
     bool any_pkh{false};
 
     for (const auto& recipient : vecSend) {
         if (std::get_if<WitnessV0KeyHash>(&recipient.dest)) {
             any_wpkh = true;
+        } else if (std::get_if<WitnessV1ScriptHash512>(&recipient.dest)) {
+            any_wsh512 = true;
         } else if (std::get_if<ScriptHash>(&recipient.dest)) {
             any_sh = true;
         } else if (std::get_if<PKHash>(&recipient.dest)) {
@@ -2421,6 +2424,10 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
     if (has_bech32_spkman && any_wpkh) {
         // Currently wpkh is the only type supported by the BECH32 spkman
         return OutputType::BECH32;
+    }
+    const bool has_bech32pq_spkman(GetScriptPubKeyMan(OutputType::BECH32PQ, /*internal=*/true));
+    if (has_bech32pq_spkman && any_wsh512) {
+        return OutputType::BECH32PQ;
     }
     const bool has_p2sh_segwit_spkman(GetScriptPubKeyMan(OutputType::P2SH_SEGWIT, /*internal=*/true));
     if (has_p2sh_segwit_spkman && any_sh) {
@@ -2436,6 +2443,9 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
 
     if (has_bech32_spkman) {
         return OutputType::BECH32;
+    }
+    if (has_bech32pq_spkman) {
+        return OutputType::BECH32PQ;
     }
     // else use m_default_address_type for change
     return m_default_address_type;
@@ -2701,11 +2711,24 @@ static std::optional<bilingual_str> SchemeOverrideError(std::optional<uint8_t> s
     return std::nullopt;
 }
 
+static std::optional<bilingual_str> OutputTypePolicyError(OutputType type,
+                                                          const Consensus::Params& params,
+                                                          int target_height)
+{
+    if (type != OutputType::BECH32PQ) return std::nullopt;
+    if (target_height >= params.nAuxpowStartHeight) return std::nullopt;
+    return strprintf(_("Output type %s is not allowed before auxpow activation (height %d)."),
+                     FormatOutputType(type), params.nAuxpowStartHeight);
+}
+
 util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, const std::string label, std::optional<uint8_t> scheme_override)
 {
     LOCK(cs_wallet);
     auto spk_man = GetScriptPubKeyMan(type, /*internal=*/false, scheme_override);
     if (!spk_man) {
+        if (auto type_error = OutputTypePolicyError(type, Params().GetConsensus(), GetTargetHeightForOutputs())) {
+            return util::Error{*type_error};
+        }
         if (auto scheme_error = SchemeOverrideError(scheme_override, Params().GetConsensus(), GetTargetHeightForOutputs())) {
             return util::Error{*scheme_error};
         }
@@ -2794,6 +2817,9 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
     fInternal = internal;
     m_spk_man = pwallet->GetScriptPubKeyMan(type, internal, m_scheme_override);
     if (!m_spk_man) {
+        if (auto type_error = OutputTypePolicyError(type, Params().GetConsensus(), pwallet->GetTargetHeightForOutputs())) {
+            return util::Error{*type_error};
+        }
         if (auto scheme_error = SchemeOverrideError(m_scheme_override, Params().GetConsensus(), pwallet->GetTargetHeightForOutputs())) {
             return util::Error{*scheme_error};
         }

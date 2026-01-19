@@ -814,6 +814,20 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     if (m_pool.m_opts.require_standard && !IsStandardTx(tx, m_pool.m_opts.max_datacarrier_bytes, m_pool.m_opts.permit_bare_multisig, m_pool.m_opts.dust_relay_feerate, reason)) {
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, reason);
     }
+    if (m_pool.m_opts.require_standard) {
+        const CBlockIndex* const tip = m_active_chainstate.m_chain.Tip();
+        const int next_height = tip ? tip->nHeight + 1 : 0;
+        const Consensus::Params& consensus_params = m_active_chainstate.m_chainman.GetConsensus();
+        if (next_height < consensus_params.nAuxpowStartHeight) {
+            for (const auto& txout : tx.vout) {
+                int witnessversion;
+                std::vector<unsigned char> witnessprogram;
+                if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram) && witnessversion == 1) {
+                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "witness-v1-pre-auxpow");
+                }
+            }
+        }
+    }
 
     // Transactions smaller than 65 non-witness bytes are not relayed to mitigate CVE-2017-12842.
     if (::GetSerializeSize(TX_NO_WITNESS(tx)) < MIN_STANDARD_TX_NONWITNESS_SIZE)
@@ -1259,6 +1273,8 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
     if (next_height >= consensus_params.nAuxpowStartHeight) {
         scriptVerifyFlags |= SCRIPT_VERIFY_PQ_STRICT;
+        scriptVerifyFlags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        scriptVerifyFlags |= SCRIPT_VERIFY_SHA512;
     }
 
     // Check input scripts and signatures.
@@ -2384,6 +2400,8 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     // Enforce post-quantum strict signatures after auxpow activation height.
     if (block_index.nHeight >= consensusparams.nAuxpowStartHeight) {
         flags |= SCRIPT_VERIFY_PQ_STRICT;
+        flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        flags |= SCRIPT_VERIFY_SHA512;
     }
 
     return flags;

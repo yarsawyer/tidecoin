@@ -5,7 +5,9 @@
 #include <script/descriptor.h>
 #include <script/signingprovider.h>
 #include <pq/pq_scheme.h>
+#include <key.h>
 #include <test/util/setup_common.h>
+#include <util/strencodings.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -73,6 +75,23 @@ BOOST_AUTO_TEST_CASE(descriptor_pqhd_key_expression_parsing)
     must_fail("wpkh(pqhd(" + seedid + ")/10008h/6868h/7h/0h/0h/*h)", "purpose");
     must_fail("wpkh(pqhd(" + seedid + ")/10007h/6868h/6h/0h/0h/*h)", "not recognized");
     must_fail("wpkh(pqhd(" + seedid.substr(0, 10) + ")/10007h/6868h/7h/0h/0h/*h)", "pqhd() seed id");
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_wsh512_parsing)
+{
+    CKey key;
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
+    const CPubKey pubkey = key.GetPubKey();
+
+    FlatSigningProvider out;
+    std::string error;
+    const std::string desc_str = "wsh512(pk(" + HexStr(pubkey) + "))";
+    auto descs = Parse(desc_str, out, error);
+    BOOST_REQUIRE_MESSAGE(!descs.empty(), error);
+    BOOST_CHECK_MESSAGE(EqualDescriptor(desc_str, descs.at(0)->ToString()), descs.at(0)->ToString());
+    BOOST_CHECK(!descs.at(0)->IsRange());
+    BOOST_REQUIRE(descs.at(0)->GetOutputType().has_value());
+    BOOST_CHECK_EQUAL(*descs.at(0)->GetOutputType(), OutputType::BECH32PQ);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

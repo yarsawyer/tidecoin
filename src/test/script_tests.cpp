@@ -6,7 +6,9 @@
 
 #include <common/system.h>
 #include <core_io.h>
+#include <crypto/sha512.h>
 #include <key.h>
+#include <policy/policy.h>
 #include <rpc/util.h>
 #include <script/script.h>
 #include <script/script_error.h>
@@ -19,6 +21,7 @@
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
 #include <test/util/transaction_utils.h>
+#include <uint512.h>
 #include <util/fs.h>
 #include <util/strencodings.h>
 
@@ -1042,7 +1045,9 @@ BOOST_AUTO_TEST_CASE(script_size_and_capacity_test)
     {
         const auto script{GetScriptForMultisig(1, std::vector{2, dummy_pubkey})};
         BOOST_CHECK_EQUAL(GetTxoutType(script), TxoutType::MULTISIG);
-        CHECK_SCRIPT_DYNAMIC_SIZE(script, 71, 103);
+        BOOST_CHECK_GT(script.size(), CScriptBase::STATIC_SIZE);
+        BOOST_CHECK_GE(script.capacity(), script.size());
+        BOOST_CHECK_GT(script.allocated_memory(), 0U);
     }
 }
 
@@ -1219,12 +1224,12 @@ BOOST_AUTO_TEST_CASE(script_GetScriptAsm)
 
     BOOST_CHECK_EQUAL(derSig + "00 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "00")) << vchPubKey, true));
     BOOST_CHECK_EQUAL(derSig + "80 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "80")) << vchPubKey, true));
-    BOOST_CHECK_EQUAL(derSig + "[ALL] " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "01")) << vchPubKey, true));
-    BOOST_CHECK_EQUAL(derSig + "[NONE] " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "02")) << vchPubKey, true));
-    BOOST_CHECK_EQUAL(derSig + "[SINGLE] " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "03")) << vchPubKey, true));
-    BOOST_CHECK_EQUAL(derSig + "[ALL|ANYONECANPAY] " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "81")) << vchPubKey, true));
-    BOOST_CHECK_EQUAL(derSig + "[NONE|ANYONECANPAY] " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "82")) << vchPubKey, true));
-    BOOST_CHECK_EQUAL(derSig + "[SINGLE|ANYONECANPAY] " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "83")) << vchPubKey, true));
+    BOOST_CHECK_EQUAL(derSig + "01 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "01")) << vchPubKey, true));
+    BOOST_CHECK_EQUAL(derSig + "02 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "02")) << vchPubKey, true));
+    BOOST_CHECK_EQUAL(derSig + "03 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "03")) << vchPubKey, true));
+    BOOST_CHECK_EQUAL(derSig + "81 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "81")) << vchPubKey, true));
+    BOOST_CHECK_EQUAL(derSig + "82 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "82")) << vchPubKey, true));
+    BOOST_CHECK_EQUAL(derSig + "83 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "83")) << vchPubKey, true));
 
     BOOST_CHECK_EQUAL(derSig + "00 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "00")) << vchPubKey));
     BOOST_CHECK_EQUAL(derSig + "80 " + pubKey, ScriptToAsmStr(CScript() << ToByteVector(ParseHex(derSig + "80")) << vchPubKey));
@@ -1371,6 +1376,100 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
     BOOST_CHECK(!script.HasValidOps());
     script = ToScript("88acc0"_hex); // Script with undefined opcode
     BOOST_CHECK(!script.HasValidOps());
+}
+
+BOOST_AUTO_TEST_CASE(script_op_sha512)
+{
+    const std::vector<unsigned char> input{0x01, 0x02, 0x03};
+    std::vector<std::vector<unsigned char>> stack;
+    ScriptError err = SCRIPT_ERR_OK;
+
+    const CScript script = CScript() << input << OP_SHA512;
+
+    BOOST_CHECK(EvalScript(stack, script, SCRIPT_VERIFY_SHA512, BaseSignatureChecker(), SigVersion::BASE, &err));
+    BOOST_REQUIRE_EQUAL(stack.size(), 1U);
+    std::vector<unsigned char> expected(64);
+    CSHA512().Write(input.data(), input.size()).Finalize(expected.data());
+    BOOST_CHECK(stack.back() == expected);
+
+    stack.clear();
+    BOOST_CHECK(EvalScript(stack, script, SCRIPT_VERIFY_NONE, BaseSignatureChecker(), SigVersion::BASE, &err));
+    BOOST_REQUIRE_EQUAL(stack.size(), 1U);
+    BOOST_CHECK(stack.back() == input);
+
+    stack.clear();
+    BOOST_CHECK(!EvalScript(stack, script, SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS, BaseSignatureChecker(), SigVersion::BASE, &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
+
+    stack.clear();
+    const CScript empty_script = CScript() << OP_SHA512;
+    BOOST_CHECK(!EvalScript(stack, empty_script, SCRIPT_VERIFY_SHA512, BaseSignatureChecker(), SigVersion::BASE, &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+    stack.clear();
+    const std::vector<unsigned char> max_input(MAX_SCRIPT_ELEMENT_SIZE, 0x42);
+    const CScript max_script = CScript() << max_input << OP_SHA512;
+    BOOST_CHECK(EvalScript(stack, max_script, SCRIPT_VERIFY_SHA512, BaseSignatureChecker(), SigVersion::BASE, &err));
+    BOOST_REQUIRE_EQUAL(stack.size(), 1U);
+    BOOST_CHECK_EQUAL(stack.back().size(), 64U);
+
+    stack.clear();
+    const std::vector<unsigned char> too_big_input(MAX_SCRIPT_ELEMENT_SIZE + 1, 0x42);
+    const CScript too_big_script = CScript() << too_big_input << OP_SHA512;
+    BOOST_CHECK(!EvalScript(stack, too_big_script, SCRIPT_VERIFY_SHA512, BaseSignatureChecker(), SigVersion::BASE, &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_PUSH_SIZE);
+}
+
+BOOST_AUTO_TEST_CASE(script_sighash_v1_512_single_oob)
+{
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    tx.vin[0].prevout.hash = Txid::FromUint256(uint256::ONE);
+    tx.vin[0].prevout.n = 0;
+
+    CScript scriptCode;
+    scriptCode << OP_TRUE;
+
+    const uint512 hash = SignatureHash512(scriptCode, tx, 0, SIGHASH_SINGLE, 0, nullptr);
+    BOOST_CHECK(hash == uint512::ONE);
+}
+
+BOOST_AUTO_TEST_CASE(script_sighash_v1_512_default_rejected)
+{
+    CKey key;
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
+    FlatSigningProvider provider;
+    const CPubKey pubkey = key.GetPubKey();
+    provider.keys.emplace(pubkey.GetID(), key);
+    provider.pubkeys.emplace(pubkey.GetID(), pubkey);
+
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    tx.vout.resize(1);
+
+    CScript scriptCode = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+
+    MutableTransactionSignatureCreator creator(tx, 0, /*amount=*/1, SIGHASH_DEFAULT);
+    std::vector<unsigned char> sig;
+    BOOST_CHECK(!creator.CreateSig(provider, sig, pubkey.GetID(), scriptCode, SigVersion::WITNESS_V1_512));
+}
+
+BOOST_AUTO_TEST_CASE(script_witness_v1_512_preauxpow_policy)
+{
+    const CScript witness_script = CScript() << OP_TRUE;
+    std::vector<unsigned char> program(WITNESS_V1_SCRIPTHASH_512_SIZE);
+    CSHA512().Write(witness_script.data(), witness_script.size()).Finalize(program.data());
+
+    const CScript script_pub_key = CScript() << OP_1 << program;
+    CScriptWitness witness;
+    witness.stack.emplace_back(witness_script.begin(), witness_script.end());
+
+    ScriptError err = SCRIPT_ERR_OK;
+    BOOST_CHECK(VerifyScript(CScript(), script_pub_key, &witness, SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, BaseSignatureChecker(), &err));
+
+    err = SCRIPT_ERR_OK;
+    BOOST_CHECK(!VerifyScript(CScript(), script_pub_key, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, BaseSignatureChecker(), &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

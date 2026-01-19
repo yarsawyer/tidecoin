@@ -143,6 +143,7 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,125);
 
         bech32_hrp = "tbc";
+        bech32_pq_hrp = "q";
 
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
@@ -217,6 +218,7 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,180);
 
         bech32_hrp = "ttbc";
+        bech32_pq_hrp = "tq";
 
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_test), std::end(chainparams_seed_test));
 
@@ -323,6 +325,7 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,15);
 
         bech32_hrp = "rtbc";
+        bech32_pq_hrp = "rq";
     }
 };
 

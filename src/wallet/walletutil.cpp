@@ -50,6 +50,9 @@ WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id,
     if (!pq::IsSchemeAllowedAtHeight(scheme->id, consensus, target_height)) {
         throw std::runtime_error(strprintf("PQ scheme %s not allowed at height %i", scheme->name, target_height));
     }
+    if (addr_type == OutputType::BECH32PQ && target_height < consensus.nAuxpowStartHeight) {
+        throw std::runtime_error(strprintf("PQ v1 outputs not allowed at height %i", target_height));
+    }
 
     // pqhd(SEEDID32)/purposeh/cointypeh/schemeh/accounth/changeh/*h
     const uint32_t scheme_u32{scheme_prefix};
@@ -72,6 +75,10 @@ WalletDescriptor GeneratePQHDWalletDescriptor(const uint256& seed_id,
     }
     case OutputType::BECH32: {
         desc_str = "wpkh(" + key_expr + ")";
+        break;
+    }
+    case OutputType::BECH32PQ: {
+        desc_str = "wsh512(pk(" + key_expr + "))";
         break;
     }
     case OutputType::UNKNOWN: {

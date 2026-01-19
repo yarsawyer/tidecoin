@@ -54,6 +54,14 @@ public:
         return bech32::Encode(bech32::Encoding::BECH32, m_params.Bech32HRP(), data);
     }
 
+    std::string operator()(const WitnessV1ScriptHash512& id) const
+    {
+        std::vector<unsigned char> data = {1};
+        data.reserve(103);
+        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
+        return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32PQHRP(), data);
+    }
+
     std::string operator()(const CNoDestination& no) const { return {}; }
     std::string operator()(const PubKeyDestination& pk) const { return {}; }
 };
@@ -64,8 +72,16 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     uint160 hash;
     error_str = "";
 
-    // Note this will be false if it is a valid Bech32 address for a different network
-    bool is_bech32 = (ToLower(str.substr(0, params.Bech32HRP().size())) == params.Bech32HRP());
+    const std::string& legacy_hrp = params.Bech32HRP();
+    const std::string& pq_hrp = params.Bech32PQHRP();
+
+    // Only treat a string as bech32 if it contains the separator and the HRP matches.
+    const auto sep_pos = str.rfind('1');
+    const bool has_sep = sep_pos != std::string::npos && sep_pos > 0;
+    const std::string hrp = has_sep ? ToLower(str.substr(0, sep_pos)) : std::string{};
+    const bool is_bech32_legacy = has_sep && hrp == legacy_hrp;
+    const bool is_bech32_pq = has_sep && hrp == pq_hrp;
+    const bool is_bech32 = is_bech32_legacy || is_bech32_pq;
 
     if (!is_bech32 && DecodeBase58Check(str, data, 21)) {
         // base58-encoded Bitcoin addresses.
@@ -112,29 +128,42 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     }
 
     data.clear();
-    const auto dec = bech32::Decode(str);
+    const auto bech32_limit = is_bech32_pq ? bech32::CharLimit::BECH32_PQ : bech32::CharLimit::BECH32;
+    const auto dec = bech32::Decode(str, bech32_limit);
     if (dec.encoding == bech32::Encoding::BECH32 || dec.encoding == bech32::Encoding::BECH32M) {
         if (dec.data.empty()) {
             error_str = "Empty Bech32 data section";
             return CNoDestination();
         }
         // Bech32 decoding
-        if (dec.hrp != params.Bech32HRP()) {
-            error_str = strprintf("Invalid or unsupported prefix for Segwit (Bech32) address (expected %s, got %s).", params.Bech32HRP(), dec.hrp);
+        if (dec.hrp != legacy_hrp && dec.hrp != pq_hrp) {
+            error_str = strprintf("Invalid or unsupported prefix for Segwit (Bech32) address (expected %s or %s, got %s).", legacy_hrp, pq_hrp, dec.hrp);
             return CNoDestination();
         }
+        const bool is_pq = (dec.hrp == pq_hrp);
         int version = dec.data[0]; // The first 5 bit symbol is the witness version (0-16)
         if (version > 16) {
             error_str = "Invalid Bech32 address witness version";
             return CNoDestination();
         }
-        if (dec.encoding == bech32::Encoding::BECH32M && version == 0) {
+        if (!is_pq && dec.encoding == bech32::Encoding::BECH32M && version == 0) {
             error_str = "Version 0 witness address must use Bech32 checksum";
             return CNoDestination();
         }
-        if (version != 0) {
-            error_str = "Unsupported Segwit witness version";
-            return CNoDestination();
+        if (is_pq) {
+            if (dec.encoding != bech32::Encoding::BECH32M) {
+                error_str = "PQ witness v1 address must use Bech32m checksum";
+                return CNoDestination();
+            }
+            if (version != 1) {
+                error_str = "Unsupported PQ witness version";
+                return CNoDestination();
+            }
+        } else {
+            if (version != 0) {
+                error_str = "Unsupported Segwit witness version";
+                return CNoDestination();
+            }
         }
         // The rest of the symbols are converted witness program bytes.
         data.reserve(((dec.data.size() - 1) * 5) / 8);
@@ -142,7 +171,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
 
             std::string_view byte_str{data.size() == 1 ? "byte" : "bytes"};
 
-            if (version == 0) {
+            if (version == 0 && !is_pq) {
                 {
                     WitnessV0KeyHash keyid;
                     if (data.size() == keyid.size()) {
@@ -161,6 +190,15 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
                 error_str = strprintf("Invalid Bech32 v0 address program size (%d %s), per BIP141", data.size(), byte_str);
                 return CNoDestination();
             }
+            if (version == 1 && is_pq) {
+                WitnessV1ScriptHash512 scriptid;
+                if (data.size() == scriptid.size()) {
+                    std::copy(data.begin(), data.end(), scriptid.begin());
+                    return scriptid;
+                }
+                error_str = strprintf("Invalid Bech32 v1 address program size (%d %s), expected 64 bytes", data.size(), byte_str);
+                return CNoDestination();
+            }
 
         } else {
             error_str = strprintf("Invalid padding in Bech32 data section");
@@ -169,7 +207,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     }
 
     // Perform Bech32 error location
-    auto res = bech32::LocateErrors(str);
+    auto res = bech32::LocateErrors(str, bech32_limit);
     error_str = res.first;
     if (error_locations) *error_locations = std::move(res.second);
     return CNoDestination();

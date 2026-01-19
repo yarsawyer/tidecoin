@@ -137,6 +137,7 @@ void ReceiveCoinsDialog::setModel(WalletModel *_model)
         add_address_type(OutputType::LEGACY, tr("Base58 (Legacy)"), tr("Not recommended due to higher fees and less protection against typos."));
         add_address_type(OutputType::P2SH_SEGWIT, tr("Base58 (P2SH-SegWit)"), tr("Generates an address compatible with older wallets."));
         add_address_type(OutputType::BECH32, tr("Bech32 (SegWit)"), tr("Generates a native segwit address (BIP-173). Some old wallets don't support it."));
+        add_address_type(OutputType::BECH32PQ, tr("Bech32 PQ (v1)"), tr("Generates a PQ-native segwit v1 address (SHA-512 script hash)."));
         // Set the button to be enabled or disabled based on whether the wallet can give out new addresses.
         ui->receiveButton->setEnabled(model->wallet().canGetAddresses());
 

@@ -87,6 +87,7 @@ public:
             m_sigs_count += 1 * WITNESS_SCALE_FACTOR;
             break;
         case SigVersion::WITNESS_V0:
+        case SigVersion::WITNESS_V1_512:
             m_sigs_weight += weight;
             m_sigs_count++;
             break;

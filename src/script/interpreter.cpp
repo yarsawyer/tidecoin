@@ -8,6 +8,7 @@
 #include <crypto/ripemd160.h>
 #include <crypto/sha1.h>
 #include <crypto/sha256.h>
+#include <crypto/sha512.h>
 #include <pubkey.h>
 #include <script/script.h>
 #include <uint256.h>
@@ -40,6 +41,32 @@ std::string HexPrefix(const std::vector<unsigned char>& data, size_t max_len)
     const size_t len = std::min(max_len, data.size());
     return HexStr(std::span<const unsigned char>(data.data(), len));
 }
+
+class SHA512Writer
+{
+private:
+    CSHA512 ctx;
+
+public:
+    void write(std::span<const std::byte> src)
+    {
+        ctx.Write(UCharCast(src.data()), src.size());
+    }
+
+    uint512 GetHash()
+    {
+        uint512 result;
+        ctx.Finalize(result.begin());
+        return result;
+    }
+
+    template <typename T>
+    SHA512Writer& operator<<(const T& obj)
+    {
+        ::Serialize(*this, obj);
+        return *this;
+    }
+};
 
 } // namespace
 
@@ -165,7 +192,7 @@ public:
 
 static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPubKey, CScript::const_iterator pbegincodehash, CScript::const_iterator pend, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* serror, bool& fSuccess)
 {
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0);
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512);
 
     // Subset of script starting at the most recent codeseparator
     CScript scriptCode(pbegincodehash, pend);
@@ -195,6 +222,7 @@ static bool EvalChecksig(const valtype& sig, const valtype& pubkey, CScript::con
     switch (sigversion) {
     case SigVersion::BASE:
     case SigVersion::WITNESS_V0:
+    case SigVersion::WITNESS_V1_512:
         return EvalChecksigPreTapscript(sig, pubkey, pbegincodehash, pend, flags, checker, sigversion, serror, success);
     }
     assert(false);
@@ -210,7 +238,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     // static const valtype vchZero(0);
     static const valtype vchTrue(1, 1);
 
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0);
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512);
 
     CScript::const_iterator pc = script.begin();
     CScript::const_iterator pend = script.end();
@@ -220,7 +248,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     ConditionStack vfExec;
     std::vector<valtype> altstack;
     set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR);
-    if ((sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0) && script.size() > MAX_SCRIPT_SIZE) {
+    if ((sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512) && script.size() > MAX_SCRIPT_SIZE) {
         return set_error(serror, SCRIPT_ERR_SCRIPT_SIZE);
     }
     int nOpCount = 0;
@@ -240,7 +268,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
             if (vchPushValue.size() > MAX_SCRIPT_ELEMENT_SIZE)
                 return set_error(serror, SCRIPT_ERR_PUSH_SIZE);
 
-            if (sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0) {
+            if (sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512) {
                 // Note how OP_RESERVED does not count towards the opcode limit.
                 if (opcode > OP_16 && ++nOpCount > MAX_OPS_PER_SCRIPT) {
                     return set_error(serror, SCRIPT_ERR_OP_COUNT);
@@ -385,7 +413,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     break;
                 }
 
-                case OP_NOP1: case OP_NOP4: case OP_NOP5:
+                case OP_NOP1: case OP_NOP5:
                 case OP_NOP6: case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
                 {
                     if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
@@ -404,7 +432,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                             return set_error(serror, SCRIPT_ERR_UNBALANCED_CONDITIONAL);
                         valtype& vch = stacktop(-1);
                         // Under witness v0 rules it is only a policy rule, enabled through SCRIPT_VERIFY_MINIMALIF.
-                        if (sigversion == SigVersion::WITNESS_V0 && (flags & SCRIPT_VERIFY_MINIMALIF)) {
+                        if ((sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512) && (flags & SCRIPT_VERIFY_MINIMALIF)) {
                             if (vch.size() > 1)
                                 return set_error(serror, SCRIPT_ERR_MINIMALIF);
                             if (vch.size() == 1 && vch[0] != 1)
@@ -830,6 +858,25 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 }
                 break;
 
+                case OP_SHA512:
+                {
+                    if ((flags & SCRIPT_VERIFY_SHA512) == 0) {
+                        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
+                            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
+                        }
+                        break;
+                    }
+                    if (stack.size() < 1) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+                    valtype& vch = stacktop(-1);
+                    valtype vchHash(64);
+                    CSHA512().Write(vch.data(), vch.size()).Finalize(vchHash.data());
+                    popstack(stack);
+                    stack.push_back(vchHash);
+                }
+                break;
+
                 case OP_CODESEPARATOR:
                 {
                     // If SCRIPT_VERIFY_CONST_SCRIPTCODE flag is set, use of OP_CODESEPARATOR is rejected in pre-segwit
@@ -1129,6 +1176,39 @@ uint256 GetOutputsSHA256(const T& txTo)
     return ss.GetSHA256();
 }
 
+/** Compute the (single) SHA512 of the concatenation of all prevouts of a tx. */
+template <class T>
+uint512 GetPrevoutsSHA512(const T& txTo)
+{
+    SHA512Writer ss{};
+    for (const auto& txin : txTo.vin) {
+        ss << txin.prevout;
+    }
+    return ss.GetHash();
+}
+
+/** Compute the (single) SHA512 of the concatenation of all nSequences of a tx. */
+template <class T>
+uint512 GetSequencesSHA512(const T& txTo)
+{
+    SHA512Writer ss{};
+    for (const auto& txin : txTo.vin) {
+        ss << txin.nSequence;
+    }
+    return ss.GetHash();
+}
+
+/** Compute the (single) SHA512 of the concatenation of all txouts of a tx. */
+template <class T>
+uint512 GetOutputsSHA512(const T& txTo)
+{
+    SHA512Writer ss{};
+    for (const auto& txout : txTo.vout) {
+        ss << txout;
+    }
+    return ss.GetHash();
+}
+
 } // namespace
 
 template <class T>
@@ -1158,6 +1238,11 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
         hashSequence = SHA256Uint256(m_sequences_single_hash);
         hashOutputs = SHA256Uint256(m_outputs_single_hash);
         m_bip143_segwit_ready = true;
+
+        hashPrevouts_512 = GetPrevoutsSHA512(txTo);
+        hashSequence_512 = GetSequencesSHA512(txTo);
+        hashOutputs_512 = GetOutputsSHA512(txTo);
+        m_bip143_segwit512_ready = true;
     }
 }
 
@@ -1293,6 +1378,64 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
 }
 
 template <class T>
+uint512 SignatureHash512(const CScript& scriptCode, const T& txTo, unsigned int nIn, int32_t nHashType, const CAmount& amount, const PrecomputedTransactionData* cache)
+{
+    assert(nIn < txTo.vin.size());
+
+    // Check for invalid use of SIGHASH_SINGLE
+    if ((nHashType & 0x1f) == SIGHASH_SINGLE) {
+        if (nIn >= txTo.vout.size()) {
+            return uint512::ONE;
+        }
+    }
+
+    uint512 hashPrevouts;
+    uint512 hashSequence;
+    uint512 hashOutputs;
+    const bool cacheready = cache && cache->m_bip143_segwit512_ready;
+
+    if (!(nHashType & SIGHASH_ANYONECANPAY)) {
+        hashPrevouts = cacheready ? cache->hashPrevouts_512 : GetPrevoutsSHA512(txTo);
+    }
+
+    if (!(nHashType & SIGHASH_ANYONECANPAY) && (nHashType & 0x1f) != SIGHASH_SINGLE && (nHashType & 0x1f) != SIGHASH_NONE) {
+        hashSequence = cacheready ? cache->hashSequence_512 : GetSequencesSHA512(txTo);
+    }
+
+    if ((nHashType & 0x1f) != SIGHASH_SINGLE && (nHashType & 0x1f) != SIGHASH_NONE) {
+        hashOutputs = cacheready ? cache->hashOutputs_512 : GetOutputsSHA512(txTo);
+    } else if ((nHashType & 0x1f) == SIGHASH_SINGLE && nIn < txTo.vout.size()) {
+        SHA512Writer inner_ss{};
+        inner_ss << txTo.vout[nIn];
+        hashOutputs = inner_ss.GetHash();
+    }
+
+    static constexpr std::string_view kTag = "TidecoinSighashV1_512";
+    static const uint512 taghash = [] {
+        uint512 out;
+        CSHA512().Write(reinterpret_cast<const unsigned char*>(kTag.data()), kTag.size()).Finalize(out.begin());
+        return out;
+    }();
+
+    SHA512Writer ss{};
+    ss.write(std::span<const std::byte>(reinterpret_cast<const std::byte*>(taghash.begin()), taghash.size()));
+    ss.write(std::span<const std::byte>(reinterpret_cast<const std::byte*>(taghash.begin()), taghash.size()));
+
+    ss << txTo.version;
+    ss << hashPrevouts;
+    ss << hashSequence;
+    ss << txTo.vin[nIn].prevout;
+    ss << scriptCode;
+    ss << amount;
+    ss << txTo.vin[nIn].nSequence;
+    ss << hashOutputs;
+    ss << txTo.nLockTime;
+    ss << nHashType;
+
+    return ss.GetHash();
+}
+
+template <class T>
 bool GenericTransactionSignatureChecker<T>::VerifyPostQuantumSignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
 {
     return pubkey.Verify(sighash, vchSig, m_allow_legacy);
@@ -1319,7 +1462,25 @@ bool GenericTransactionSignatureChecker<T>::CheckPostQuantumSignature(const std:
     vchSig.pop_back();
 
     // Witness sighashes need the amount.
-    if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
+    if ((sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512) && amount < 0) {
+        return HandleMissingData(m_mdb);
+    }
+
+    if (sigversion == SigVersion::WITNESS_V1_512) {
+        if (nHashType == SIGHASH_DEFAULT) {
+            LogPrintf("CheckPostQuantumSignature: SIGHASH_DEFAULT not allowed for v1_512 pubkeysize=%u prefix=%s\n",
+                      vchPubKey.size(), HexPrefix(vchPubKey, 4));
+            return false;
+        }
+        uint512 sighash = SignatureHash512(scriptCode, *txTo, nIn, nHashType, amount, this->txdata);
+        if (!pubkey.Verify512(sighash, vchSig)) {
+            LogPrintf("CheckPostQuantumSignature: verify failed sighash=%s hashtype=%02x sigversion=%d sigsize=%u sigprefix=%s pubkeysize=%u pubprefix=%s scriptcodesize=%u\n",
+                     sighash.ToString(), nHashType, static_cast<int>(sigversion), vchSig.size(), HexPrefix(vchSig, 4),
+                     vchPubKey.size(), HexPrefix(vchPubKey, 4), scriptCode.size());
+            return false;
+        }
+        return true;
+    }
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata, &m_sighash_cache);
 
@@ -1469,8 +1630,32 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         } else {
             return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH);
         }
+    } else if (witversion == 1) {
+        if ((flags & SCRIPT_VERIFY_WITNESS_V1_512) == 0) {
+            if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
+                return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
+            }
+            return true;
+        }
+        if (program.size() != WITNESS_V1_SCRIPTHASH_512_SIZE) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH);
+        }
+        if (stack.size() == 0) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
+        }
+        const valtype& script_bytes = SpanPopBack(stack);
+        exec_script = CScript(script_bytes.begin(), script_bytes.end());
+        uint512 hash_exec_script;
+        CSHA512().Write(exec_script.data(), exec_script.size()).Finalize(hash_exec_script.begin());
+        if (memcmp(hash_exec_script.begin(), program.data(), WITNESS_V1_SCRIPTHASH_512_SIZE)) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        }
+        return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::WITNESS_V1_512, checker, execdata, serror);
     } else {
-        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
+        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
+            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
+        }
+        return true;
     }
     // There is intentionally no return statement here, to be able to use "control reaches end of non-void function" warnings to detect gaps in the logic above.
 }
@@ -1603,6 +1788,11 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
             return 1;
 
         if (witprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE && witness.stack.size() > 0) {
+            CScript subscript(witness.stack.back().begin(), witness.stack.back().end());
+            return subscript.GetSigOpCount(true);
+        }
+    } else if (witversion == 1) {
+        if (witprogram.size() == WITNESS_V1_SCRIPTHASH_512_SIZE && witness.stack.size() > 0) {
             CScript subscript(witness.stack.back().begin(), witness.stack.back().end());
             return subscript.GetSigOpCount(true);
         }

@@ -5,6 +5,7 @@
 #include <test/data/key_io_invalid.json.h>
 #include <test/data/key_io_valid.json.h>
 
+#include <bech32.h>
 #include <key.h>
 #include <key_io.h>
 #include <script/script.h>
@@ -42,14 +43,8 @@ BOOST_AUTO_TEST_CASE(key_io_valid_parse)
         SelectParams(ChainTypeFromString(metadata.find_value("chain").get_str()).value());
         bool try_case_flip = metadata.find_value("tryCaseFlip").isNull() ? false : metadata.find_value("tryCaseFlip").get_bool();
         if (isPrivkey) {
-            // Must be valid private key
-            privkey = DecodeSecret(exp_base58string);
-            BOOST_CHECK_MESSAGE(privkey.IsValid(), "!IsValid:" + strTest);
-            BOOST_CHECK_MESSAGE(std::ranges::equal(privkey, exp_payload), "key mismatch:" + strTest);
-
-            // Private key must be invalid public key
-            destination = DecodeDestination(exp_base58string);
-            BOOST_CHECK_MESSAGE(!IsValidDestination(destination), "IsValid privkey as pubkey:" + strTest);
+            // Skip legacy private key vectors; PQ WIF coverage is handled separately.
+            continue;
         } else {
             // Must be valid public key
             destination = DecodeDestination(exp_base58string);
@@ -98,10 +93,8 @@ BOOST_AUTO_TEST_CASE(key_io_valid_gen)
         bool isPrivkey = metadata.find_value("isPrivkey").get_bool();
         SelectParams(ChainTypeFromString(metadata.find_value("chain").get_str()).value());
         if (isPrivkey) {
-            CKey key;
-            key.Set(exp_payload.begin(), exp_payload.end());
-            assert(key.IsValid());
-            BOOST_CHECK_MESSAGE(EncodeSecret(key) == exp_base58string, "result mismatch: " + strTest);
+            // Skip legacy private key vectors; PQ WIF coverage is handled separately.
+            continue;
         } else {
             CTxDestination dest;
             CScript exp_script(exp_payload.begin(), exp_payload.end());
@@ -113,6 +106,23 @@ BOOST_AUTO_TEST_CASE(key_io_valid_gen)
     }
 
     SelectParams(ChainType::MAIN);
+}
+
+BOOST_AUTO_TEST_CASE(key_io_pq_privkey_roundtrip)
+{
+    SelectParams(ChainType::MAIN);
+
+    CKey key;
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
+    BOOST_REQUIRE(key.IsValid());
+
+    const std::string encoded = EncodeSecret(key);
+    CKey decoded = DecodeSecret(encoded);
+    BOOST_REQUIRE(decoded.IsValid());
+    BOOST_CHECK(key == decoded);
+
+    // WIF strings must not parse as destinations.
+    BOOST_CHECK(!IsValidDestination(DecodeDestination(encoded)));
 }
 
 
@@ -142,6 +152,42 @@ BOOST_AUTO_TEST_CASE(key_io_invalid)
             BOOST_CHECK_MESSAGE(!privkey.IsValid(), "IsValid privkey in mainnet:" + strTest);
         }
     }
+}
+
+BOOST_AUTO_TEST_CASE(key_io_bech32pq_v1)
+{
+    SelectParams(ChainType::MAIN);
+    const auto& params = Params();
+
+    CScript witness_script;
+    witness_script << OP_TRUE;
+    const WitnessV1ScriptHash512 wit_hash{witness_script};
+
+    const std::string addr = EncodeDestination(wit_hash);
+    BOOST_CHECK(addr.rfind(params.Bech32PQHRP(), 0) == 0);
+
+    std::string error;
+    auto decoded = DecodeDestination(addr, error);
+    BOOST_TEST_MESSAGE("bech32pq addr=" << addr << " error=" << error);
+    BOOST_CHECK(error.empty());
+    BOOST_REQUIRE(std::holds_alternative<WitnessV1ScriptHash512>(decoded));
+    BOOST_CHECK(std::get<WitnessV1ScriptHash512>(decoded) == wit_hash);
+
+    // PQ HRP must not accept v0 witness programs.
+    std::vector<unsigned char> program20(20, 0x42);
+    std::vector<unsigned char> data_v0{0};
+    ConvertBits<8, 5, true>([&](unsigned char c) { data_v0.push_back(c); }, program20.begin(), program20.end());
+    const std::string pq_v0 = bech32::Encode(bech32::Encoding::BECH32M, params.Bech32PQHRP(), data_v0);
+    decoded = DecodeDestination(pq_v0, error);
+    BOOST_CHECK(!IsValidDestination(decoded));
+
+    // Legacy HRP must not accept v1 witness programs.
+    std::vector<unsigned char> program64(64, 0x11);
+    std::vector<unsigned char> data_v1{1};
+    ConvertBits<8, 5, true>([&](unsigned char c) { data_v1.push_back(c); }, program64.begin(), program64.end());
+    const std::string legacy_v1 = bech32::Encode(bech32::Encoding::BECH32M, params.Bech32HRP(), data_v1);
+    decoded = DecodeDestination(legacy_v1, error);
+    BOOST_CHECK(!IsValidDestination(decoded));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

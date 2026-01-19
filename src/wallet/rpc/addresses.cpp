@@ -350,6 +350,20 @@ public:
         return obj;
     }
 
+    // NOLINTNEXTLINE(misc-no-recursion)
+    UniValue operator()(const WitnessV1ScriptHash512& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        CScript subscript;
+        CRIPEMD160 hasher;
+        uint160 hash;
+        hasher.Write(id.begin(), 64).Finalize(hash.begin());
+        if (provider && provider->GetCScript(CScriptID(hash), subscript)) {
+            ProcessSubScript(subscript, obj);
+        }
+        return obj;
+    }
+
 };
 
 static UniValue DescribeWalletAddress(const CWallet& wallet, const CTxDestination& dest)

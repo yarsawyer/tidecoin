@@ -29,6 +29,7 @@ enum class TxoutType {
     NULL_DATA, //!< unspendable OP_RETURN script that carries data
     WITNESS_V0_SCRIPTHASH,
     WITNESS_V0_KEYHASH,
+    WITNESS_V1_SCRIPTHASH_512,
 };
 
 /** Get the name of a TxoutType as a string */

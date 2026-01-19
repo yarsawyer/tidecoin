@@ -75,6 +75,15 @@ bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool gr
                     std::span<const unsigned char>{keydata.data(), keydata.size()}, vchSig, legacy_mode);
 }
 
+bool CKey::Sign512(const uint512& hash, std::vector<unsigned char>& vchSig, bool legacy_mode) const
+{
+    if (keydata.empty()) {
+        return false;
+    }
+    return pq::Sign64(Scheme(), std::span<const unsigned char>{hash.begin(), uint512::size()},
+                      std::span<const unsigned char>{keydata.data(), keydata.size()}, vchSig, legacy_mode);
+}
+
 bool CKey::VerifyPubKey(const CPubKey& pubkey) const {
     unsigned char rnd[8];
     std::string str = "Tidecoin key verification\n";

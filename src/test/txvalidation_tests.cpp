@@ -20,6 +20,17 @@
 
 BOOST_AUTO_TEST_SUITE(txvalidation_tests)
 
+struct TestChain100SetupStandard : public TestChain100Setup {
+    TestChain100SetupStandard()
+        : TestChain100Setup(ChainType::REGTEST, [] {
+              TestOpts opts;
+              opts.extra_args.push_back("-acceptnonstdtxn=0");
+              return opts;
+          }())
+    {
+    }
+};
+
 /**
  * Ensure that the mempool won't accept coinbase transactions.
  */
@@ -51,6 +62,27 @@ BOOST_FIXTURE_TEST_CASE(tx_mempool_reject_coinbase, TestChain100Setup)
     BOOST_CHECK(result.m_state.IsInvalid());
     BOOST_CHECK_EQUAL(result.m_state.GetRejectReason(), "coinbase");
     BOOST_CHECK(result.m_state.GetResult() == TxValidationResult::TX_CONSENSUS);
+}
+
+BOOST_FIXTURE_TEST_CASE(tx_mempool_reject_witness_v1_pre_auxpow, TestChain100SetupStandard)
+{
+    LOCK(cs_main);
+
+    std::vector<unsigned char> program(64, 0x11);
+    CScript script_pubkey;
+    script_pubkey << OP_1 << program;
+
+    CMutableTransaction tx = CreateValidMempoolTransaction(m_coinbase_txns[0], /*input_vout=*/0,
+                                                           /*input_height=*/1, coinbaseKey,
+                                                           script_pubkey, /*output_amount=*/CAmount(1 * COIN),
+                                                           /*submit=*/false);
+
+    const MempoolAcceptResult result = m_node.chainman->ProcessTransaction(MakeTransactionRef(tx));
+
+    BOOST_CHECK(result.m_result_type == MempoolAcceptResult::ResultType::INVALID);
+    BOOST_CHECK(result.m_state.IsInvalid());
+    BOOST_CHECK_EQUAL(result.m_state.GetResult(), TxValidationResult::TX_NOT_STANDARD);
+    BOOST_CHECK_EQUAL(result.m_state.GetRejectReason(), "witness-v1-pre-auxpow");
 }
 
 // Generate a number of random, nonexistent outpoints.
@@ -457,14 +489,19 @@ BOOST_FIXTURE_TEST_CASE(version3_tests, RegTestingSetup)
     }
 
     // Tx spending TRUC cannot have too many sigops.
-    // This child has 10 P2WSH multisig inputs.
-    auto multisig_outpoints{random_outpoints(10)};
+    // Choose enough P2WSH multisig inputs so sigop-adjusted vsize exceeds TRUC_CHILD_MAX_VSIZE.
+    const int inputs_needed = (TRUC_CHILD_MAX_VSIZE * WITNESS_SCALE_FACTOR) /
+                                  (DEFAULT_BYTES_PER_SIGOP * MAX_PUBKEYS_PER_MULTISIG) +
+                              1;
+    auto multisig_outpoints{random_outpoints(static_cast<size_t>(inputs_needed))};
     multisig_outpoints.emplace_back(mempool_tx_v3->GetHash(), 0);
-    auto keys{random_keys(2)};
+    // Use small placeholder pubkeys so the tx size stays below TRUC_CHILD_MAX_VSIZE.
+    // This test focuses on sigop limits, not script validity.
+    std::vector<std::vector<unsigned char>> keys(2, std::vector<unsigned char>(33, 0x02));
     CScript script_multisig;
     script_multisig << OP_1;
     for (const auto& key : keys) {
-        script_multisig << ToByteVector(key);
+        script_multisig << key;
     }
     script_multisig << OP_2 << OP_CHECKMULTISIG;
     {

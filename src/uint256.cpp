@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <uint256.h>
+#include <uint512.h>
 
 #include <util/strencodings.h>
 
@@ -31,5 +32,12 @@ template std::string base_blob<160>::ToString() const;
 template std::string base_blob<256>::GetHex() const;
 template std::string base_blob<256>::ToString() const;
 
+// Explicit instantiations for base_blob<512>
+template std::string base_blob<512>::GetHex() const;
+template std::string base_blob<512>::ToString() const;
+
 const uint256 uint256::ZERO(0);
 const uint256 uint256::ONE(1);
+
+const uint512 uint512::ZERO(0);
+const uint512 uint512::ONE(1);

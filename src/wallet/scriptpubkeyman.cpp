@@ -163,6 +163,9 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
         }
         break;
     }
+    case TxoutType::WITNESS_V1_SCRIPTHASH_512:
+        // Legacy wallets do not support v1 witness scripts; descriptor wallets handle this.
+        break;
 
     case TxoutType::MULTISIG:
     {
@@ -716,11 +719,15 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
             throw std::runtime_error(std::string(__func__) + ": Types are inconsistent. Stored type does not match type of newly generated address");
         }
 
+        const int target_height = m_storage.GetTargetHeightForOutputs();
+        if (type == OutputType::BECH32PQ && target_height < Params().GetConsensus().nAuxpowStartHeight) {
+            return util::Error{strprintf(_("PQ v1 outputs not allowed at height %i"), target_height)};
+        }
+
         const std::optional<uint8_t> scheme_prefix = m_wallet_descriptor.descriptor->GetPQHDSchemePrefix();
         if (scheme_prefix) {
             const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(*scheme_prefix);
             if (scheme != nullptr) {
-                const int target_height = m_storage.GetTargetHeightForOutputs();
                 if (!pq::IsSchemeAllowedAtHeight(scheme->id, Params().GetConsensus(), target_height)) {
                     return util::Error{strprintf(_("%s not allowed at height %i"), scheme->name, target_height)};
                 }

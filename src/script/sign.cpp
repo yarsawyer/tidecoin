@@ -14,6 +14,7 @@
 #include <script/signingprovider.h>
 #include <script/solver.h>
 #include <uint256.h>
+#include <uint512.h>
 #include <util/translation.h>
 #include <util/vector.h>
 
@@ -46,14 +47,26 @@ MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMu
 
 bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, SigVersion sigversion) const
 {
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0);
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512);
 
     CKey key;
     if (!provider.GetKey(address, key))
         return false;
 
     // Signing without known amount does not work in witness scripts.
-    if (sigversion == SigVersion::WITNESS_V0 && !MoneyRange(amount)) return false;
+    if ((sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512) && !MoneyRange(amount)) return false;
+
+    if (sigversion == SigVersion::WITNESS_V1_512) {
+        if (nHashType == SIGHASH_DEFAULT) {
+            return false;
+        }
+        uint512 hash = SignatureHash512(scriptCode, m_txto, nIn, nHashType, amount, m_txdata);
+        if (!key.Sign512(hash, vchSig, /*legacy_mode=*/false)) {
+            return false;
+        }
+        vchSig.push_back((unsigned char)nHashType);
+        return true;
+    }
 
     // BASE/WITNESS_V0 signatures don't support explicit SIGHASH_DEFAULT, use SIGHASH_ALL instead.
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
@@ -218,6 +231,34 @@ struct WshSatisfier: Satisfier<CPubKey> {
     }
 };
 
+struct Wsh512Satisfier: Satisfier<CPubKey> {
+    explicit Wsh512Satisfier(const SigningProvider& provider LIFETIMEBOUND, SignatureData& sig_data LIFETIMEBOUND,
+                             const BaseSignatureCreator& creator LIFETIMEBOUND, const CScript& witness_script)
+        : Satisfier<CPubKey>(provider, sig_data, creator, witness_script, miniscript::MiniscriptContext::P2WSH) {}
+
+    //! Conversion from a raw public key.
+    template<typename I>
+    std::optional<CPubKey> FromPKBytes(I first, I last) const {
+        CPubKey pubkey{first, last};
+        if (pubkey.IsValid()) return pubkey;
+        return {};
+    }
+
+    //! Conversion from a raw public key hash.
+    template<typename I>
+    std::optional<CPubKey> FromPKHBytes(I first, I last) const {
+        return Satisfier::CPubFromPKHBytes(first, last);
+    }
+
+    //! Satisfy an Post Quantum signature check.
+    miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
+        if (CreateSig(m_creator, m_sig_data, m_provider, sig, key, m_witness_script, SigVersion::WITNESS_V1_512)) {
+            return miniscript::Availability::YES;
+        }
+        return miniscript::Availability::NO;
+    }
+};
+
 /**
  * Sign scriptPubKey using signature made with creator.
  * Signatures are returned in scriptSigRet (or returns false if scriptPubKey can't be signed),
@@ -297,6 +338,12 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
         // Could not find witnessScript, add to missing
         sigdata.missing_witness_script = uint256(vSolutions[0]);
         return false;
+    case TxoutType::WITNESS_V1_SCRIPTHASH_512:
+        if (GetCScript(provider, sigdata, CScriptID{RIPEMD160(vSolutions[0])}, scriptRet)) {
+            ret.emplace_back(scriptRet.begin(), scriptRet.end());
+            return true;
+        }
+        return false;
 
     } // no default case, so the compiler can warn about missing cases
     assert(false);
@@ -364,6 +411,27 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         // and the extractor relies on this behaviour to combine witnesses.
         if (!solved && result.empty()) {
             WshSatisfier ms_satisfier{provider, sigdata, creator, witnessscript};
+            const auto ms = miniscript::FromScript(witnessscript, ms_satisfier);
+            solved = ms && ms->Satisfy(ms_satisfier, result) == miniscript::Availability::YES;
+        }
+        result.emplace_back(witnessscript.begin(), witnessscript.end());
+
+        sigdata.scriptWitness.stack = result;
+        sigdata.witness = true;
+        result.clear();
+    }
+    else if (solved && whichType == TxoutType::WITNESS_V1_SCRIPTHASH_512)
+    {
+        CScript witnessscript(result[0].begin(), result[0].end());
+        sigdata.witness_script = witnessscript;
+
+        TxoutType subType{TxoutType::NONSTANDARD};
+        solved = solved && SignStep(provider, creator, witnessscript, result, subType, SigVersion::WITNESS_V1_512, sigdata) &&
+                          subType != TxoutType::SCRIPTHASH && subType != TxoutType::WITNESS_V0_SCRIPTHASH &&
+                          subType != TxoutType::WITNESS_V0_KEYHASH && subType != TxoutType::WITNESS_V1_SCRIPTHASH_512;
+
+        if (!solved && result.empty()) {
+            Wsh512Satisfier ms_satisfier{provider, sigdata, creator, witnessscript};
             const auto ms = miniscript::FromScript(witnessscript, ms_satisfier);
             solved = ms && ms->Satisfy(ms_satisfier, result) == miniscript::Availability::YES;
         }

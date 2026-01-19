@@ -9,6 +9,7 @@
 #include <pq/pq_api.h>
 #include <span.h>
 #include <uint256.h>
+#include <uint512.h>
 
 #include <algorithm>
 #include <cstring>
@@ -23,6 +24,17 @@ bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchS
                               vchSig,
                               std::span<const unsigned char>{begin(), size()},
                               legacy_mode);
+}
+
+bool CPubKey::Verify512(const uint512& hash, const std::vector<unsigned char>& vchSig, bool legacy_mode) const
+{
+    if (!IsValid()) {
+        return false;
+    }
+    return pq::VerifyPrefixed64(std::span<const unsigned char>{hash.begin(), uint512::size()},
+                                vchSig,
+                                std::span<const unsigned char>{begin(), size()},
+                                legacy_mode);
 }
 
 bool CPubKey::Recover(const uint256 &hash, const std::vector<unsigned char>& vchSig) {

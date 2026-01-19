@@ -169,6 +169,8 @@ QT_TRANSLATE_NOOP("bitcoin-core", "Outbound connections restricted to CJDNS (-on
 QT_TRANSLATE_NOOP("bitcoin-core", "Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is explicitly forbidden: -onion=0"),
 QT_TRANSLATE_NOOP("bitcoin-core", "Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is not provided: none of -proxy, -onion or -listenonion is given"),
 QT_TRANSLATE_NOOP("bitcoin-core", "Outbound connections restricted to i2p (-onlynet=i2p) but -i2psam is not provided"),
+QT_TRANSLATE_NOOP("bitcoin-core", "Output type %s is not allowed before auxpow activation (height %d)."),
+QT_TRANSLATE_NOOP("bitcoin-core", "PQ v1 outputs not allowed at height %i"),
 QT_TRANSLATE_NOOP("bitcoin-core", "Please contribute if you find %s useful. Visit %s for further information about the software."),
 QT_TRANSLATE_NOOP("bitcoin-core", "Prune cannot be configured with a negative value."),
 QT_TRANSLATE_NOOP("bitcoin-core", "Prune configured below the minimum of %d MiB.  Please use a higher number."),

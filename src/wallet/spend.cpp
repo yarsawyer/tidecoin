@@ -256,6 +256,8 @@ static OutputType GetOutputType(TxoutType type, bool is_from_p2sh)
         case TxoutType::WITNESS_V0_SCRIPTHASH:
             if (is_from_p2sh) return OutputType::P2SH_SEGWIT;
             else return OutputType::BECH32;
+        case TxoutType::WITNESS_V1_SCRIPTHASH_512:
+            return OutputType::BECH32PQ;
         case TxoutType::SCRIPTHASH:
         case TxoutType::PUBKEYHASH:
             return OutputType::LEGACY;

@@ -12,6 +12,7 @@
 #include <serialize.h>
 #include <support/allocators/secure.h>
 #include <uint256.h>
+#include <uint512.h>
 
 #include <stdexcept>
 #include <vector>
@@ -170,6 +171,11 @@ public:
      * The test_case parameter tweaks the deterministic nonce.
      */
     bool Sign(const uint256& hash, std::vector<unsigned char>& vchSig, bool grind = true, uint32_t test_case = 0, bool legacy_mode = false) const;
+
+    /**
+     * Create a signature for 64-byte sighashes (v1_512).
+     */
+    bool Sign512(const uint512& hash, std::vector<unsigned char>& vchSig, bool legacy_mode = false) const;
 
     /**
      * Verify thoroughly whether a private key and a public key match.
