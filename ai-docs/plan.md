@@ -108,3 +108,5 @@ We need a focused review of private key import/export surface and wallet RPCs:
 - Paths to old Tidecoin and Bellscoin repositories.
   - Old Tidecoin: `/home/yaroslav/dev/tidecoin/oldtidecoin`
   - Bellscoin: `/home/bellscoin/bels/0.28/bellscoinV3`
+- Confirm safe VersionBits deployment bit budget with AuxPoW chain‑id encoding
+  (reserve bits 8 and 16–20; avoid top bits 29–31).

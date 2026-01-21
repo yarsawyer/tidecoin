@@ -17,6 +17,107 @@ Current Tidecoin status:
 
 ## 1. What Exists in Bellscoin (Authoritative Source)
 
+### Chain ID encoding + version bits (critical)
+Key files:
+- `src/primitives/pureheader.h`
+- `src/primitives/pureheader.cpp`
+- `src/node/miner.cpp`
+- `src/validation.cpp`
+
+**How chain ID is encoded (Bellscoin):**
+- Stored in `nVersion` bits **16..20** (5 bits total).
+  - `VERSION_START_BIT = 16`
+  - `MASK_AUXPOW_CHAINID_SHIFTED = (0x001f << VERSION_START_BIT)`
+- Auxpow flag is **bit 8** (`VERSION_AUXPOW = (1 << 8)`).
+- Chain ID is only **decoded when auxpow flag is set**:
+  - `GetChainId()` returns `(ver & MASK) >> 16` if auxpow flag set, else returns **0**.
+- Base version is considered the “non‑auxpow, non‑chain‑ID” part.
+- Top bits **28..30** are masked out when validating base version:
+  - `VERSIONAUXPOW_TOP_MASK = (1<<28)|(1<<29)|(1<<30)`
+  - `SetBaseVersion()` asserts `(nBaseVersion & ~VERSIONAUXPOW_TOP_MASK) < (1 << 16)`
+
+**Versionbits interaction (Bellscoin):**
+- Mining uses `ComputeBlockVersion()` (BIP9/versionbits) and then calls
+  `SetBaseVersion(nVersion, nChainId)` in `src/node/miner.cpp`.
+- Top bits (versionbits) are preserved; the chain ID is OR‑ed into bits 16..20.
+- `GetBaseVersion()` clears auxpow + **only the configured chain‑ID bits**:
+  - It uses `~VERSION_AUXPOW_CHAINID_SHIFTED` (built from a **hard‑coded CHAINID=16**).
+  - This works for Bellscoin because chain ID is fixed to 16 (bit 20 only).
+  - **For Tidecoin, this must be generalized to clear all 5 chain‑ID bits** (mask‑based),
+    or base‑version parsing will be wrong for any chain ID ≠ 16.
+
+**Auxpow chain ID checks (Bellscoin):**
+- `Consensus::Params` defines:
+  - `nAuxpowChainId` (Bellscoin uses **16**)
+  - `fStrictChainId` (true on main/test/reg)
+- In `CheckProofOfWork()` / `ContextualCheckBlockHeader()`:
+  - If not legacy and strict chain ID:
+    - auxpow blocks must have `chainid == nAuxpowChainId`
+    - non‑auxpow blocks must have `chainid == 0`
+  - Pre‑auxpow height can still allow legacy `nVersion==1` blocks.
+
+**Auxpow parent chain ID rule (Bellscoin):**
+- In `CAuxPow::check()`:
+  - If parent block has auxpow flag and its chain ID equals ours → **invalid**.
+  - If parent has no auxpow flag (chain ID 0) → allowed.
+- Purpose: prevent same chain ID reuse in merge‑mining, reduce collision risk.
+
+**Deterministic merkle position (chain ID dependent):**
+- `CAuxPow::getExpectedIndex(nNonce, nChainId, h)` uses chain ID to pick a
+  deterministic leaf index in the auxpow merkle tree:
+  ```
+  rand = nNonce
+  rand = rand * 1103515245 + 12345
+  rand %= 2^h
+  rand += nChainId
+  rand = rand * 1103515245 + 12345
+  rand %= 2^h
+  ```
+- This binds chain ID into the coinbase merkle placement and prevents reuse
+  across chains.
+
+**Implications for Tidecoin:**
+- Chain ID must be **0..31** (5‑bit space), and **must differ from Bellscoin (16)**.
+- CPureBlockHeader must not hard‑code CHAINID; use consensus param instead.
+- `GetBaseVersion()` should clear **all chain‑ID bits** using the mask, not a
+  chain‑specific constant.
+- Decide whether to preserve Bellscoin’s strict parent‑chain‑ID check
+  (`fStrictChainId=true`) or relax it (not recommended).
+
+### Safe VersionBits map + chain ID safety (Tidecoin)
+Goal: keep BIP9/VersionBits signaling intact while encoding AuxPoW metadata.
+
+**Bitcoin rule (reference):**
+- BIP9 requires top 3 bits `001` (`VERSIONBITS_TOP_BITS`), leaving **bits 0..28**
+  for deployments. Any auxpow/chain‑ID metadata must not touch the top bits.
+
+**Bellscoin pattern (why it works):**
+- Auxpow flag uses **bit 8**.
+- Chain‑ID field uses **bits 16..20** (5 bits).
+- VersionBits checks `GetBaseVersion()` (which strips auxpow/chain‑ID) before
+  evaluating deployment bits.
+- Deployments avoid bits 8 and 16..20 (Bellscoin uses bits 2 and 28).
+
+**Tidecoin safe deployment bits (given auxpow flag + 5‑bit chain ID):**
+- **Reserved** (never use): bit **8**, bits **16..20**, and top bits **29..31**.
+- **Safe range**: **0–7, 9–15, 21–28**.
+- With `DEPLOYMENT_TESTDUMMY.bit = 28`, remaining safe bits are:
+  **0–7, 9–15, 21–27**.
+
+**Chain ID safety (most conservative choice):**
+- Must be **1..31** (0 means no auxpow in `GetChainId()`).
+- Use a **bit‑sparse value** to minimize incidental overlap: power‑of‑two
+  recommended.
+- **Chosen Tidecoin chain ID: 8**, which sets only chain‑ID bit **19**.
+  - Distinct from Bellscoin/Syscoin (16).
+  - Leaves other chain‑ID bits 16–20 unused.
+  - Safe with BIP9 as long as `GetBaseVersion()` clears the full 5‑bit mask.
+
+**Critical requirement for Tidecoin:**
+- `GetBaseVersion()` must strip **all 5 chain‑ID bits** using the mask
+  `(0x001f << 16)`, not a chain‑specific constant.
+  Otherwise chain‑ID bits would appear as VersionBits signals.
+
 ### AuxPoW core + header format
 Key files:
 - `src/auxpow.h`, `src/auxpow.cpp`  
@@ -28,6 +129,52 @@ Key files:
 - `src/primitives/pureheader.h/.cpp`
   - `CPureBlockHeader` for clean dependency separation
   - Chain ID bits and auxpow flag in block version
+
+### Serialization patterns (Bellscoin vs Tidecoin)
+
+**Bellscoin patterns (older style):**
+- `CBlockHeader` uses custom `Serialize/Unserialize` templates (not
+  `SERIALIZE_METHODS`). It casts to `CPureBlockHeader` and conditionally reads
+  `auxpow` if the auxpow flag is set.
+- `CAuxPow::SERIALIZE_METHODS` writes a legacy “merkle‑tx” envelope:
+  it serializes `coinbaseTx`, a **dummy** `hashBlock`, a **dummy** `nIndex`,
+  then the auxpow merkle branches and `parentBlock`.
+  - This is intentional to remain compatible with existing auxpow formats.
+- `CPureBlockHeader::GetPoWHash()` uses raw memory (`BEGIN(nVersion)` macro),
+  not a serialized byte stream.
+
+**Tidecoin (modern Core style) expectations:**
+- Prefer `SERIALIZE_METHODS` with `SER_READ/SER_WRITE` and `READWRITE`.
+- Ensure `nVersion` is read **before** checking `IsAuxpow()` for conditional
+  auxpow deserialization.
+- Avoid raw‑memory hashing. Use `HashWriter`/`DataStream` to serialize the header
+  into 80 bytes before calling scrypt (consistent with current `GetPoWHash` style).
+- Avoid non‑const `shared_ptr` serialization; Tidecoin’s `serialize.h` only
+  supports `shared_ptr<const T>`. For auxpow, either:
+  - keep custom serialize/unserialize, or
+  - use `std::unique_ptr<CAuxPow>` and manual `SER_READ` allocation.
+
+**Compatibility constraints to keep:**
+- Preserve the auxpow serialization envelope (dummy `hashBlock` + `nIndex`) and
+  ordering in `CAuxPow::SERIALIZE_METHODS`.
+- Keep conditional auxpow serialization tied to the auxpow flag in `nVersion`.
+
+**Specific modernization requirements (must‑haves):**
+1) **Header hashing**
+   - `CPureBlockHeader::GetPoWHash()` must hash the serialized 80‑byte header
+     (DataStream/HashWriter), not raw memory.
+2) **Auxpow header serialization**
+   - `CBlockHeader` must serialize as:
+     - base header, then auxpow **only if** auxpow flag is set.
+   - Deserialization must read `nVersion` first and conditionally read auxpow.
+3) **Pointer type handling**
+   - Avoid `std::shared_ptr<CAuxPow>` serialization (only `shared_ptr<const T>`
+     is supported in current `serialize.h`).
+   - Use manual `SER_READ/SER_WRITE` with `unique_ptr` or keep custom
+     Serialize/Unserialize to handle auxpow.
+4) **Base‑version parsing**
+   - Clear the **full 5‑bit chain‑ID field** when extracting base version
+     (mask‑based), not a chain‑specific shifted bit.
 
 ### Validation logic
 - `src/validation.cpp::CheckProofOfWork`
@@ -119,26 +266,160 @@ Tidecoin touchpoints:
 
 ---
 
-## 3. Open Decisions (Need Confirmation)
+## 3. Decisions Summary (Final)
 
 1) **Activation semantics**
-   - Pre‑auxpow: reject auxpow blocks or allow?
-   - Post‑auxpow: must blocks include auxpow?
+   - Pre‑auxpow: **reject auxpow blocks** (consensus + policy).
+   - Post‑auxpow: **accept both auxpow and non‑auxpow blocks**, but **scrypt only**
+     (no yespower).
+   - Mirrors Bellscoin’s production behavior.
 
 2) **PoW hash switch**
-   - scrypt used only for auxpow blocks?
-   - or scrypt from auxpow activation onward for all blocks?
+   - **Pre‑auxpow**: yespower.
+   - **Post‑auxpow**: scrypt for **all** blocks (auxpow or non‑auxpow).
 
 3) **Chain ID**
-   - adopt Bellscoin chain‑ID bit scheme exactly?
-   - define Tidecoin chain ID constant
+   - Tidecoin chain ID = **8** (see §3.1).
 
 4) **RPC scope**
-   - do we need full auxpow mining RPCs in mainnet?
+   - **Yes** — implement the full Bellscoin auxpow mining RPC surface:
+     `getauxblock`, `submitauxblock`, and auxpow JSON in
+     `getblock`/`getblockheader`.
 
 ---
 
-## 4. Next Research Steps
+## 3.1 Decision — Tidecoin Chain ID (Final)
+
+- **Chosen chain ID:** `8`
+- **Rationale:**
+  - Non‑zero and within the 5‑bit chain‑ID field (1..31).
+  - Distinct from Bellscoin’s chain ID (`16`) to avoid merge‑mining collisions.
+  - Safe with versionbits **if** base‑version parsing clears the full 5‑bit field.
+
+### Correct base‑version handling (required)
+
+Bellscoin’s `GetBaseVersion()` only clears a chain‑specific shifted bit
+(`VERSION_AUXPOW_CHAINID_SHIFTED`), which is safe only when chain ID is a single
+bit (their `16`). For Tidecoin’s chain ID `8`, we **must** clear the full
+5‑bit field:
+
+- Chain‑ID field mask:
+  - `MASK_AUXPOW_CHAINID_SHIFTED = (0x001f << VERSION_START_BIT)`
+- Base‑version extraction should clear:
+  - `VERSION_AUXPOW` flag **and**
+  - `MASK_AUXPOW_CHAINID_SHIFTED` (not a chain‑specific constant).
+
+### Consensus / validation expectations
+
+- `nAuxpowChainId = 8` in `Consensus::Params`.
+- `fStrictChainId = true` (keep Bellscoin behavior):
+  - auxpow blocks must have chain ID `8`
+  - non‑auxpow blocks must have chain ID `0`
+- Auxpow parent chain ID must **not** equal `8` when parent uses auxpow.
+
+---
+
+## 3.2 Decision — AuxPoW acceptance semantics (Final)
+
+**Goal:** follow Bellscoin’s proven production behavior.
+
+### Pre‑auxpow (consensus + policy)
+- **Reject auxpow blocks** (auxpow not yet allowed).
+- Accept non‑auxpow blocks only, using **yespower** PoW.
+
+### Post‑auxpow (consensus)
+- **Accept both auxpow and non‑auxpow blocks**, but **scrypt only** (no yespower).
+- Auxpow blocks must have chain‑id = 8 and auxpow flag set.
+- Non‑auxpow blocks must have chain‑id = 0 and auxpow flag unset.
+
+---
+
+## 3.3 Decision — AuxPoW RPC surface (Final)
+
+Implement the full Bellscoin RPC toolchain (no partial subset):
+- `getauxblock` (template + chainid + target)
+- `submitauxblock` (submit auxpow)
+- `getblock` / `getblockheader` auxpow JSON payload
+- `getblocktemplate` support (auxpow aware where applicable)
+
+Reason: this is the production‑proven tooling used by pools; Tidecoin should
+match Bellscoin for compatibility.
+
+---
+
+## 4. PR Breakdown (Workable Slices)
+
+PR‑A0 — Import scrypt + build wiring (no behavior change yet) **[DONE]**
+- Port Bellscoin files:
+  - `src/crypto/scrypt.h`
+  - `src/crypto/scrypt.cpp`
+  - `src/crypto/scrypt-sse2.cpp` (compiled when `-DENABLE_SSE2=ON`)
+- Wire into build system (CMake).  
+- No call‑site changes yet.
+
+PR‑A1 — Data model + header format (auxpow + pureheader)
+- Add `CPureBlockHeader` and auxpow data model.
+- Add auxpow fields/chain‑ID to consensus params and chainparams.
+- Touchpoints:
+  - `src/primitives/pureheader.{h,cpp}` (new)
+  - `src/primitives/block.{h,cpp}`
+  - `src/consensus/params.h`
+  - `src/kernel/chainparams.cpp`
+- Acceptance:
+  - Serialization round‑trips (auxpow present/absent).
+  - No consensus changes yet.
+
+PR‑A2 — PoW hash switch (yespower ↔ scrypt)
+- Implement pre/post‑auxpow PoW hashing rule.
+- Touchpoints:
+  - `src/primitives/block.cpp::CBlockHeader::GetPoWHash`
+  - `src/pow.{h,cpp}` (if needed for gating helpers)
+- Acceptance:
+  - Pre‑auxpow uses yespower.
+  - Post‑auxpow uses scrypt (rule finalized in Open Decisions).
+
+PR‑A3 — Difficulty switch (old ↔ new retarget)
+- Port Bellscoin retarget logic and parameters.
+- Touchpoints:
+  - `src/pow.{h,cpp}`
+  - `src/consensus/params.h`
+  - `src/kernel/chainparams.cpp`
+- Acceptance:
+  - Height‑based switch works.
+  - Unit tests cover both algorithms.
+
+PR‑A4 — Consensus validation (auxpow checks)
+- Enforce auxpow presence/absence by height.
+- Validate chain‑ID bits and auxpow parent PoW.
+- Touchpoints:
+  - `src/validation.cpp::CheckProofOfWork`
+  - `src/primitives/block.h`
+- Acceptance:
+  - Auxpow blocks rejected/accepted per activation semantics.
+
+PR‑A5 — RPC + miner support (if required)
+- Add merged‑mining RPC flow.
+- Touchpoints:
+  - `src/rpc/mining.cpp`
+  - `src/rpc/blockchain.cpp`
+  - `src/rpc/auxpow_miner.{h,cpp}` (new)
+  - `src/wallet/rpc/getauxrpc.cpp` (if needed)
+- Acceptance:
+  - `getauxblock` / `submitauxblock` work on regtest.
+
+PR‑A6 — Tests
+- Port Bellscoin tests and adapt for Tidecoin params.
+- Touchpoints:
+  - `src/test/auxpow_tests.cpp`
+  - `src/test/pow_tests.cpp`
+  - Functional tests for activation and retarget switch
+- Acceptance:
+  - Pre/post‑activation behavior covered.
+  - Invalid auxpow rejected.
+
+---
+
+## 5. Next Research Steps
 
 1) Extract exact Bellscoin consensus constants:
    - `nAuxpowStartHeight`
@@ -154,19 +435,11 @@ Tidecoin touchpoints:
 
 ---
 
-## 5. Suggested Work Order (High‑Level)
+## 6. Suggested Work Order (High‑Level)
 
-1) **PR‑A0 — Import scrypt + build wiring (no behavior change yet)**
-   - Port Bellscoin files:
-     - `src/crypto/scrypt.h`
-     - `src/crypto/scrypt.cpp`
-     - `src/crypto/scrypt-sse2.cpp` (optional; can be built only when SSE2 is enabled)
-   - Wire into build system (CMakeLists; Makefile.am if still used).
-   - Note: Bellscoin defaults to the generic implementation if `scrypt_detect_sse2()`
-     is never called (no call sites in Bellscoin). We can keep that behavior initially.
-2) Data model + header format (auxpow + pureheader)
-3) PoW hash switch logic (yespower vs scrypt)
-4) Difficulty switch (old/new retarget)
-5) Consensus validation (auxpow checks)
-6) RPC/miner surface (if required)
-7) Tests and fixtures
+1) PR‑A1 (data model + header format)
+2) PR‑A2 (PoW hash switch)
+3) PR‑A3 (difficulty switch)
+4) PR‑A4 (consensus validation)
+5) PR‑A5 (RPC/miner, if required)
+6) PR‑A6 (tests)
