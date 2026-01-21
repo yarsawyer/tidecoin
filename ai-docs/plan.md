@@ -33,12 +33,12 @@ preserving Tidecoin network compatibility.
 ### Phase 1: Falcon-512 Integration (Tidecoin Sync)
 Objective: Make this node validate and sync with Tidecoin network using Falcon-512.
 - DONE Wire yespower PoW hashing/validation and Tidecoin difficulty retarget quirks (first retarget rule + overflow guard).
-- Integrate Falcon-512 keys/signatures in consensus-critical paths.
-- Update script and address/key handling to support Falcon-512.
-- Add or port tests to validate Falcon-512 signature verification.
-- Ensure compatibility with Tidecoin network parameters (genesis, magic bytes,
+- DONE Integrate Falcon-512 keys/signatures in consensus-critical paths (legacy compat + strict mode).
+- DONE Update script and address/key handling to support Falcon-512 PQ pubkeys.
+- DONE Add tests to validate Falcon-512 signature verification (unit + wallet/signing flows).
+- DONE Ensure compatibility with Tidecoin network parameters (genesis, magic bytes,
   ports, prefixes, checkpoints).
-Deliverable: node can sync with Tidecoin network using Falcon-512.
+Deliverable: node can sync with Tidecoin network using Falcon-512. (DONE)
 
 ### Phase 2: Remove Taproot
 Objective: Eliminate taproot code paths and related policies.
@@ -50,19 +50,23 @@ Deliverable: taproot fully removed from consensus and policy paths.
 Progress tracking and detailed checklist live in `ai-docs/taproot-removal.md`.
 
 ### Phase 3: HD Wallet Capabilities
-Objective: Add HD wallet support aligned with Tidecoin needs.
-- Decide on legacy BIP32/BIP44 vs descriptor wallets.
-- Implement key derivation and wallet storage updates.
-- Add functional tests for key derivation and address generation.
-Deliverable: HD wallet functionality with tests.
+Objective: Add PQHD wallet support aligned with Tidecoin needs (descriptor-only, no xpub).
+- DONE Implement PQHD KDF + deterministic keygen (pqhd_v1).
+- DONE Introduce PQHD seed storage and wallet policy defaults.
+- DONE Integrate PQHD descriptors for new wallets (pqhd-only).
+- DONE Remove BIP32/xpub/xprv descriptor support; keep WIF for imported privkeys.
+- DONE Add PQHD gating + scheme policy (auxpow height gates, per-scheme descriptors).
+- DONE Add tests for PQHD keygen, kdf, policy, and descriptor behavior.
+- IN PROGRESS Remove remaining secp256k1/ECC and legacy keypaths (see `ai-docs/pqhd-removal-plan.md`).
+Deliverable: PQHD descriptor wallet functionality with tests. (PARTIAL: secp teardown ongoing)
 
 ### Phase 4: Additional PQ Signatures (Falcon-1024, ML-DSA-44/65/87)
 Objective: Add new PQ schemes gated by activation heights.
-- Integrate Falcon-1024 and ML-DSA-44/65/87 signatures.
-- Define script/versioning or opcodes for new schemes.
-- Add activation height logic and consensus gating.
-- Add tests for pre-activation and post-activation behavior.
-Deliverable: new schemes available after activation heights.
+- DONE Integrate Falcon-1024 and ML-DSA-44/65/87 signatures.
+- DONE Define scheme IDs + pubkey prefixes.
+- DONE Add activation height logic and consensus/policy gating (auxpow).
+- DONE Add tests for pre-activation and post-activation behavior.
+Deliverable: new schemes available after activation heights. (DONE)
 
 ### Phase 5: Merged Mining (AuxPoW) with Litecoin
 Objective: Introduce merged mining and validate with tests.
@@ -71,10 +75,20 @@ Objective: Introduce merged mining and validate with tests.
 - Add extensive functional tests (main chain + auxiliary chain).
 Deliverable: merged mining supported and tested.
 
+### Phase 6: PQ-Native v1 Witness (OP_SHA512)
+Objective: Introduce OP_SHA512 and v1 64-byte witness program for 256-bit PQ security.
+- DONE Plan + sprint split (`ai-docs/op_sha512_plan.md`, `ai-docs/sprints/op_sha512-sprint.md`).
+- DONE Introduce uint512 type.
+- DONE Implement v1_512 sighash (tagged SHA-512), precomputed hashes.
+- DONE Implement OP_SHA512 opcode (repurpose OP_NOP4) gated by auxpow.
+- DONE Add v1 script-hash-only output type (P2WSH512).
+- DONE Add PQ HRP (mainnet `q`, testnet `tq`, regtest `rq`) and enforce v1 decode rules.
+- DONE Policy: reject v1 outputs pre-auxpow in mempool; consensus v1 pre-auxpow remains anyone-can-spend.
+- IN PROGRESS Finish remaining tests and cross-PR checklist in `ai-docs/sprints/op_sha512-sprint.md`.
+Deliverable: PQ-native v1 witness fully implemented and tested. (PARTIAL)
+
 ## Open Decisions
-- Activation heights for taproot removal and new signature schemes.
-- HD wallet mode (legacy vs descriptors).
-- Exact PQ library versions and integration approach.
+- AuxPoW/merged mining parameters and repo source.
 
 ## Risks and Mitigations
 - Consensus divergence due to difficulty quirks: preserve Tidecoin-specific logic
@@ -82,8 +96,15 @@ Deliverable: merged mining supported and tested.
 - Signature scheme integration: isolate consensus-critical validation and add
   golden test vectors.
 - Merged mining complexity: ensure deterministic AuxPoW parsing and validation.
+- PQ-native v1 witness: require test vectors for sighash/opcode correctness.
+
+## Wallet Export/Import Review Needed
+We need a focused review of private key import/export surface and wallet RPCs:
+- `importprivkey` status and PQ key handling.
+- `dumpprivkey` availability/absence and PQ-friendly export format.
+- Wallet tool dump/restore behavior for PQHD vs legacy BDB keys.
 
 ## Next Inputs Needed
 - Paths to old Tidecoin and Bellscoin repositories.
-- Tidecoin network parameters file(s).
-- PQ library repositories and version constraints.
+  - Old Tidecoin: `/home/yaroslav/dev/tidecoin/oldtidecoin`
+  - Bellscoin: `/home/bellscoin/bels/0.28/bellscoinV3`

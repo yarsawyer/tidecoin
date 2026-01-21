@@ -94,7 +94,7 @@ static inline std::vector<COutPoint> random_outpoints(size_t num_outpoints) {
     return outpoints;
 }
 
-static inline std::vector<CPubKey> random_keys(size_t num_keys) {
+[[maybe_unused]] static inline std::vector<CPubKey> random_keys(size_t num_keys) {
     std::vector<CPubKey> keys;
     keys.reserve(num_keys);
     for (size_t i{0}; i < num_keys; ++i) {

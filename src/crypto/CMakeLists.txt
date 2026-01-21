@@ -13,6 +13,7 @@ add_library(bitcoin_crypto STATIC EXCLUDE_FROM_ALL
   muhash.cpp
   poly1305.cpp
   ripemd160.cpp
+  scrypt.cpp
   sha1.cpp
   sha256.cpp
   sha256_sse4.cpp
@@ -29,6 +30,14 @@ target_link_libraries(bitcoin_crypto
   PRIVATE
     core_interface
 )
+
+if(HAVE_SSE2)
+  target_compile_definitions(bitcoin_crypto PRIVATE USE_SSE2)
+  target_sources(bitcoin_crypto PRIVATE scrypt-sse2.cpp)
+  set_property(SOURCE scrypt-sse2.cpp PROPERTY
+    COMPILE_OPTIONS ${SSE2_CXXFLAGS}
+  )
+endif()
 
 if(HAVE_SSE41)
   target_compile_definitions(bitcoin_crypto PRIVATE ENABLE_SSE41)

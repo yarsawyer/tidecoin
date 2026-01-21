@@ -17,6 +17,11 @@ cmake --build build    # Append "-j N" for N parallel jobs
 cmake --install build  # Optional
 ```
 
+Optional CPU features:
+- The scrypt SSE2 implementation is compiled when the compiler supports `-msse2`
+  and CMake detects SSE2. This defines `USE_SSE2` and adds `scrypt-sse2.cpp` to
+  `bitcoin_crypto`. Disable explicitly with `-DENABLE_SSE2=OFF`.
+
 See below for instructions on how to [install the dependencies on popular Linux
 distributions](#linux-distribution-specific-instructions), or the
 [dependencies](#dependencies) section for a complete overview.
@@ -213,4 +218,3 @@ This example lists the steps necessary to setup and build a command line only di
     ctest --test-dir build
     ./build/bin/bitcoind
     ./build/bin/bitcoin help
-

@@ -45,7 +45,21 @@ Completed (in-tree now):
   initializes secp256k1).
 
 Incomplete / pending:
-- No known gaps beyond periodic sweep for new secp/BIP32 artifacts.
+- Remaining PQHD-only cleanup (non-functional BIP32/ECC surface):
+  - RPC help text still references xpub/xprv + BIP32:
+    - `gethdkeys()` and `createwalletdescriptor()` in `src/wallet/rpc/wallet.cpp`
+      (both hard-reject BIP32/xpub but advertise them in help).
+  - RPC parameters still include `bip32derivs` (must be false, hard-reject true):
+    - `walletprocesspsbt` / `descriptorprocesspsbt` in `src/wallet/rpc/spend.cpp`.
+  - PSBT BIP32 record types still defined to hard-reject:
+    - `PSBT_IN_BIP32_DERIVATION`, `PSBT_OUT_BIP32_DERIVATION`, and global xpubs
+      in `src/psbt.h`.
+  - Legacy/compat text only:
+    - BIP32 notes in `src/external_signer.h`, `src/node/psbt.h`.
+  - Legacy import sentinel remains intentionally:
+    - `HDCHAIN` string in `src/wallet/walletdb.cpp` to ignore old records.
+  - secp256k1 references are comment-only (no code linkage):
+    - `src/crypto/muhash.cpp`, `src/test/pq_pubkey_container_tests.cpp`.
 
 ## Phase 0 — Lock Down Behavior (No Deletions Yet)
 
