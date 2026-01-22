@@ -9,6 +9,8 @@
 #include <test/util/setup_common.h>
 #include <util/chaintype.h>
 
+#include <optional>
+
 #include <boost/test/unit_test.hpp>
 
 namespace {
@@ -26,14 +28,26 @@ int64_t ClampTimespan(int64_t actual_timespan, const Consensus::Params& params)
 arith_uint256 ScaleTarget(arith_uint256 target, int64_t actual_timespan, const Consensus::Params& params)
 {
     const arith_uint256 pow_limit = UintToArith256(params.powLimit);
-    const bool shift = target.bits() > pow_limit.bits() - 1;
-    if (shift) {
-        target >>= 1;
+    int shift{0};
+    if (actual_timespan > 0) {
+        uint64_t timespan = static_cast<uint64_t>(actual_timespan);
+        int actual_bits{0};
+        while (timespan != 0) {
+            ++actual_bits;
+            timespan >>= 1;
+        }
+        const int target_bits = target.bits();
+        if (target_bits + actual_bits > 256) {
+            shift = target_bits + actual_bits - 256;
+        }
+    }
+    if (shift > 0) {
+        target >>= shift;
     }
     target *= actual_timespan;
     target /= params.nPowTargetTimespan;
-    if (shift) {
-        target <<= 1;
+    if (shift > 0) {
+        target <<= shift;
     }
     if (target > pow_limit) {
         target = pow_limit;
@@ -55,7 +69,8 @@ BOOST_FIXTURE_TEST_SUITE(pow_tests, BasicTestingSetup)
 BOOST_AUTO_TEST_CASE(get_next_work)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    const auto& consensus = chainParams->GetConsensus();
+    auto consensus = chainParams->GetConsensus();
+    consensus.nNewPowDiffHeight = Consensus::AUXPOW_DISABLED;
     CBlockIndex pindexLast;
     const arith_uint256 pow_limit = UintToArith256(consensus.powLimit);
     arith_uint256 start_target = pow_limit >> 4;
@@ -73,7 +88,8 @@ BOOST_AUTO_TEST_CASE(get_next_work)
 BOOST_AUTO_TEST_CASE(get_next_work_pow_limit)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    const auto& consensus = chainParams->GetConsensus();
+    auto consensus = chainParams->GetConsensus();
+    consensus.nNewPowDiffHeight = Consensus::AUXPOW_DISABLED;
     CBlockIndex pindexLast;
     const arith_uint256 pow_limit = UintToArith256(consensus.powLimit);
     pindexLast.nHeight = consensus.DifficultyAdjustmentInterval() - 1;
@@ -90,7 +106,8 @@ BOOST_AUTO_TEST_CASE(get_next_work_pow_limit)
 BOOST_AUTO_TEST_CASE(get_next_work_lower_limit_actual)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    const auto& consensus = chainParams->GetConsensus();
+    auto consensus = chainParams->GetConsensus();
+    consensus.nNewPowDiffHeight = Consensus::AUXPOW_DISABLED;
     CBlockIndex pindexLast;
     const arith_uint256 pow_limit = UintToArith256(consensus.powLimit);
     arith_uint256 start_target = pow_limit >> 4;
@@ -114,7 +131,8 @@ BOOST_AUTO_TEST_CASE(get_next_work_lower_limit_actual)
 BOOST_AUTO_TEST_CASE(get_next_work_upper_limit_actual)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    const auto& consensus = chainParams->GetConsensus();
+    auto consensus = chainParams->GetConsensus();
+    consensus.nNewPowDiffHeight = Consensus::AUXPOW_DISABLED;
     CBlockIndex pindexLast;
     const arith_uint256 pow_limit = UintToArith256(consensus.powLimit);
     arith_uint256 start_target = pow_limit >> 6;
@@ -159,6 +177,37 @@ BOOST_AUTO_TEST_CASE(get_next_work_first_retarget_period)
     BOOST_CHECK_EQUAL(actual, expected);
 }
 
+BOOST_AUTO_TEST_CASE(get_next_work_new_insufficient_blocks)
+{
+    Consensus::Params params = CreateChainParams(*m_node.args, ChainType::MAIN)->GetConsensus();
+    params.nNewPowDiffHeight = 0;
+    params.nPowAveragingWindow = 17;
+    params.nPowMaxAdjustDown = 32;
+    params.nPowMaxAdjustUp = 16;
+    params.nPostBlossomPowTargetSpacing = params.nPowTargetSpacing;
+    params.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
+    params.fPowAllowMinDifficultyBlocks = false;
+    params.fPowNoRetargeting = false;
+
+    CBlockIndex genesis;
+    genesis.nHeight = 0;
+    genesis.nTime = 1000;
+    genesis.nBits = UintToArith256(params.powLimit).GetCompact();
+    genesis.pprev = nullptr;
+
+    CBlockIndex pindexLast;
+    pindexLast.nHeight = 1;
+    pindexLast.nTime = genesis.nTime + params.nPowTargetSpacing;
+    pindexLast.nBits = genesis.nBits;
+    pindexLast.pprev = &genesis;
+
+    CBlockHeader dummy;
+    dummy.nTime = pindexLast.nTime + params.nPowTargetSpacing;
+
+    unsigned int expected = UintToArith256(params.powLimit).GetCompact();
+    BOOST_CHECK_EQUAL(GetNextWorkRequired(&pindexLast, &dummy, params), expected);
+}
+
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_negative_target)
 {
     const auto consensus = CreateChainParams(*m_node.args, ChainType::MAIN)->GetConsensus();
@@ -188,6 +237,34 @@ BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_too_easy_target)
     nBits = nBits_arith.GetCompact();
     hash = uint256{1};
     BOOST_CHECK(!CheckProofOfWork(hash, nBits, consensus));
+}
+
+BOOST_AUTO_TEST_CASE(use_scrypt_pow_height_switch)
+{
+    const auto params = CreateChainParams(*m_node.args, ChainType::MAIN)->GetConsensus();
+    BOOST_REQUIRE(params.nAuxpowStartHeight > 0);
+    BOOST_CHECK(!UseScryptPoW(params, params.nAuxpowStartHeight - 1));
+    BOOST_CHECK(UseScryptPoW(params, params.nAuxpowStartHeight));
+}
+
+BOOST_AUTO_TEST_CASE(checkpow_height_selects_hash)
+{
+    const auto params = CreateChainParams(*m_node.args, ChainType::MAIN)->GetConsensus();
+    BOOST_REQUIRE(params.nAuxpowStartHeight > 0);
+
+    CBlockHeader header;
+    header.nVersion = 1;
+    header.hashPrevBlock.SetNull();
+    header.hashMerkleRoot.SetNull();
+    header.nTime = 1;
+    header.nBits = UintToArith256(params.powLimit).GetCompact();
+    header.nNonce = 1;
+
+    const bool expected_pre = CheckProofOfWork(header.GetPoWHash(), header.nBits, params);
+    const bool expected_post = CheckProofOfWork(header.GetScryptPoWHash(), header.nBits, params);
+
+    BOOST_CHECK_EQUAL(CheckProofOfWork(header, params, params.nAuxpowStartHeight - 1), expected_pre);
+    BOOST_CHECK_EQUAL(CheckProofOfWork(header, params, params.nAuxpowStartHeight), expected_post);
 }
 
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_biger_hash_than_target)

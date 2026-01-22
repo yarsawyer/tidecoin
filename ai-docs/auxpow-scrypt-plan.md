@@ -8,10 +8,10 @@ Reference repo (Bellscoin 0.28):
 - `/home/yaroslav/dev/bellscoin/bels/0.28/bellscoinV3`
 
 Current Tidecoin status:
-- PoW hash: yespower (`src/primitives/block.cpp::CBlockHeader::GetPoWHash`)
+- PoW hash: **height‑gated** yespower (pre‑auxpow) / scrypt (post‑auxpow).
 - Difficulty: legacy Bitcoin/Litecoin‑style retarget (`src/pow.{h,cpp}`)
-- AuxPoW: not implemented (no `auxpow.*`, no header auxpow fields)
-- Scrypt: not present in repo (no `crypto/scrypt.*` or `scrypt_1024_1_1_256`)
+- AuxPoW: data model + header serialization added (PR‑A1 done; validation not wired)
+- Scrypt: present in `src/crypto/scrypt*` and wired into PoW (PR‑A2 done)
 
 ---
 
@@ -357,55 +357,83 @@ PR‑A0 — Import scrypt + build wiring (no behavior change yet) **[DONE]**
 - Wire into build system (CMake).  
 - No call‑site changes yet.
 
-PR‑A1 — Data model + header format (auxpow + pureheader)
-- Add `CPureBlockHeader` and auxpow data model.
-- Add auxpow fields/chain‑ID to consensus params and chainparams.
+PR‑A1 — Data model + header format (auxpow + pureheader) **[DONE]**
+- [x] Add `CPureBlockHeader` and auxpow data model.
+- [x] Add auxpow fields/chain‑ID to consensus params and chainparams.
+- [x] Wire auxpow/pureheader sources into CMake build.
 - Touchpoints:
   - `src/primitives/pureheader.{h,cpp}` (new)
   - `src/primitives/block.{h,cpp}`
+  - `src/auxpow.{h,cpp}` (new)
   - `src/consensus/params.h`
   - `src/kernel/chainparams.cpp`
+  - `src/CMakeLists.txt`
 - Acceptance:
-  - Serialization round‑trips (auxpow present/absent).
-  - No consensus changes yet.
+  - [x] Serialization round‑trips (auxpow present/absent).
+  - [x] No consensus changes yet.
 
-PR‑A2 — PoW hash switch (yespower ↔ scrypt)
-- Implement pre/post‑auxpow PoW hashing rule.
+PR‑A2 — PoW hash switch (yespower ↔ scrypt) **[DONE]**
+- [x] Add scrypt PoW hash helpers on header:
+  - `CPureBlockHeader::GetScryptPoWHash()` (`src/primitives/pureheader.{h,cpp}`)
+  - `CBlockHeader::GetScryptPoWHash()` (`src/primitives/block.{h,cpp}`)
+- [x] Add height‑gated PoW selection helpers:
+  - `UseScryptPoW`, `CheckProofOfWork(block,height)`, `CheckProofOfWorkAny`
+    (`src/pow.{h,cpp}`)
+- [x] Route validation and storage to height‑aware PoW checks:
+  - `CheckBlockHeader` and `AcceptBlockHeader` (`src/validation.cpp`)
+  - `BlockManager::ReadBlock` avoids double PoW checks (`src/node/blockstorage.cpp`)
+  - Header‑chain PoW checks use height when prev header known
+    (`HasValidProofOfWork` in `src/validation.cpp`,
+     `PeerManagerImpl::CheckHeadersPoW` in `src/net_processing.cpp`)
+- [x] Update miner/test PoW loops to use height‑aware checks:
+  - `GenerateBlock` (`src/rpc/mining.cpp`)
+  - `src/test/util/mining.cpp`
+- [x] Auxpow parent PoW hash uses scrypt (`src/auxpow.h`)
+- [x] Initialize scrypt SSE2 detection at startup (`src/init.cpp`)
+- [x] Remove redundant scrypt scratchpad zeroing (`src/crypto/scrypt.cpp`)
+- Acceptance:
+  - [x] Pre‑auxpow uses yespower.
+  - [x] Post‑auxpow uses scrypt.
+  - [ ] Explicit tests added (see PR‑A6).
+
+PR‑A3 — Difficulty switch (old ↔ new retarget) **[DONE]**
+- [x] Port Bellscoin retarget logic and parameters.
 - Touchpoints:
-  - `src/primitives/block.cpp::CBlockHeader::GetPoWHash`
-  - `src/pow.{h,cpp}` (if needed for gating helpers)
+  - `src/pow.{h,cpp}` (old/new retarget + height switch)
+  - `src/consensus/params.h` (new retarget params + helpers)
+  - `src/kernel/chainparams.cpp` (per‑network params)
+  - `src/test/pow_tests.cpp` (new‑algo smoke test)
 - Acceptance:
-  - Pre‑auxpow uses yespower.
-  - Post‑auxpow uses scrypt (rule finalized in Open Decisions).
+  - [x] Height‑based switch works (`nNewPowDiffHeight`).
+  - [x] Unit tests cover both algorithms (legacy tests + new‑algo smoke test).
 
-PR‑A3 — Difficulty switch (old ↔ new retarget)
-- Port Bellscoin retarget logic and parameters.
+PR‑A4 — Consensus validation (auxpow checks) **[DONE]**
+- [x] Enforce auxpow presence/absence by height.
+- [x] Validate chain‑ID bits and auxpow parent PoW.
+- [x] Base‑version checks use `GetBaseVersion()` and enforce
+      `IsValidBaseVersion()` post‑auxpow.
 - Touchpoints:
-  - `src/pow.{h,cpp}`
-  - `src/consensus/params.h`
-  - `src/kernel/chainparams.cpp`
+  - `src/validation.cpp` (auxpow context checks in `CheckBlockHeader`)
 - Acceptance:
-  - Height‑based switch works.
-  - Unit tests cover both algorithms.
+  - [x] Auxpow blocks rejected/accepted per activation semantics.
+  - [x] Tests: `./build/bin/test_tidecoin -t auxpow_serialization_tests`,
+    `./build/bin/test_tidecoin -t pow_tests`.
 
-PR‑A4 — Consensus validation (auxpow checks)
-- Enforce auxpow presence/absence by height.
-- Validate chain‑ID bits and auxpow parent PoW.
-- Touchpoints:
-  - `src/validation.cpp::CheckProofOfWork`
-  - `src/primitives/block.h`
-- Acceptance:
-  - Auxpow blocks rejected/accepted per activation semantics.
-
-PR‑A5 — RPC + miner support (if required)
-- Add merged‑mining RPC flow.
+PR‑A5 — RPC + miner support **[DONE]**
+- [x] Add merged‑mining RPC flow.
 - Touchpoints:
   - `src/rpc/mining.cpp`
   - `src/rpc/blockchain.cpp`
-  - `src/rpc/auxpow_miner.{h,cpp}` (new)
-  - `src/wallet/rpc/getauxrpc.cpp` (if needed)
+  - `src/rpc/auxpow_miner.{h,cpp}`
+  - `src/wallet/rpc/getauxrpc.cpp`
+  - `src/rpc/blockchain.h`
+  - `src/rest.cpp`
+  - `src/CMakeLists.txt`, `src/wallet/CMakeLists.txt` (link + build wiring)
 - Acceptance:
-  - `getauxblock` / `submitauxblock` work on regtest.
+  - [x] `createauxblock` / `submitauxblock` registered under `mining`.
+  - [x] `getauxblock` registered under `wallet` and uses reserved keypool address.
+  - [x] `getblock`/REST JSON include `auxpow` when present.
+  - [x] Build passes; ran `./build/bin/test_tidecoin -t auxpow_serialization_tests`.
 
 PR‑A6 — Tests
 - Port Bellscoin tests and adapt for Tidecoin params.
@@ -414,8 +442,12 @@ PR‑A6 — Tests
   - `src/test/pow_tests.cpp`
   - Functional tests for activation and retarget switch
 - Acceptance:
-  - Pre/post‑activation behavior covered.
-  - Invalid auxpow rejected.
+  - [x] Pre/post‑activation behavior covered (unit tests).
+  - PoW switch tests:
+    - [x] `UseScryptPoW(params, height)` returns false at `nAuxpowStartHeight-1`, true at `nAuxpowStartHeight`.
+    - [x] `CheckProofOfWork(block, params, height)` matches pre‑auxpow yespower hash and post‑auxpow scrypt hash (deterministic header).
+  - [x] Invalid auxpow rejected (strict chain‑ID + missing header tests).
+  - [ ] Functional tests for activation/retarget switch.
 
 ---
 

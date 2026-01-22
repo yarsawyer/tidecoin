@@ -91,7 +91,7 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen, const uint8_t *salt,
 		be32enc(ivec, (uint32_t)(i + 1));
 
 		/* Compute U_1 = PRF(P, S || INT(i)). */
-		PShctx.Copy(&hctx);
+		hctx = PShctx;
 		hctx.Write(ivec, 4);
 		hctx.Finalize(U);
 
@@ -100,7 +100,7 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen, const uint8_t *salt,
 
 		for (j = 2; j <= c; j++) {
 			/* Compute U_j. */
-			baseCtx.Copy(&hctx);
+			hctx = baseCtx;
 			hctx.Write(U, CHMAC_SHA256::OUTPUT_SIZE);
 			hctx.Finalize(U);
 
@@ -257,6 +257,8 @@ void scrypt_detect_sse2()
 void scrypt_1024_1_1_256(const char *input, char *output)
 {
     thread_local char scratchpad[SCRYPT_SCRATCHPAD_SIZE];
+#ifdef SCRYPT_ZERO_SCRATCHPAD
     memset(scratchpad, 0, sizeof(scratchpad));
+#endif
     scrypt_1024_1_1_256_sp(input, output, scratchpad);
 }

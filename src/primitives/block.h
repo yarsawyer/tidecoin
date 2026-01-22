@@ -6,10 +6,14 @@
 #ifndef BITCOIN_PRIMITIVES_BLOCK_H
 #define BITCOIN_PRIMITIVES_BLOCK_H
 
+#include <auxpow.h>
 #include <primitives/transaction.h>
 #include <serialize.h>
 #include <uint256.h>
 #include <util/time.h>
+
+#include <ios>
+#include <type_traits>
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -28,13 +32,27 @@ public:
     uint32_t nTime;
     uint32_t nBits;
     uint32_t nNonce;
+    std::shared_ptr<CAuxPow> auxpow;
 
     CBlockHeader()
     {
         SetNull();
     }
 
-    SERIALIZE_METHODS(CBlockHeader, obj) { READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce); }
+    SERIALIZE_METHODS(CBlockHeader, obj)
+    {
+        READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce);
+        if (obj.IsAuxpow()) {
+            if constexpr (std::is_same_v<Operation, ActionUnserialize>) {
+                obj.auxpow = std::make_shared<CAuxPow>();
+            } else if (!obj.auxpow) {
+                throw std::ios_base::failure("auxpow flag set but auxpow missing");
+            }
+            READWRITE(*obj.auxpow);
+        } else if constexpr (std::is_same_v<Operation, ActionUnserialize>) {
+            obj.auxpow.reset();
+        }
+    }
 
     void SetNull()
     {
@@ -44,6 +62,7 @@ public:
         nTime = 0;
         nBits = 0;
         nNonce = 0;
+        auxpow.reset();
     }
 
     bool IsNull() const
@@ -53,6 +72,7 @@ public:
 
     uint256 GetHash() const;
     uint256 GetPoWHash() const;
+    uint256 GetScryptPoWHash() const;
 
     NodeSeconds Time() const
     {
@@ -63,6 +83,17 @@ public:
     {
         return (int64_t)nTime;
     }
+
+    // Auxpow/version helpers (delegated to CPureBlockHeader logic).
+    bool IsAuxpow() const { return CPureBlockHeader::IsAuxpow(nVersion); }
+    void SetAuxpowVersion(bool auxpow_in) { CPureBlockHeader::SetAuxpowVersion(nVersion, auxpow_in); }
+    int32_t GetBaseVersion() const { return CPureBlockHeader::GetBaseVersion(nVersion); }
+    void SetBaseVersion(int32_t nBaseVersion, const int32_t& nChainId)
+    {
+        CPureBlockHeader::SetBaseVersion(nVersion, nBaseVersion, nChainId);
+    }
+    int32_t GetChainId() const { return CPureBlockHeader::GetChainId(nVersion); }
+    bool IsLegacy() const { return CPureBlockHeader::IsLegacy(nVersion); }
 };
 
 
@@ -111,6 +142,7 @@ public:
         block.nTime          = nTime;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.auxpow         = auxpow;
         return block;
     }
 

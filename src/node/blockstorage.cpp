@@ -993,7 +993,7 @@ bool BlockManager::WriteBlockUndo(const CBlockUndo& blockundo, BlockValidationSt
     return true;
 }
 
-bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::optional<uint256>& expected_hash) const
+bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::optional<uint256>& expected_hash, const std::optional<int> expected_height) const
 {
     block.SetNull();
 
@@ -1012,10 +1012,12 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
     }
 
     const auto block_hash{block.GetHash()};
-    const auto block_pow_hash{block.GetPoWHash()};
-
-    // Check the header
-    if (!CheckProofOfWork(block_pow_hash, block.nBits, GetConsensus())) {
+    if (expected_height) {
+        if (!CheckProofOfWork(block, GetConsensus(), *expected_height)) {
+            LogError("Errors in block header at %s while reading block", pos.ToString());
+            return false;
+        }
+    } else if (!CheckProofOfWorkAny(block, GetConsensus())) {
         LogError("Errors in block header at %s while reading block", pos.ToString());
         return false;
     }
@@ -1032,7 +1034,10 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
 bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
 {
     const FlatFilePos block_pos{WITH_LOCK(cs_main, return index.GetBlockPos())};
-    return ReadBlock(block, block_pos, index.GetBlockHash());
+    if (!ReadBlock(block, block_pos, index.GetBlockHash(), index.nHeight)) {
+        return false;
+    }
+    return true;
 }
 
 bool BlockManager::ReadRawBlock(std::vector<std::byte>& block, const FlatFilePos& pos) const

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <limits>
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace Consensus {
@@ -106,11 +107,16 @@ struct Params {
     int SegwitHeight;
     /** Block height at which auxpow (and associated signature rules) activates. */
     int nAuxpowStartHeight{AUXPOW_DISABLED};
+    /** Auxpow chain ID (encoded in nVersion bits 16..20 when auxpow is set). */
+    int32_t nAuxpowChainId{0};
+    /** Enforce strict auxpow chain ID checks. */
+    bool fStrictChainId{false};
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV and segwit activations. */
     int MinBIP9WarningHeight;
     std::array<BIP9Deployment,MAX_VERSION_BITS_DEPLOYMENTS> vDeployments;
     /** Proof of work parameters */
+    int nNewPowDiffHeight;
     uint256 powLimit;
     bool fPowAllowMinDifficultyBlocks;
     /**
@@ -121,11 +127,23 @@ struct Params {
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
+    std::optional<uint32_t> nPowAllowMinDifficultyBlocksAfterHeight;
+    int64_t nPowAveragingWindow;
+    int64_t nPowMaxAdjustDown;
+    int64_t nPowMaxAdjustUp;
+    int64_t nPostBlossomPowTargetSpacing;
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};
     }
+    std::chrono::seconds PoWTargetSpacing() const
+    {
+        return std::chrono::seconds{nPostBlossomPowTargetSpacing};
+    }
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
+    int64_t AveragingWindowTimespan() const { return nPowAveragingWindow * PoWTargetSpacing().count(); }
+    int64_t MinActualTimespan() const { return (AveragingWindowTimespan() * (100 - nPowMaxAdjustUp)) / 100; }
+    int64_t MaxActualTimespan() const { return (AveragingWindowTimespan() * (100 + nPowMaxAdjustDown)) / 100; }
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */

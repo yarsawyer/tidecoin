@@ -59,7 +59,8 @@ std::vector<std::shared_ptr<CBlock>> CreateBlockChain(size_t total_height, const
         block.nBits = params.GenesisBlock().nBits;
         block.nNonce = 0;
 
-        while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, params.GetConsensus())) {
+        const int block_height = static_cast<int>(height + 1);
+        while (!CheckProofOfWork(block, params.GetConsensus(), block_height)) {
             ++block.nNonce;
             assert(block.nNonce);
         }
@@ -93,7 +94,9 @@ protected:
 
 COutPoint MineBlock(const NodeContext& node, std::shared_ptr<CBlock>& block)
 {
-    while (!CheckProofOfWork(block->GetPoWHash(), block->nBits, Params().GetConsensus())) {
+    auto& chainman{*Assert(node.chainman)};
+    const int height = WITH_LOCK(chainman.GetMutex(), return chainman.ActiveHeight() + 1);
+    while (!CheckProofOfWork(*block, Params().GetConsensus(), height)) {
         ++block->nNonce;
         assert(block->nNonce);
     }

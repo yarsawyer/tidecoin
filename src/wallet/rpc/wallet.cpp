@@ -778,6 +778,7 @@ static RPCHelpMan createwalletdescriptor()
 // addresses
 RPCHelpMan getaddressinfo();
 RPCHelpMan getnewaddress();
+RPCHelpMan getauxblock();
 RPCHelpMan getrawchangeaddress();
 RPCHelpMan setlabel();
 RPCHelpMan listaddressgroupings();
@@ -854,6 +855,7 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &getaddressinfo},
         {"wallet", &getbalance},
         {"wallet", &gethdkeys},
+        {"wallet", &getauxblock},
         {"wallet", &getnewaddress},
         {"wallet", &getrawchangeaddress},
         {"wallet", &getreceivedbyaddress},

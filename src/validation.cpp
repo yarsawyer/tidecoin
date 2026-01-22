@@ -3957,11 +3957,65 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
-static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
+static bool CheckAuxPowContext(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, std::optional<int> height)
+{
+    const bool has_auxpow = static_cast<bool>(block.auxpow);
+    const bool auxpow_flag = block.IsAuxpow();
+
+    if (auxpow_flag && !has_auxpow) {
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-missing", "auxpow flag set but auxpow missing");
+    }
+    if (!auxpow_flag && has_auxpow) {
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-unexpected", "auxpow present without auxpow flag");
+    }
+
+    if (height && *height < consensusParams.nAuxpowStartHeight) {
+        if (auxpow_flag || has_auxpow) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-pre-activation", "auxpow not allowed before activation");
+        }
+    }
+
+    if (consensusParams.fStrictChainId && !block.IsLegacy()) {
+        if (auxpow_flag) {
+            const int32_t chain_id = block.GetChainId();
+            if (chain_id != consensusParams.nAuxpowChainId) {
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-chainid", "auxpow chain id mismatch");
+            }
+        } else if (block.nVersion & CPureBlockHeader::MASK_AUXPOW_CHAINID_SHIFTED) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-chainid", "chain id set without auxpow flag");
+        }
+    }
+
+    if (auxpow_flag) {
+        if (!block.auxpow->check(block.GetHash(), block.GetChainId(), consensusParams)) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-invalid", "auxpow check failed");
+        }
+        if (!CheckProofOfWork(block.auxpow->getParentBlockHash(), block.nBits, consensusParams)) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "auxpow-parent-pow", "auxpow parent proof of work failed");
+        }
+    }
+
+    return true;
+}
+
+static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true, std::optional<int> height = std::nullopt)
 {
     // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+    if (fCheckPOW) {
+        if (!CheckAuxPowContext(block, state, consensusParams, height)) {
+            return false;
+        }
+
+        if (!block.IsAuxpow()) {
+            if (height) {
+                if (!CheckProofOfWork(block, consensusParams, *height)) {
+                    return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+                }
+            } else if (!CheckProofOfWorkAny(block, consensusParams)) {
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+            }
+        }
+    }
 
     return true;
 }
@@ -4150,13 +4204,28 @@ std::vector<unsigned char> ChainstateManager::GenerateCoinbaseCommitment(CBlock&
 
 bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consensus::Params& consensusParams)
 {
+    return HasValidProofOfWork(headers, consensusParams, std::nullopt);
+}
+
+bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consensus::Params& consensusParams, std::optional<int> start_height)
+{
     constexpr size_t kMinParallelHeaders = 64;
     constexpr size_t kWorkChunk = 128;
     constexpr size_t kMaxThreads = 8;
 
+    auto check_pow = [&](size_t index) {
+        const auto& header = headers[index];
+        if (start_height) {
+            return CheckProofOfWork(header, consensusParams, *start_height + static_cast<int>(index));
+        }
+        return CheckProofOfWorkAny(header, consensusParams);
+    };
+
     if (headers.size() < kMinParallelHeaders) {
-        return std::all_of(headers.cbegin(), headers.cend(),
-            [&](const auto& header) { return CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams);});
+        for (size_t i = 0; i < headers.size(); ++i) {
+            if (!check_pow(i)) return false;
+        }
+        return true;
     }
 
     size_t thread_limit = std::thread::hardware_concurrency();
@@ -4166,8 +4235,10 @@ bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consens
     const size_t total_chunks = (headers.size() + kWorkChunk - 1) / kWorkChunk;
     const size_t threads = std::min(thread_limit, total_chunks);
     if (threads <= 1) {
-        return std::all_of(headers.cbegin(), headers.cend(),
-            [&](const auto& header) { return CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams);});
+        for (size_t i = 0; i < headers.size(); ++i) {
+            if (!check_pow(i)) return false;
+        }
+        return true;
     }
 
     std::atomic<size_t> next_chunk{0};
@@ -4181,8 +4252,7 @@ bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consens
             const size_t end = std::min(start + kWorkChunk, headers.size());
             for (size_t i = start; i < end; ++i) {
                 if (failed.load(std::memory_order_relaxed)) return;
-                const auto& header = headers[i];
-                if (!CheckProofOfWork(header.GetPoWHash(), header.nBits, consensusParams)) {
+                if (!check_pow(i)) {
                     failed.store(true, std::memory_order_relaxed);
                     return;
                 }
@@ -4271,7 +4341,7 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     if (block.GetBlockTime() <= pindexPrev->GetMedianTimePast())
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "time-too-old", "block's timestamp is too early");
 
-    // Testnet4 and regtest only: Check timestamp against prev for difficulty-adjustment
+    // Testnet and regtest only: Check timestamp against prev for difficulty-adjustment
     // blocks to prevent timewarp attacks (see https://github.com/bitcoin/bitcoin/pull/15482).
     if (consensusParams.enforce_BIP94) {
         // Check timestamp for the first block of each difficulty adjustment
@@ -4288,12 +4358,21 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
         return state.Invalid(BlockValidationResult::BLOCK_TIME_FUTURE, "time-too-new", "block timestamp too far in the future");
     }
 
-    // Reject blocks with outdated version
-    if ((block.nVersion < 2 && DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_HEIGHTINCB)) ||
-        (block.nVersion < 3 && DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_DERSIG)) ||
-        (block.nVersion < 4 && DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_CLTV))) {
-            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, strprintf("bad-version(0x%08x)", block.nVersion),
-                                 strprintf("rejected nVersion=0x%08x block", block.nVersion));
+    const int32_t baseVer = block.GetBaseVersion();
+
+    // Reject blocks with outdated base version
+    if ((baseVer < 2 && DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_HEIGHTINCB)) ||
+        (baseVer < 3 && DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_DERSIG)) ||
+        (baseVer < 4 && DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_CLTV))) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, strprintf("bad-version(0x%08x)", baseVer),
+                                 strprintf("rejected nVersion=0x%08x (base=%d) block", block.nVersion, baseVer));
+    }
+
+    if (nHeight >= consensusParams.nAuxpowStartHeight) {
+        if (!CPureBlockHeader::IsValidBaseVersion(baseVer)) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, strprintf("bad-version(0x%08x)", baseVer),
+                                 strprintf("rejected nVersion=0x%08x (base=%d) block", block.nVersion, baseVer));
+        }
     }
 
     return true;
@@ -4382,11 +4461,6 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
             return true;
         }
 
-        if (!CheckBlockHeader(block, state, GetConsensus())) {
-            LogDebug(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
-            return false;
-        }
-
         // Get prev block index
         CBlockIndex* pindexPrev = nullptr;
         BlockMap::iterator mi{m_blockman.m_block_index.find(block.hashPrevBlock)};
@@ -4398,6 +4472,12 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
         if (pindexPrev->nStatus & BLOCK_FAILED_MASK) {
             LogDebug(BCLog::VALIDATION, "header %s has prev block invalid: %s\n", hash.ToString(), block.hashPrevBlock.ToString());
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
+        }
+        const int height = pindexPrev->nHeight + 1;
+
+        if (!CheckBlockHeader(block, state, GetConsensus(), /*fCheckPOW=*/true, height)) {
+            LogDebug(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
+            return false;
         }
         if (!ContextualCheckBlockHeader(block, state, m_blockman, *this, pindexPrev)) {
             LogDebug(BCLog::VALIDATION, "%s: Consensus::ContextualCheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());

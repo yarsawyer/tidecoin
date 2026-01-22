@@ -20,6 +20,7 @@
 #include <common/system.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
+#include <crypto/scrypt.h>
 #include <deploymentstatus.h>
 #include <hash.h>
 #include <httprpc.h>
@@ -1356,6 +1357,10 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         // Detailed error printed inside StartLogging().
         return false;
     }
+
+#if defined(USE_SSE2)
+    scrypt_detect_sse2();
+#endif
 
     LogInfo("Using at most %i automatic connections (%i file descriptors available)", nMaxConnections, available_fds);
 

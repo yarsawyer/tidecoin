@@ -5,6 +5,7 @@
 
 #include <rpc/blockchain.h>
 
+#include <auxpow.h>
 #include <blockfilter.h>
 #include <chain.h>
 #include <chainparams.h>
@@ -120,6 +121,40 @@ static int ComputeNextBlockAndDepth(const CBlockIndex& tip, const CBlockIndex& b
     return &blockindex == &tip ? 1 : -1;
 }
 
+UniValue AuxpowToJSON(const CAuxPow& auxpow, Chainstate& chainstate)
+{
+    UniValue result(UniValue::VOBJ);
+
+    UniValue tx(UniValue::VOBJ);
+    TxToUniv(*auxpow.coinbaseTx, auxpow.parentBlock.GetHash(), tx, /*include_hex=*/true);
+    result.pushKV("tx", std::move(tx));
+
+    result.pushKV("chainindex", auxpow.nChainIndex);
+
+    {
+        UniValue branch(UniValue::VARR);
+        for (const auto& node : auxpow.vMerkleBranch) {
+            branch.push_back(node.GetHex());
+        }
+        result.pushKV("merklebranch", branch);
+    }
+
+    {
+        UniValue branch(UniValue::VARR);
+        for (const auto& node : auxpow.vChainMerkleBranch) {
+            branch.push_back(node.GetHex());
+        }
+        result.pushKV("chainmerklebranch", branch);
+    }
+
+    DataStream ss_parent;
+    ss_parent << auxpow.parentBlock;
+    result.pushKV("parentblock", HexStr(ss_parent));
+
+    (void)chainstate;
+    return result;
+}
+
 static const CBlockIndex* ParseHashOrHeight(const UniValue& param, ChainstateManager& chainman)
 {
     LOCK(::cs_main);
@@ -178,7 +213,7 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     return result;
 }
 
-UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, const uint256 pow_limit)
+UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, Chainstate& chainstate, TxVerbosity verbosity, const uint256 pow_limit)
 {
     UniValue result = blockheaderToJSON(tip, blockindex, pow_limit);
 
@@ -215,6 +250,9 @@ UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIn
     }
 
     result.pushKV("tx", std::move(txs));
+    if (block.auxpow) {
+        result.pushKV("auxpow", AuxpowToJSON(*block.auxpow, chainstate));
+    }
 
     return result;
 }
@@ -846,7 +884,7 @@ static RPCHelpMan getblock()
         tx_verbosity = TxVerbosity::SHOW_DETAILS_AND_PREVOUT;
     }
 
-    return blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity, chainman.GetConsensus().powLimit);
+    return blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, chainman.ActiveChainstate(), tx_verbosity, chainman.GetConsensus().powLimit);
 },
     };
 }

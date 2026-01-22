@@ -36,7 +36,7 @@ static constexpr int NUM_GETBLOCKSTATS_PERCENTILES = 5;
 double GetDifficulty(const CBlockIndex& blockindex);
 
 /** Block description to JSON */
-UniValue blockToJSON(node::BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, const uint256 pow_limit) LOCKS_EXCLUDED(cs_main);
+UniValue blockToJSON(node::BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, Chainstate& chainstate, TxVerbosity verbosity, const uint256 pow_limit) LOCKS_EXCLUDED(cs_main);
 
 /** Block header to JSON */
 UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex, const uint256 pow_limit) LOCKS_EXCLUDED(cs_main);

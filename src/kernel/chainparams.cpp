@@ -91,6 +91,8 @@ public:
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 1;
         consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED;
+        consensus.nAuxpowChainId = 8;
+        consensus.fStrictChainId = true;
         // Suppress unknown versionbit warnings until auxpow activation height.
         consensus.MinBIP9WarningHeight = consensus.nAuxpowStartHeight;
         consensus.powLimit = uint256{"01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
@@ -99,6 +101,12 @@ public:
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.enforce_BIP94 = false;
         consensus.fPowNoRetargeting = false;
+        consensus.nNewPowDiffHeight = consensus.nAuxpowStartHeight;
+        consensus.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
+        consensus.nPowAveragingWindow = 17;
+        consensus.nPowMaxAdjustDown = 32; // 32% adjustment down
+        consensus.nPowMaxAdjustUp = 16;   // 16% adjustment up
+        consensus.nPostBlossomPowTargetSpacing = consensus.nPowTargetSpacing;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -176,6 +184,8 @@ public:
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 1;
         consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED;
+        consensus.nAuxpowChainId = 8;
+        consensus.fStrictChainId = true;
         consensus.MinBIP9WarningHeight = 1; // segwit activation height + miner confirmation window
         consensus.powLimit = uint256{"01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 5 * 24 * 60 * 60; // 5 days
@@ -183,6 +193,12 @@ public:
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.enforce_BIP94 = false;
         consensus.fPowNoRetargeting = false;
+        consensus.nNewPowDiffHeight = consensus.nAuxpowStartHeight;
+        consensus.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
+        consensus.nPowAveragingWindow = 17;
+        consensus.nPowMaxAdjustDown = 32; // 32% adjustment down
+        consensus.nPowMaxAdjustUp = 16;   // 16% adjustment up
+        consensus.nPostBlossomPowTargetSpacing = consensus.nPowTargetSpacing;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -249,6 +265,8 @@ public:
         consensus.CSVHeight = 1;    // Always active unless overridden
         consensus.SegwitHeight = 0; // Always active unless overridden
         consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED;
+        consensus.nAuxpowChainId = 8;
+        consensus.fStrictChainId = true;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 24 * 60 * 60; // 1 day
@@ -256,6 +274,12 @@ public:
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.enforce_BIP94 = false;
         consensus.fPowNoRetargeting = true;
+        consensus.nNewPowDiffHeight = consensus.nAuxpowStartHeight;
+        consensus.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
+        consensus.nPowAveragingWindow = 17;
+        consensus.nPowMaxAdjustDown = 0; // disabled on regtest
+        consensus.nPowMaxAdjustUp = 0;   // disabled on regtest
+        consensus.nPostBlossomPowTargetSpacing = consensus.nPowTargetSpacing;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;

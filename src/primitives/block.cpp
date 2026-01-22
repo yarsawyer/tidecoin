@@ -5,25 +5,40 @@
 
 #include <primitives/block.h>
 
+#include <primitives/pureheader.h>
+
 #include <crypto/yespower/tidecoin_pow.h>
 #include <hash.h>
 #include <streams.h>
 #include <tinyformat.h>
 
+namespace {
+CPureBlockHeader MakePureHeader(const CBlockHeader& header)
+{
+    CPureBlockHeader pure;
+    pure.nVersion = header.nVersion;
+    pure.hashPrevBlock = header.hashPrevBlock;
+    pure.hashMerkleRoot = header.hashMerkleRoot;
+    pure.nTime = header.nTime;
+    pure.nBits = header.nBits;
+    pure.nNonce = header.nNonce;
+    return pure;
+}
+} // namespace
+
 uint256 CBlockHeader::GetHash() const
 {
-    return (HashWriter{} << *this).GetHash();
+    return MakePureHeader(*this).GetHash();
 }
 
 uint256 CBlockHeader::GetPoWHash() const
 {
-    DataStream stream{};
-    stream << *this;
-    uint256 pow_hash;
-    if (!TidecoinYespowerHash(MakeUCharSpan(stream), pow_hash)) {
-        pow_hash.SetNull();
-    }
-    return pow_hash;
+    return MakePureHeader(*this).GetPoWHash();
+}
+
+uint256 CBlockHeader::GetScryptPoWHash() const
+{
+    return MakePureHeader(*this).GetScryptPoWHash();
 }
 
 std::string CBlock::ToString() const

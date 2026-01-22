@@ -25,6 +25,7 @@
 #include <node/warnings.h>
 #include <policy/ephemeral_policy.h>
 #include <pow.h>
+#include <rpc/auxpow_miner.h>
 #include <rpc/blockchain.h>
 #include <rpc/mining.h>
 #include <rpc/server.h>
@@ -134,12 +135,12 @@ static RPCHelpMan getnetworkhashps()
     };
 }
 
-static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t& max_tries, std::shared_ptr<const CBlock>& block_out, bool process_new_block)
+static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t& max_tries, std::shared_ptr<const CBlock>& block_out, bool process_new_block, int height)
 {
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetPoWHash(), block.nBits, chainman.GetConsensus()) && !chainman.m_interrupt) {
+    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block, chainman.GetConsensus(), height) && !chainman.m_interrupt) {
         ++block.nNonce;
         --max_tries;
     }
@@ -169,7 +170,8 @@ static UniValue generateBlocks(ChainstateManager& chainman, Mining& miner, const
         CHECK_NONFATAL(block_template);
 
         std::shared_ptr<const CBlock> block_out;
-        if (!GenerateBlock(chainman, block_template->getBlock(), nMaxTries, block_out, /*process_new_block=*/true)) {
+        const int height = chainman.ActiveChain().Height() + 1;
+        if (!GenerateBlock(chainman, block_template->getBlock(), nMaxTries, block_out, /*process_new_block=*/true, height)) {
             break;
         }
 
@@ -396,7 +398,8 @@ static RPCHelpMan generateblock()
     std::shared_ptr<const CBlock> block_out;
     uint64_t max_tries{DEFAULT_MAX_TRIES};
 
-    if (!GenerateBlock(chainman, std::move(block), max_tries, block_out, process_new_block) || !block_out) {
+    const int height = chainman.ActiveChain().Height() + 1;
+    if (!GenerateBlock(chainman, std::move(block), max_tries, block_out, process_new_block, height) || !block_out) {
         throw JSONRPCError(RPC_MISC_ERROR, "Failed to make block.");
     }
 
@@ -1113,6 +1116,65 @@ static RPCHelpMan submitheader()
     };
 }
 
+static RPCHelpMan createauxblock()
+{
+    return RPCHelpMan{"createauxblock",
+                "\nCreates a new block and returns information required to"
+                " merge-mine it.\n",
+                {
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "Payout address for the coinbase transaction"},
+                },
+                RPCResult{
+                    RPCResult::Type::OBJ, "", "",
+                    {
+                        {RPCResult::Type::STR_HEX, "hash", "hash of the created block"},
+                        {RPCResult::Type::NUM, "chainid", "chain ID for this block"},
+                        {RPCResult::Type::STR_HEX, "previousblockhash", "hash of the previous block"},
+                        {RPCResult::Type::NUM, "coinbasevalue", "value of the block's coinbase"},
+                        {RPCResult::Type::STR, "bits", "compressed target of the block"},
+                        {RPCResult::Type::NUM, "height", "height of the block"},
+                        {RPCResult::Type::STR_HEX, "_target", "target in reversed byte order, deprecated"},
+                    }},
+                RPCExamples{
+                  HelpExampleCli("createauxblock", "\"address\"")
+                  + HelpExampleRpc("createauxblock", "\"address\"")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const CTxDestination coinbase_script = DecodeDestination(request.params[0].get_str());
+    if (!IsValidDestination(coinbase_script)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid coinbase payout address");
+    }
+    const CScript script_pub_key = GetScriptForDestination(coinbase_script);
+
+    return AuxpowMiner::get().createAuxBlock(request, script_pub_key);
+},
+    };
+}
+
+static RPCHelpMan submitauxblock()
+{
+    return RPCHelpMan{"submitauxblock",
+                "\nSubmits a solved auxpow for a block that was previously"
+                " created by 'createauxblock'.\n",
+                {
+                    {"hash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Hash of the block to submit"},
+                    {"auxpow", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Serialised auxpow found"},
+                },
+                RPCResult{
+                    RPCResult::Type::BOOL, "xxxxx", "whether the submitted block was correct"},
+                RPCExamples{
+                    HelpExampleCli("submitauxblock", "\"hash\" \"serialised auxpow\"")
+                    + HelpExampleRpc("submitauxblock", "\"hash\" \"serialised auxpow\"")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    return AuxpowMiner::get().submitAuxBlock(request, request.params[0].get_str(),
+                                             request.params[1].get_str());
+},
+    };
+}
+
 void RegisterMiningRPCCommands(CRPCTable& t)
 {
     static const CRPCCommand commands[]{
@@ -1123,6 +1185,8 @@ void RegisterMiningRPCCommands(CRPCTable& t)
         {"mining", &getblocktemplate},
         {"mining", &submitblock},
         {"mining", &submitheader},
+        {"mining", &createauxblock},
+        {"mining", &submitauxblock},
 
         {"hidden", &generatetoaddress},
         {"hidden", &generatetodescriptor},

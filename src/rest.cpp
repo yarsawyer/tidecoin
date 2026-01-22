@@ -449,7 +449,7 @@ static bool rest_block(const std::any& context,
         CBlock block{};
         DataStream block_stream{block_data};
         block_stream >> TX_WITH_WITNESS(block);
-        UniValue objBlock = blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity, chainman.GetConsensus().powLimit);
+        UniValue objBlock = blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, chainman.ActiveChainstate(), tx_verbosity, chainman.GetConsensus().powLimit);
         std::string strJSON = objBlock.write() + "\n";
         req->WriteHeader("Content-Type", "application/json");
         req->WriteReply(HTTP_OK, strJSON);
