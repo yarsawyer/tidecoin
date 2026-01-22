@@ -449,6 +449,25 @@ PR‑A6 — Tests
   - [x] Invalid auxpow rejected (strict chain‑ID + missing header tests).
   - [ ] Functional tests for activation/retarget switch.
 
+PR‑A7 — Auxpow header validation + header relay correctness **[DONE]**
+- [x] Fix early header PoW checks to be auxpow‑aware.
+- [x] Ensure auxpow headers include auxpow data when relayed.
+- Touchpoints:
+  - `src/validation.cpp`:
+    - `HasValidProofOfWork(...)` must validate auxpow parent PoW when auxpow flag set.
+  - `src/net_processing.cpp`:
+    - `PeerManagerImpl::CheckHeadersPoW(...)` and header relay should use auxpow‑aware header retrieval.
+  - `src/chain.h` / `src/chain.cpp`:
+    - add `CBlockIndex::GetBlockHeader(const ChainstateManager&)` that reads auxpow header from disk when auxpow flag set (Bellscoin model).
+  - `src/node/blockstorage.cpp`:
+    - ensure header‑from‑disk helpers are available for auxpow header relay.
+- Acceptance:
+  - [x] Auxpow headers with invalid parent PoW are rejected at header‑precheck (before full block).
+  - [x] Header relay includes auxpow data for auxpow blocks (no “missing auxpow” headers).
+  - [x] Unit tests:
+    - [x] Auxpow header PoW precheck uses parent hash (not header hash).
+    - [x] `GetBlockHeader(chainman)` returns auxpow for auxpow blocks and plain header otherwise.
+
 ---
 
 ## 5. Next Research Steps
@@ -462,8 +481,6 @@ PR‑A6 — Tests
    - confirm how Tidecoin’s yespower retarget aligns with Bellscoin’s
      pre‑/post‑switch rules
 
-3) Draft PR‑sized implementation plan:
-   - sequence with tests and activation gating
 
 ---
 
@@ -475,3 +492,4 @@ PR‑A6 — Tests
 4) PR‑A4 (consensus validation)
 5) PR‑A5 (RPC/miner, if required)
 6) PR‑A6 (tests)
+7) PR‑A7 (auxpow header validation + relay correctness)

@@ -4215,8 +4215,19 @@ bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consens
 
     auto check_pow = [&](size_t index) {
         const auto& header = headers[index];
-        if (start_height) {
-            return CheckProofOfWork(header, consensusParams, *start_height + static_cast<int>(index));
+        const std::optional<int> height = start_height ? std::make_optional(*start_height + static_cast<int>(index)) : std::nullopt;
+
+        BlockValidationState state;
+        if (!CheckAuxPowContext(header, state, consensusParams, height)) {
+            return false;
+        }
+
+        if (header.IsAuxpow()) {
+            return true;
+        }
+
+        if (height) {
+            return CheckProofOfWork(header, consensusParams, *height);
         }
         return CheckProofOfWorkAny(header, consensusParams);
     };

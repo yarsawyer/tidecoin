@@ -1040,6 +1040,34 @@ bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
     return true;
 }
 
+bool BlockManager::ReadBlockHeaderFromDisk(CBlockHeader& block, const CBlockIndex* pindex) const
+{
+    if (pindex == nullptr) return false;
+    const FlatFilePos block_pos{WITH_LOCK(cs_main, return pindex->GetBlockPos())};
+
+    block.SetNull();
+    std::vector<std::byte> block_data;
+    if (!ReadRawBlock(block_data, block_pos)) {
+        return false;
+    }
+
+    try {
+        SpanReader{block_data} >> block;
+    } catch (const std::exception& e) {
+        LogError("Deserialize or I/O error - %s at %s while reading block header", e.what(), block_pos.ToString());
+        return false;
+    }
+
+    const auto block_hash{block.GetHash()};
+    if (block_hash != pindex->GetBlockHash()) {
+        LogError("GetHash() doesn't match index at %s while reading block header (%s != %s)",
+                 block_pos.ToString(), block_hash.ToString(), pindex->GetBlockHash().ToString());
+        return false;
+    }
+
+    return true;
+}
+
 bool BlockManager::ReadRawBlock(std::vector<std::byte>& block, const FlatFilePos& pos) const
 {
     if (pos.nPos < STORAGE_HEADER_BYTES) {

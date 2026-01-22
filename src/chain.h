@@ -44,6 +44,8 @@ static constexpr int64_t TIMESTAMP_WINDOW = MAX_FUTURE_BLOCK_TIME;
  */
 static constexpr int64_t MAX_BLOCK_TIME_GAP = 90 * 60;
 
+class ChainstateManager;
+
 class CBlockFileInfo
 {
 public:
@@ -227,6 +229,7 @@ public:
         return ret;
     }
 
+    // NOTE: Auxpow data is not available here. Use GetBlockHeader(chainman) when auxpow is required.
     CBlockHeader GetBlockHeader() const
     {
         CBlockHeader block;
@@ -239,6 +242,9 @@ public:
         block.nNonce = nNonce;
         return block;
     }
+
+    // Auxpow-aware header retrieval (reads from disk if auxpow flag is set).
+    CBlockHeader GetBlockHeader(const ChainstateManager& chainman) const;
 
     uint256 GetBlockHash() const
     {

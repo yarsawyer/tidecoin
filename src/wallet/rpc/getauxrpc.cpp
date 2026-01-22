@@ -3,12 +3,14 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <key_io.h>
+#include <node/context.h>
 #include <rpc/auxpow_miner.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
 #include <univalue.h>
 #include <util/check.h>
 #include <sync.h>
+#include <wallet/context.h>
 #include <wallet/rpc/util.h>
 #include <wallet/rpc/wallet.h>
 #include <wallet/scriptpubkeyman.h>
@@ -97,7 +99,7 @@ ReservedKeysForMining g_mining_keys;
 RPCHelpMan getauxblock()
 {
     return RPCHelpMan{"getauxblock",
-                "\nCreates or submits a merge-mined block.\n"
+                "Creates or submits a merge-mined block.\n"
                 "\nWithout arguments, creates a new block and returns information\n"
                 "required to merge-mine it. With arguments, submits a solved\n"
                 "auxpow for a previously returned block.\n",
@@ -138,9 +140,18 @@ RPCHelpMan getauxblock()
 
     LOCK(g_mining_keys.cs);
 
+    WalletContext& wallet_context = EnsureWalletContext(request.context);
+    node::NodeContext* node_context = wallet_context.chain ? wallet_context.chain->context() : nullptr;
+    if (!node_context) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Node context not available");
+    }
+
+    JSONRPCRequest node_request = request;
+    node_request.context = node_context;
+
     if (request.params.empty()) {
         const CScript coinbase_script = g_mining_keys.GetCoinbaseScript(pwallet);
-        UniValue res = AuxpowMiner::get().createAuxBlock(request, coinbase_script);
+        UniValue res = AuxpowMiner::get().createAuxBlock(node_request, coinbase_script);
         g_mining_keys.AddBlockHash(pwallet, res["hash"].get_str());
         return res;
     }
@@ -148,7 +159,7 @@ RPCHelpMan getauxblock()
     CHECK_NONFATAL(request.params.size() == 2);
     const std::string& hash = request.params[0].get_str();
 
-    const bool accepted = AuxpowMiner::get().submitAuxBlock(request, hash, request.params[1].get_str());
+    const bool accepted = AuxpowMiner::get().submitAuxBlock(node_request, hash, request.params[1].get_str());
     if (accepted) {
         g_mining_keys.MarkBlockSubmitted(pwallet, hash);
     }
