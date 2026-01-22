@@ -10,9 +10,9 @@ preserving Tidecoin network compatibility.
 - Reference repos:
   - Old Tidecoin (Falcon-512): `/home/yaroslav/dev/tidecoin/oldtidecoin/tidecoin`
   - Unfinished Tidecoin-to-Bitcoin upgrade: `/home/yaroslav/dev/tidecoin/newtidecoin`
-- Network parameters will be sourced from the old Tidecoin repo.
-- Signature libraries will be upgraded; exact repos will be provided later.
-- Merged mining reference repo is deferred for now (not using Bellscoin yet).
+- Bellscoin reference repo (AuxPoW + scrypt + retarget): `/home/yaroslav/dev/bellscoin/bels/0.28/bellscoinV3`
+- Network parameters are sourced from the old Tidecoin repo.
+- Signature libraries are integrated in-tree (PQClean-based).
 
 ## Guiding Constraints
 - Maintain sync and consensus with existing Tidecoin network.
@@ -26,7 +26,7 @@ preserving Tidecoin network compatibility.
 - Inventory current codebase (consensus, script, wallet, validation).
 - DONE Identify Taproot usage points (script, policy, wallet, tests).
 - Locate Falcon-512 implementation in old Tidecoin repo for reference.
-- Defer AuxPoW/merged mining repo selection until after Tidecoin compatibility.
+- DONE Select AuxPoW/merged mining reference repo (Bellscoin).
 - DONE Document key deltas from Bitcoin 0.30 that affect consensus (difficulty quirks).
 - DONE Document current vs Tidecoin deltas for chainparams, ports, policy, PoW, and related settings in `ai-docs/phase0-tidecoin-diff.md`.
 
@@ -70,10 +70,15 @@ Deliverable: new schemes available after activation heights. (DONE)
 
 ### Phase 5: Merged Mining (AuxPoW) with Litecoin
 Objective: Introduce merged mining and validate with tests.
-- Port AuxPoW/merged mining logic from Bellscoin.
-- Update consensus and validation for AuxPoW blocks.
-- Add extensive functional tests (main chain + auxiliary chain).
-Deliverable: merged mining supported and tested.
+- DONE Import scrypt + build wiring (with SSE2 toggle).
+- DONE PoW switch: pre‑auxpow yespower, post‑auxpow scrypt.
+- DONE Difficulty switch: pre‑auxpow legacy retarget, post‑auxpow DigiShield.
+- DONE AuxPow consensus validation + chain‑ID checks (chainid=8).
+- DONE AuxPow RPC tooling (`createauxblock`, `submitauxblock`, `getauxblock`).
+- DONE Header presync window‑aware retarget check (fixes post‑auxpow headers sync).
+- DONE Unit tests for auxpow serialization, PoW switch, and headers sync retarget.
+- IN PROGRESS Functional tests for activation/retarget switch.
+Deliverable: merged mining supported and tested. (PARTIAL: functional tests pending)
 
 ### Phase 6: PQ-Native v1 Witness (OP_SHA512)
 Objective: Introduce OP_SHA512 and v1 64-byte witness program for 256-bit PQ security.
@@ -87,8 +92,23 @@ Objective: Introduce OP_SHA512 and v1 64-byte witness program for 256-bit PQ sec
 - IN PROGRESS Finish remaining tests and cross-PR checklist in `ai-docs/sprints/op_sha512-sprint.md`.
 Deliverable: PQ-native v1 witness fully implemented and tested. (PARTIAL)
 
+### Phase 7: UI/Branding Cleanup (Qt + URI + Units)
+Objective: Remove lingering Bitcoin branding (icons, BTC units, bitcoin: URI, splash).
+- DONE Audit current Qt resources and strings for Bitcoin/BTC remnants.
+- DONE Update units display names (BTC → TDC / tides / photons / tidoshi).
+- DONE Switch Qt URI scheme handling to `tidecoin:` (parse/format/paymentserver).
+- DONE Map splash/icon alias to `tidecoin_splash` in Qt resources.
+- TODO Replace Windows/macOS icons (`bitcoin.ico`/`bitcoin.icns`) and desktop entries.
+- TODO Update Qt docs/tests and translations (`src/qt/README.md`, `src/qt/test/uritests.cpp`, `src/qt/locale/*.ts`).
+Deliverable: Tidecoin-branded GUI and consistent address/URI display. (PARTIAL)
+
+## Decisions Locked
+- AuxPoW chainid: 8 (Tidecoin‑specific).
+- Pre‑auxpow PoW: yespower; post‑auxpow PoW: scrypt (auxpow or non‑auxpow).
+- PQ HRP: mainnet `q`, testnet `tq`, regtest `rq`.
+
 ## Open Decisions
-- AuxPoW/merged mining parameters and repo source.
+- AuxPoW activation height (per network).
 
 ## Risks and Mitigations
 - Consensus divergence due to difficulty quirks: preserve Tidecoin-specific logic
@@ -105,8 +125,4 @@ We need a focused review of private key import/export surface and wallet RPCs:
 - Wallet tool dump/restore behavior for PQHD vs legacy BDB keys.
 
 ## Next Inputs Needed
-- Paths to old Tidecoin and Bellscoin repositories.
-  - Old Tidecoin: `/home/yaroslav/dev/tidecoin/oldtidecoin`
-  - Bellscoin: `/home/yaroslav/dev/bellscoin/bels/0.28/bellscoinV3`
-- Confirm safe VersionBits deployment bit budget with AuxPoW chain‑id encoding
-  (reserve bits 8 and 16–20; avoid top bits 29–31).
+- Confirm final auxpow activation height(s) for main/test/reg.
