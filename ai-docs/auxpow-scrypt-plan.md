@@ -467,6 +467,7 @@ PR‑A7 — Auxpow header validation + header relay correctness **[DONE]**
   - [x] Unit tests:
     - [x] Auxpow header PoW precheck uses parent hash (not header hash).
     - [x] `GetBlockHeader(chainman)` returns auxpow for auxpow blocks and plain header otherwise.
+    - [x] `headers_sync_chainwork_tests` exercises window‑aware retarget post‑auxpow (presync path).
 
 ---
 

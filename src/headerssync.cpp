@@ -9,6 +9,9 @@
 #include <util/time.h>
 #include <util/vector.h>
 
+#include <algorithm>
+#include <vector>
+
 // The two constants below are computed using the simulation script in
 // contrib/devtools/headerssync-params.py.
 
@@ -44,6 +47,9 @@ HeadersSyncState::HeadersSyncState(NodeId id, const Consensus::Params& consensus
     m_max_commitments = 6*(Ticks<std::chrono::seconds>(NodeClock::now() - NodeSeconds{std::chrono::seconds{chain_start->GetMedianTimePast()}}) + MAX_FUTURE_BLOCK_TIME) / HEADER_COMMITMENT_PERIOD;
 
     LogDebug(BCLog::NET, "Initial headers sync started with peer=%d: height=%i, max_commitments=%i, min_work=%s\n", m_id, m_current_height, m_max_commitments, m_minimum_required_work.ToString());
+
+    // Prefill retarget buffers so restarts can immediately verify per-block difficulty.
+    ResetRetargetBuffersToChainStart();
 }
 
 /** Free any memory in use, and mark this object as no longer usable. This is
@@ -169,6 +175,8 @@ bool HeadersSyncState::ValidateAndStoreHeadersCommitments(const std::vector<CBlo
         m_redownload_buffer_first_prev_hash = m_chain_start->GetBlockHash();
         m_redownload_buffer_last_hash = m_chain_start->GetBlockHash();
         m_redownload_chain_work = m_chain_start->nChainWork;
+        // Reset retarget buffers to chain start to mirror the redownload stream.
+        ResetRetargetBuffersToChainStart();
         m_download_state = State::REDOWNLOAD;
         LogDebug(BCLog::NET, "Initial headers sync transition with peer=%d: reached sufficient work at height=%i, redownloading from height=%i\n", m_id, m_current_height, m_redownload_buffer_last_height);
     }
@@ -182,13 +190,17 @@ bool HeadersSyncState::ValidateAndProcessSingleHeader(const CBlockHeader& curren
 
     int next_height = m_current_height + 1;
 
+    // Ensure retarget buffers are seeded with the last known header.
+    if (m_recent_nbits.empty()) {
+        SeedRetargetBuffersFromLastHeader();
+    }
+
     // Verify that the difficulty isn't growing too fast; an adversary with
     // limited hashing capability has a greater chance of producing a high
     // work chain if they compress the work into as few blocks as possible,
     // so don't let anyone give a chain that would violate the difficulty
     // adjustment maximum.
-    if (!PermittedDifficultyTransition(m_consensus_params, next_height,
-                m_last_header_received.nBits, current.nBits)) {
+    if (!CheckWindowAwareRetarget(m_last_header_received.nBits, current.nBits, current.nTime, m_last_header_received.nTime, next_height)) {
         LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: invalid difficulty transition at height=%i (presync phase)\n", m_id, next_height);
         return false;
     }
@@ -209,6 +221,10 @@ bool HeadersSyncState::ValidateAndProcessSingleHeader(const CBlockHeader& curren
     m_current_chain_work += GetBlockProof(CBlockIndex(current));
     m_last_header_received = current;
     m_current_height = next_height;
+
+    // Update window-aware buffers with the accepted header.
+    int64_t mtp = ComputeMtpForNewTime(current.nTime);
+    PushRetargetSample(current.nBits, mtp);
 
     return true;
 }
@@ -235,8 +251,9 @@ bool HeadersSyncState::ValidateAndStoreRedownloadedHeader(const CBlockHeader& he
         previous_nBits = m_chain_start->nBits;
     }
 
-    if (!PermittedDifficultyTransition(m_consensus_params, next_height,
-                previous_nBits, header.nBits)) {
+    const int64_t prev_time = m_redownloaded_headers.empty() ? static_cast<int64_t>(m_chain_start->GetBlockHeader().nTime)
+                                                            : static_cast<int64_t>(m_redownloaded_headers.back().nTime);
+    if (!CheckWindowAwareRetarget(previous_nBits, header.nBits, header.nTime, prev_time, next_height)) {
         LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: invalid difficulty transition at height=%i (redownload phase)\n", m_id, next_height);
         return false;
     }
@@ -274,6 +291,10 @@ bool HeadersSyncState::ValidateAndStoreRedownloadedHeader(const CBlockHeader& he
     m_redownloaded_headers.emplace_back(header);
     m_redownload_buffer_last_height = next_height;
     m_redownload_buffer_last_hash = header.GetHash();
+
+    // Update window-aware buffers for redownload path as well.
+    int64_t mtp = ComputeMtpForNewTime(header.nTime);
+    PushRetargetSample(header.nBits, mtp);
 
     return true;
 }
@@ -315,4 +336,154 @@ CBlockLocator HeadersSyncState::NextHeadersRequestLocator() const
     locator.insert(locator.end(), chain_start_locator.begin(), chain_start_locator.end());
 
     return CBlockLocator{std::move(locator)};
+}
+
+namespace {
+
+unsigned int CalculateNextWorkRequiredNewLocal(arith_uint256 bnAvg,
+    int64_t nLastBlockTime,
+    int64_t nFirstBlockTime,
+    const Consensus::Params& params)
+{
+    const int64_t averagingWindowTimespan = params.AveragingWindowTimespan();
+    const int64_t minActualTimespan = params.MinActualTimespan();
+    const int64_t maxActualTimespan = params.MaxActualTimespan();
+
+    // Use medians to prevent time-warp attacks.
+    int64_t nActualTimespan = nLastBlockTime - nFirstBlockTime;
+    nActualTimespan = averagingWindowTimespan + (nActualTimespan - averagingWindowTimespan) / 4;
+
+    if (nActualTimespan < minActualTimespan) {
+        nActualTimespan = minActualTimespan;
+    }
+    if (nActualTimespan > maxActualTimespan) {
+        nActualTimespan = maxActualTimespan;
+    }
+
+    const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
+    arith_uint256 bnNew{bnAvg};
+    bnNew /= averagingWindowTimespan;
+    bnNew *= nActualTimespan;
+
+    if (bnNew > bnPowLimit) {
+        bnNew = bnPowLimit;
+    }
+
+    return bnNew.GetCompact();
+}
+
+} // namespace
+
+// ----- Window-aware helpers -----
+
+void HeadersSyncState::SeedRetargetBuffersFromLastHeader()
+{
+    m_recent_nbits.clear();
+    m_recent_mtp.clear();
+    m_last11_times.clear();
+
+    int64_t mtp = ComputeMtpForNewTime(m_last_header_received.nTime);
+    PushRetargetSample(m_last_header_received.nBits, mtp);
+}
+
+void HeadersSyncState::ResetRetargetBuffersToChainStart()
+{
+    m_recent_nbits.clear();
+    m_recent_mtp.clear();
+    m_last11_times.clear();
+
+    const int64_t win = m_consensus_params.nPowAveragingWindow;
+    const int needed = static_cast<int>(win + 1 + MTP_SPAN);
+
+    std::vector<const CBlockIndex*> history;
+    history.reserve(needed);
+    const CBlockIndex* cursor = m_chain_start;
+    for (int count = 0; cursor != nullptr && count < needed; ++count) {
+        history.push_back(cursor);
+        cursor = cursor->pprev;
+    }
+    std::reverse(history.begin(), history.end());
+
+    for (const CBlockIndex* pindex : history) {
+        const CBlockHeader& hdr = pindex->GetBlockHeader();
+        int64_t mtp = ComputeMtpForNewTime(hdr.nTime);
+        PushRetargetSample(pindex->nBits, mtp);
+    }
+}
+
+int64_t HeadersSyncState::ComputeMtpForNewTime(int64_t new_time)
+{
+    m_last11_times.push_back(new_time);
+    if (static_cast<int>(m_last11_times.size()) > MTP_SPAN) m_last11_times.pop_front();
+
+    const size_t n = m_last11_times.size();
+    std::vector<int64_t> tmp;
+    tmp.reserve(n);
+    for (size_t i = 0; i < n; ++i) tmp.push_back(m_last11_times[i]);
+    const size_t mid = n / 2;
+    std::nth_element(tmp.begin(), tmp.begin() + mid, tmp.end());
+    return tmp[mid];
+}
+
+void HeadersSyncState::PushRetargetSample(uint32_t nbits, int64_t mtp)
+{
+    m_recent_nbits.push_back(nbits);
+    m_recent_mtp.push_back(mtp);
+    const int64_t win = m_consensus_params.nPowAveragingWindow;
+    while (static_cast<int64_t>(m_recent_nbits.size()) > win) m_recent_nbits.pop_front();
+    while (static_cast<int64_t>(m_recent_mtp.size()) > win + 1) m_recent_mtp.pop_front();
+}
+
+bool HeadersSyncState::CheckWindowAwareRetarget(uint32_t prev_nbits, uint32_t next_nbits, int64_t next_time, int64_t prev_time, int64_t next_height) const
+{
+    const int64_t win = m_consensus_params.nPowAveragingWindow;
+    if (static_cast<int64_t>(m_recent_nbits.size()) < win || static_cast<int64_t>(m_recent_mtp.size()) < win + 1) return true;
+
+    // During the transition window immediately after activation, tolerate the legacy rule.
+    if (next_height <= m_consensus_params.nNewPowDiffHeight + win) {
+        return true;
+    }
+
+    // Handle min-difficulty after long delay rule, if enabled.
+    if (m_consensus_params.nPowAllowMinDifficultyBlocksAfterHeight.has_value() &&
+        static_cast<uint32_t>(next_height - 1) >= m_consensus_params.nPowAllowMinDifficultyBlocksAfterHeight.value()) {
+        const int64_t spacing = m_consensus_params.PoWTargetSpacing().count();
+        if (next_time > prev_time + spacing * 6) {
+            const arith_uint256 pow_limit = UintToArith256(m_consensus_params.powLimit);
+            const uint32_t powlimit_compact = pow_limit.GetCompact();
+            return next_nbits == powlimit_compact;
+        }
+    }
+
+    arith_uint256 bnTot{0};
+    for (uint32_t nb : m_recent_nbits) {
+        arith_uint256 t; t.SetCompact(nb);
+        bnTot += t;
+    }
+    arith_uint256 bnAvg = bnTot / static_cast<uint32_t>(win);
+
+    const int64_t mtplast = m_recent_mtp.back();
+    const int64_t mtpfirst = m_recent_mtp.front();
+
+    unsigned int exp_compact = CalculateNextWorkRequiredNewLocal(bnAvg, mtplast, mtpfirst, m_consensus_params);
+    arith_uint256 exp_target; exp_target.SetCompact(exp_compact);
+    arith_uint256 obs_target; obs_target.SetCompact(next_nbits);
+
+    const arith_uint256 slack{4};
+    arith_uint256 min_t = exp_target;
+    if (min_t > slack) {
+        min_t -= slack;
+    } else {
+        min_t = 0;
+    }
+    arith_uint256 max_t = exp_target; max_t += slack;
+
+    if (obs_target < min_t || obs_target > max_t) {
+        if (PermittedDifficultyTransition(m_consensus_params, next_height, prev_nbits, next_nbits)) {
+            return true;
+        }
+        LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: windowed difficulty check failed at height=%i\n", m_id, next_height);
+        return false;
+    }
+    return true;
 }

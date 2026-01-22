@@ -143,4 +143,30 @@ BOOST_AUTO_TEST_CASE(headers_sync_state)
     BOOST_CHECK(result.success);
 }
 
+BOOST_AUTO_TEST_CASE(headers_sync_window_retarget_post_auxpow)
+{
+    // Use a local consensus copy to force post-auxpow per-block retarget rules.
+    Consensus::Params params = Params().GetConsensus();
+    params.nNewPowDiffHeight = 0;
+    params.nPowAveragingWindow = 4;
+    params.fPowAllowMinDifficultyBlocks = false;
+    params.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
+
+    const CBlockIndex* chain_start = WITH_LOCK(::cs_main, return m_node.chainman->m_blockman.LookupBlockIndex(Params().GenesisBlock().GetHash()));
+
+    // Set a very high required work so we remain in PRESYNC for this test.
+    arith_uint256 chain_work = ~arith_uint256{0};
+
+    HeadersSyncState hss(0, params, chain_start, chain_work);
+
+    std::vector<CBlockHeader> headers;
+    // Constant nBits at powLimit should be rejected once window-aware retarget activates.
+    GenerateHeaders(headers, 5, Params().GenesisBlock().GetHash(),
+            Params().GenesisBlock().nVersion, Params().GenesisBlock().nTime,
+            ArithToUint256(0), Params().GenesisBlock().nBits);
+
+    auto result = hss.ProcessNextHeaders(headers, true);
+    BOOST_CHECK(!result.success);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
