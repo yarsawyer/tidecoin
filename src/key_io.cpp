@@ -81,9 +81,11 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     const auto sep_pos = str.rfind('1');
     const bool has_sep = sep_pos != std::string::npos && sep_pos > 0;
     const std::string hrp = has_sep ? ToLower(str.substr(0, sep_pos)) : std::string{};
-    const bool is_bech32_legacy = has_sep && hrp == legacy_hrp;
-    const bool is_bech32_pq = has_sep && hrp == pq_hrp;
-    const bool is_bech32 = is_bech32_legacy || is_bech32_pq;
+    const bool hrp_prefix_match_legacy = str.size() >= legacy_hrp.size() &&
+        ToLower(str.substr(0, legacy_hrp.size())) == legacy_hrp;
+    const bool hrp_prefix_match_pq = str.size() >= pq_hrp.size() &&
+        ToLower(str.substr(0, pq_hrp.size())) == pq_hrp;
+    const bool hrp_prefix_match = hrp_prefix_match_legacy || hrp_prefix_match_pq;
 
     if (DecodeBase58Check(str, data, 21)) {
         // base58-encoded Bitcoin addresses.
@@ -119,7 +121,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             error_str = "Invalid or unsupported Base58-encoded address.";
         }
         return CNoDestination();
-    } else if (!is_bech32) {
+    } else if (!hrp_prefix_match) {
         // Try Base58 decoding without the checksum, using a much larger max length
         if (!DecodeBase58(str, data, 100)) {
             error_str = "Invalid or unsupported Segwit (Bech32) or Base58 encoding.";
@@ -130,7 +132,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     }
 
     data.clear();
-    const auto bech32_limit = is_bech32_pq ? bech32::CharLimit::BECH32_PQ : bech32::CharLimit::BECH32;
+    const auto bech32_limit = hrp_prefix_match_pq ? bech32::CharLimit::BECH32_PQ : bech32::CharLimit::BECH32;
     const auto dec = bech32::Decode(str, bech32_limit);
     if (dec.encoding == bech32::Encoding::BECH32 || dec.encoding == bech32::Encoding::BECH32M) {
         if (dec.data.empty()) {

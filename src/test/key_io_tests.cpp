@@ -270,4 +270,34 @@ BOOST_AUTO_TEST_CASE(key_io_bech32pq_v1)
     BOOST_CHECK(!IsValidDestination(decoded));
 }
 
+BOOST_AUTO_TEST_CASE(key_io_bech32_checksum_errors)
+{
+    SelectParams(ChainType::MAIN);
+    const auto& params = Params();
+
+    auto corrupt_last = [](std::string s) {
+        const char replacement = (s.back() == 'q') ? 'p' : 'q';
+        s.back() = replacement;
+        return s;
+    };
+
+    // Legacy v0 bech32 checksum error
+    WitnessV0KeyHash keyhash;
+    keyhash.fill(0x11);
+    const std::string legacy_addr = EncodeDestination(keyhash);
+    std::string error;
+    auto decoded = DecodeDestination(corrupt_last(legacy_addr), error);
+    BOOST_CHECK(!IsValidDestination(decoded));
+    BOOST_CHECK_EQUAL(error, "Invalid Bech32 checksum");
+
+    // PQ v1 bech32m checksum error
+    std::vector<unsigned char> program64(64, 0x22);
+    std::vector<unsigned char> data_v1{1};
+    ConvertBits<8, 5, true>([&](unsigned char c) { data_v1.push_back(c); }, program64.begin(), program64.end());
+    const std::string pq_addr = bech32::Encode(bech32::Encoding::BECH32M, params.Bech32PQHRP(), data_v1);
+    decoded = DecodeDestination(corrupt_last(pq_addr), error);
+    BOOST_CHECK(!IsValidDestination(decoded));
+    BOOST_CHECK_EQUAL(error, "Invalid Bech32m checksum");
+}
+
 BOOST_AUTO_TEST_SUITE_END()
