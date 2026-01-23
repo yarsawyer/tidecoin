@@ -6,8 +6,10 @@
 
 #include <base58.h>
 #include <bech32.h>
+#include <pq/pq_scheme.h>
 #include <script/interpreter.h>
 #include <script/solver.h>
+#include <support/allocators/secure.h>
 #include <tinyformat.h>
 #include <util/strencodings.h>
 
@@ -218,18 +220,38 @@ CKey DecodeSecret(const std::string& str)
 {
     CKey key;
     std::vector<unsigned char> data;
-    constexpr int kMaxSecretKeyPayload = 4096;
+    constexpr int kMaxSecretKeyPayload = static_cast<int>(
+        pq::kMLDSA87Info.seckey_bytes + pq::kMLDSA87Info.pubkey_bytes + 16);
     if (DecodeBase58Check(str, data, kMaxSecretKeyPayload)) {
         const std::vector<unsigned char>& privkey_prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
         if (data.size() > privkey_prefix.size() &&
             std::equal(privkey_prefix.begin(), privkey_prefix.end(), data.begin())) {
-            size_t payload_len = data.size() - privkey_prefix.size();
-            if (payload_len > 0 && data.back() == 1) {
-                --payload_len;
+            const size_t payload_off = privkey_prefix.size();
+            const size_t payload_len_full = data.size() - payload_off;
+            // Legacy (oldtidecoin) WIF: privkey || 0x01 || pubkey (Falcon-512 only).
+            const pq::SchemeInfo& legacy_scheme = pq::kFalcon512Info;
+            const size_t legacy_pub_len = legacy_scheme.pubkey_bytes + 1;
+            const size_t legacy_total_len = legacy_scheme.seckey_bytes + 1 + legacy_pub_len;
+            if (payload_len_full == legacy_total_len &&
+                data[payload_off + legacy_scheme.seckey_bytes] == 1) {
+                const unsigned char* pub_begin = data.data() + payload_off + legacy_scheme.seckey_bytes + 1;
+                const unsigned char* pub_end = pub_begin + legacy_pub_len;
+                CPubKey pubkey{pub_begin, pub_end};
+                if (pubkey.size() == legacy_pub_len && pubkey[0] == legacy_scheme.prefix) {
+                    key.Set(data.begin() + payload_off,
+                            data.begin() + payload_off + legacy_scheme.seckey_bytes,
+                            pubkey);
+                }
             }
-            if (payload_len > 0) {
-                key.Set(data.begin() + privkey_prefix.size(),
-                        data.begin() + privkey_prefix.size() + payload_len);
+            if (!key.IsValid()) {
+                size_t payload_len = payload_len_full;
+                if (payload_len > 0 && data.back() == 1) {
+                    --payload_len;
+                }
+                if (payload_len > 0) {
+                    key.Set(data.begin() + payload_off,
+                            data.begin() + payload_off + payload_len);
+                }
             }
         }
     }
@@ -242,10 +264,38 @@ CKey DecodeSecret(const std::string& str)
 std::string EncodeSecret(const CKey& key)
 {
     assert(key.IsValid());
-    std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    const std::vector<unsigned char> prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    std::vector<unsigned char, secure_allocator<unsigned char>> data(prefix.begin(), prefix.end());
     const CPrivKey privkey = key.GetPrivKey();
     data.insert(data.end(), privkey.begin(), privkey.end());
+    std::string ret = EncodeBase58Check(data);
+    memory_cleanse(data.data(), data.size());
+    return ret;
+}
+
+std::string EncodeSecretLegacy(const CKey& key)
+{
+    assert(key.IsValid());
+    const CPubKey pubkey = key.GetPubKey();
+    if (pubkey.size() == 0) {
+        return {};
+    }
+    const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(pubkey[0]);
+    if (scheme == nullptr || scheme->id != pq::SchemeId::FALCON_512) {
+        return {};
+    }
+    const CPrivKey privkey = key.GetPrivKey();
+    std::span<const unsigned char> raw = privkey;
+    if (raw.size() == scheme->seckey_bytes + 1 && raw[0] == scheme->prefix) {
+        raw = raw.subspan(1);
+    } else if (raw.size() != scheme->seckey_bytes) {
+        return {};
+    }
+    const std::vector<unsigned char> prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    std::vector<unsigned char, secure_allocator<unsigned char>> data(prefix.begin(), prefix.end());
+    data.insert(data.end(), raw.begin(), raw.end());
     data.push_back(1);
+    data.insert(data.end(), pubkey.begin(), pubkey.end());
     std::string ret = EncodeBase58Check(data);
     memory_cleanse(data.data(), data.size());
     return ret;

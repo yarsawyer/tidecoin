@@ -120,9 +120,86 @@ Deliverable: Tidecoin-branded GUI and consistent address/URI display. (PARTIAL)
 
 ## Wallet Export/Import Review Needed
 We need a focused review of private key import/export surface and wallet RPCs:
-- `importprivkey` status and PQ key handling.
-- `dumpprivkey` availability/absence and PQ-friendly export format.
+- Deprecate `importprivkey`; require `importdescriptors` as the only private‑key import path.
+- Add `dumpprivkey <address|descriptor>` (per‑address child key export, **no** master seed export).
+- Define PQ‑friendly export format and semantics:
+  - Support two WIF encodings (configurable on dump, accepted on import):
+    - Legacy WIF (oldtidecoin‑style): prefix + privkey bytes + compression flag + pubkey bytes.
+    - Priv‑only WIF (current Tidecoin): prefix + privkey bytes (+ optional compression flag).
+  - `dumpprivkey` should allow a `format=` selector (e.g., `legacy` vs `privonly`)
+    and default to `privonly` unless a compatibility override is requested.
+  - Descriptor import must accept both WIF payload layouts and auto‑detect based on payload length.
+    - Legacy WIF detection: payload contains `privkey_bytes || pubkey_bytes`, where
+      pubkey bytes start with the scheme prefix and length matches scheme pubkey size.
+    - Restrict legacy WIF handling to Falcon‑512 only (reject legacy layout for other schemes).
+    - `dumpprivkey format=legacy` allowed only for Falcon‑512; otherwise error.
+  - Size/UX: WIF strings are large for PQ keys — audit RPC/Qt limits (HTTP max body size,
+    Qt console line length), add tests, and document safe usage (CLI vs Qt).
+  - Tests:
+    - Legacy WIF (Falcon‑512) imports successfully and derives correct pubkey.
+    - Legacy‑layout WIF for non‑Falcon schemes is rejected.
+    - Priv‑only WIF import works for all schemes.
+  - Input types for `dumpprivkey`: `address` or full `descriptor` (including ranged PQHD).
+  - Error semantics:
+    - Wallet locked → explicit unlock required.
+    - Address not ours / no private key material → error (watch‑only).
+    - Descriptor without private keys (public only) → error.
+    - PQHD wallet missing seed for the descriptor path → error.
 - Wallet tool dump/restore behavior for PQHD vs legacy BDB keys.
+
+### Implementation PR Plan (Wallet import/export)
+PR‑W1 — Descriptor‑only private key import (**DONE**)
+- Scope:
+  - `importprivkey` removed; private key imports go through `importdescriptors`.
+- Acceptance:
+  - No `importprivkey` RPC available.
+  - `importdescriptors` with explicit key works end‑to‑end.
+
+PR‑W2 — `dumpprivkey` per‑address export (**DONE**)
+- Scope:
+  - Implement `dumpprivkey <address|descriptor>` (child‑key export only).
+  - Add `format=` selector (`privonly` default, `legacy` Falcon‑512 only).
+- Touchpoints:
+  - `src/wallet/rpc/addresses.cpp`
+  - `src/wallet/rpc/wallet.cpp`
+  - `src/key_io.cpp` (legacy WIF encoding helper)
+- Acceptance:
+  - `dumpprivkey` rejects watch‑only / missing seed / locked wallet.
+  - `format=legacy` allowed only for Falcon‑512.
+
+PR‑W3 — Legacy WIF auto‑detect + import (**DONE**)
+- Scope:
+  - Detect legacy payload layout (priv||pub) on import.
+  - Validate scheme prefix/length; allow only Falcon‑512 legacy.
+  - Ignore trailing compression flag on import (do not emit).
+- Touchpoints:
+  - `src/key_io.cpp`
+  - `src/key_io.h`
+  - `src/test/key_io_tests.cpp`
+- Acceptance:
+  - Legacy WIF import works for Falcon‑512; rejected for other schemes.
+  - Priv‑only WIF import works for all schemes.
+- Completed changes (files):
+  - `src/key_io.h`
+  - `src/key_io.cpp`
+  - `src/wallet/rpc/addresses.cpp`
+  - `src/wallet/rpc/wallet.cpp`
+  - `src/test/key_io_tests.cpp`
+
+PR‑W4 — Size/UX guardrails (**DONE**)
+- Scope:
+  - Audit RPC/Qt request limits; document safe usage for large WIFs.
+  - Add unit test covering the largest PQ WIF round‑trip.
+- Touchpoints:
+  - `src/key_io.cpp`
+  - `src/test/key_io_tests.cpp`
+  - `doc/descriptors.md`
+- Acceptance:
+  - Documented limits; large WIFs succeed via CLI/RPC where supported.
+- Completed changes (files):
+  - `src/key_io.cpp`
+  - `src/test/key_io_tests.cpp`
+  - `doc/descriptors.md`
 
 ## Next Inputs Needed
 - Confirm final auxpow activation height(s) for main/test/reg.

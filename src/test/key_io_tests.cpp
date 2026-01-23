@@ -5,9 +5,11 @@
 #include <test/data/key_io_invalid.json.h>
 #include <test/data/key_io_valid.json.h>
 
+#include <base58.h>
 #include <bech32.h>
 #include <key.h>
 #include <key_io.h>
+#include <pq/pq_scheme.h>
 #include <script/script.h>
 #include <test/util/json.h>
 #include <test/util/setup_common.h>
@@ -123,6 +125,84 @@ BOOST_AUTO_TEST_CASE(key_io_pq_privkey_roundtrip)
 
     // WIF strings must not parse as destinations.
     BOOST_CHECK(!IsValidDestination(DecodeDestination(encoded)));
+}
+
+BOOST_AUTO_TEST_CASE(key_io_pq_privkey_roundtrip_large)
+{
+    SelectParams(ChainType::MAIN);
+
+    CKey key;
+    key.MakeNewKey(pq::SchemeId::MLDSA_87);
+    BOOST_REQUIRE(key.IsValid());
+
+    const std::string encoded = EncodeSecret(key);
+    BOOST_TEST_MESSAGE("ML-DSA-87 WIF length=" << encoded.size());
+
+    CKey decoded = DecodeSecret(encoded);
+    BOOST_REQUIRE(decoded.IsValid());
+    BOOST_CHECK(key == decoded);
+}
+
+BOOST_AUTO_TEST_CASE(key_io_pq_privkey_roundtrip_all_schemes)
+{
+    SelectParams(ChainType::MAIN);
+
+    const std::array<pq::SchemeId, 5> schemes{
+        pq::SchemeId::FALCON_512,
+        pq::SchemeId::FALCON_1024,
+        pq::SchemeId::MLDSA_44,
+        pq::SchemeId::MLDSA_65,
+        pq::SchemeId::MLDSA_87,
+    };
+
+    for (const auto scheme : schemes) {
+        CKey key;
+        key.MakeNewKey(scheme);
+        BOOST_REQUIRE_MESSAGE(key.IsValid(), "key invalid for scheme " << static_cast<int>(scheme));
+
+        const std::string encoded = EncodeSecret(key);
+        CKey decoded = DecodeSecret(encoded);
+        BOOST_REQUIRE_MESSAGE(decoded.IsValid(), "decode failed for scheme " << static_cast<int>(scheme));
+        BOOST_CHECK_MESSAGE(key == decoded, "roundtrip mismatch for scheme " << static_cast<int>(scheme));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(key_io_pq_legacy_wif_roundtrip)
+{
+    SelectParams(ChainType::MAIN);
+
+    CKey key;
+    key.MakeNewKey(pq::SchemeId::FALCON_512);
+    BOOST_REQUIRE(key.IsValid());
+
+    const std::string legacy = EncodeSecretLegacy(key);
+    BOOST_REQUIRE(!legacy.empty());
+
+    CKey decoded = DecodeSecret(legacy);
+    BOOST_REQUIRE(decoded.IsValid());
+    BOOST_CHECK(key == decoded);
+
+    // Legacy WIF for non-Falcon schemes should be rejected.
+    CKey mldsa;
+    mldsa.MakeNewKey(pq::SchemeId::MLDSA_44);
+    BOOST_REQUIRE(mldsa.IsValid());
+    const CPubKey pubkey = mldsa.GetPubKey();
+    const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(pubkey[0]);
+    BOOST_REQUIRE(scheme != nullptr);
+
+    CPrivKey priv = mldsa.GetPrivKey();
+    std::span<const unsigned char> raw = priv;
+    if (raw.size() == scheme->seckey_bytes + 1 && raw[0] == scheme->prefix) {
+        raw = raw.subspan(1);
+    }
+    std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    data.insert(data.end(), raw.begin(), raw.end());
+    data.push_back(1);
+    data.insert(data.end(), pubkey.begin(), pubkey.end());
+    const std::string legacy_bad = EncodeBase58Check(data);
+
+    CKey decoded_bad = DecodeSecret(legacy_bad);
+    BOOST_CHECK(!decoded_bad.IsValid());
 }
 
 

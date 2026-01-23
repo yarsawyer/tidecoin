@@ -7,16 +7,136 @@
 #include <core_io.h>
 #include <key_io.h>
 #include <rpc/util.h>
+#include <script/descriptor.h>
 #include <script/script.h>
 #include <script/solver.h>
 #include <util/translation.h>
 #include <wallet/receive.h>
 #include <wallet/rpc/util.h>
+#include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
 
 #include <univalue.h>
 
 namespace wallet {
+static CKey GetSingleKeyFromProvider(const SigningProvider& provider, const CTxDestination& dest)
+{
+    const CKeyID keyid = GetKeyForDestination(provider, dest);
+    if (keyid.IsNull()) {
+        return {};
+    }
+    CKey key;
+    if (!provider.GetKey(keyid, key)) {
+        return {};
+    }
+    return key;
+}
+
+RPCHelpMan dumpprivkey()
+{
+    return RPCHelpMan{
+        "dumpprivkey",
+        "Returns the private key corresponding to an address or wallet descriptor.\n"
+        "Only per-address child keys are exported (no master seed export).\n",
+        {
+            {"target", RPCArg::Type::STR, RPCArg::Optional::NO, "The address or descriptor."},
+            {"options", RPCArg::Type::OBJ_NAMED_PARAMS, RPCArg::Optional::OMITTED, "", {
+                {"format", RPCArg::Type::STR, RPCArg::Default{"privonly"}, "Output format: privonly or legacy (Falcon-512 only)."},
+                {"index", RPCArg::Type::NUM, RPCArg::Default{0}, "Index for ranged descriptors."},
+            }},
+        },
+        RPCResult{RPCResult::Type::STR, "wif", "The private key encoded in WIF"},
+        RPCExamples{
+            HelpExampleCli("dumpprivkey", "\"tbc1q...\"") +
+            HelpExampleCliNamed("dumpprivkey", {{"target", "\"tbc1q...\""}, {"format", "\"legacy\""}}) +
+            HelpExampleCliNamed("dumpprivkey", {{"target", "\"wpkh(pqhd(...)/.../*h)#checksum\""}, {"index", "0"}})
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+            EnsureWalletIsUnlocked(*pwallet);
+
+            const UniValue options = request.params.size() > 1 ? request.params[1] : UniValue::VNULL;
+            const std::string format = options.isObject() && options.exists("format") ? options["format"].get_str() : "privonly";
+            const int64_t index = options.isObject() && options.exists("index") ? options["index"].getInt<int64_t>() : 0;
+
+            if (format != "privonly" && format != "legacy") {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "format must be \"privonly\" or \"legacy\"");
+            }
+
+            const std::string target = request.params[0].get_str();
+            std::string error;
+            const CTxDestination dest = DecodeDestination(target, error);
+            if (IsValidDestination(dest)) {
+                const CScript script = GetScriptForDestination(dest);
+                std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(script);
+                if (!provider) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available (address not found in wallet)");
+                }
+                CKey key = GetSingleKeyFromProvider(*provider, dest);
+                if (!key.IsValid()) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available (watch-only or locked)");
+                }
+                if (format == "legacy") {
+                    const std::string legacy = EncodeSecretLegacy(key);
+                    if (legacy.empty()) {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "legacy format is only supported for Falcon-512");
+                    }
+                    return legacy;
+                }
+                return EncodeSecret(key);
+            }
+
+            FlatSigningProvider parse_keys;
+            auto descs = Parse(target, parse_keys, error, /* require_checksum */ true);
+            if (descs.empty()) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, error);
+            }
+            if (descs.size() != 1) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Multipath descriptors are not supported");
+            }
+            auto& desc = descs.at(0);
+            if (desc->IsRange() && index < 0) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "index must be non-negative for ranged descriptors");
+            }
+            if (!desc->IsRange() && index != 0) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "index must be 0 for non-ranged descriptors");
+            }
+
+            const uint256 desc_id = DescriptorID(*desc);
+            auto* spk_man = pwallet->GetScriptPubKeyMan(desc_id);
+            auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+            if (!desc_spk_man) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Descriptor not found in wallet");
+            }
+            std::unique_ptr<FlatSigningProvider> keys;
+            {
+                LOCK(desc_spk_man->cs_desc_man);
+                keys = desc_spk_man->GetSigningProviderForIndex(static_cast<int32_t>(index), /*include_private=*/true);
+            }
+            if (!keys || keys->keys.empty()) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available for descriptor");
+            }
+            if (keys->keys.size() != 1) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Descriptor does not contain a single key");
+            }
+            const CKey key = keys->keys.begin()->second;
+            if (!key.IsValid()) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available for descriptor");
+            }
+            if (format == "legacy") {
+                const std::string legacy = EncodeSecretLegacy(key);
+                if (legacy.empty()) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "legacy format is only supported for Falcon-512");
+                }
+                return legacy;
+            }
+            return EncodeSecret(key);
+        },
+    };
+}
+
 RPCHelpMan getnewaddress()
 {
     return RPCHelpMan{

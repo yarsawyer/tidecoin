@@ -15,6 +15,7 @@
 
 CKey DecodeSecret(const std::string& str);
 std::string EncodeSecret(const CKey& key);
+std::string EncodeSecretLegacy(const CKey& key);
 
 std::string EncodeDestination(const CTxDestination& dest);
 CTxDestination DecodeDestination(const std::string& str);
