@@ -283,7 +283,7 @@ BOOST_AUTO_TEST_CASE(key_io_bech32_checksum_errors)
 
     // Legacy v0 bech32 checksum error
     WitnessV0KeyHash keyhash;
-    keyhash.fill(0x11);
+    std::fill(keyhash.begin(), keyhash.end(), 0x11);
     const std::string legacy_addr = EncodeDestination(keyhash);
     std::string error;
     auto decoded = DecodeDestination(corrupt_last(legacy_addr), error);
