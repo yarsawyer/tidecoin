@@ -7,11 +7,13 @@
 from concurrent.futures import ThreadPoolExecutor
 
 from test_framework.test_framework import BitcoinTestFramework
+from test_framework.descriptors import descsum_create
 from test_framework.wallet import MiniWallet
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
+from test_framework.wallet_util import generate_keypair
 
 
 class RPCGenerateTest(BitcoinTestFramework):
@@ -24,7 +26,8 @@ class RPCGenerateTest(BitcoinTestFramework):
         self.test_generateblock()
 
     def test_generatetoaddress(self):
-        self.generatetoaddress(self.nodes[0], 1, 'mneYUmWYsuk7kySiURxCi3AGxrAqZxLgPZ')
+        valid_addr = MiniWallet(self.nodes[0]).get_address()
+        self.generatetoaddress(self.nodes[0], 1, valid_addr)
         assert_raises_rpc_error(-5, "Invalid address", self.generatetoaddress, self.nodes[0], 1, '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy')
 
     def test_generateblock(self):
@@ -49,18 +52,11 @@ class RPCGenerateTest(BitcoinTestFramework):
         assert_equal(len(block['tx']), 1)
         assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], address)
 
-        self.log.info('Generate an empty block to a combo descriptor with compressed pubkey')
-        combo_key = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
-        combo_address = 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080'
-        hash = self.generateblock(node, 'combo(' + combo_key + ')', [])['hash']
-        block = node.getblock(hash, 2)
-        assert_equal(len(block['tx']), 1)
-        assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], combo_address)
-
-        self.log.info('Generate an empty block to a combo descriptor with uncompressed pubkey')
-        combo_key = '0408ef68c46d20596cc3f6ddf7c8794f71913add807f1dc55949fa805d764d191c0b7ce6894c126fce0babc6663042f3dde9b0cf76467ea315514e5a6731149c67'
-        combo_address = 'mkc9STceoCcjoXEXe6cm66iJbmjM6zR9B2'
-        hash = self.generateblock(node, 'combo(' + combo_key + ')', [])['hash']
+        self.log.info('Generate an empty block to a combo descriptor with PQ key')
+        combo_privkey, _ = generate_keypair(wif=True)
+        combo_desc = descsum_create(f"combo({combo_privkey})")
+        combo_address = node.deriveaddresses(combo_desc)[0]
+        hash = self.generateblock(node, combo_desc, [])['hash']
         block = node.getblock(hash, 2)
         assert_equal(len(block['tx']), 1)
         assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], combo_address)
@@ -110,12 +106,9 @@ class RPCGenerateTest(BitcoinTestFramework):
         assert_raises_rpc_error(-5, 'Invalid address or descriptor', self.generateblock, node, '1234', [])
 
         self.log.info('Fail to generate block with a ranged descriptor')
-        ranged_descriptor = 'pkh(tpubD6NzVbkrYhZ4XgiXtGrdW5XDAPFCL9h7we1vwNCpn8tGbBcgfVYjXyhWo4E1xkh56hjod1RhGjxbaTLV3X4FyWuejifB9jusQ46QzG87VKp/0/*)'
-        assert_raises_rpc_error(-8, 'Ranged descriptor not accepted. Maybe pass through deriveaddresses first?', self.generateblock, node, ranged_descriptor, [])
-
-        self.log.info('Fail to generate block with a descriptor missing a private key')
-        child_descriptor = 'pkh(tpubD6NzVbkrYhZ4XgiXtGrdW5XDAPFCL9h7we1vwNCpn8tGbBcgfVYjXyhWo4E1xkh56hjod1RhGjxbaTLV3X4FyWuejifB9jusQ46QzG87VKp/0\'/0)'
-        assert_raises_rpc_error(-5, 'Cannot derive script without private keys', self.generateblock, node, child_descriptor, [])
+        ranged_descriptor = descsum_create("wpkh(pqhd(" + ("00" * 32) + ")/0h/*h)")
+        assert_raises_rpc_error(-8, 'Ranged descriptor not accepted. Maybe pass through deriveaddresses first?',
+                                self.generateblock, node, ranged_descriptor, [])
 
     def test_generate(self):
         message = (

@@ -17,6 +17,7 @@ from test_framework.util import assert_equal
 class RpcAuthTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 0  # No node/datadir needed
+        self.disable_network_thread = True
 
     def setup_network(self):
         pass

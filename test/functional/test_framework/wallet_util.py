@@ -4,6 +4,9 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Useful util functions for testing the wallet"""
 from collections import namedtuple
+import json
+import os
+import subprocess
 import unittest
 
 from test_framework.address import (
@@ -15,11 +18,14 @@ from test_framework.address import (
     script_to_p2sh_p2wsh,
     script_to_p2wsh,
 )
-from test_framework.key import ECKey
 from test_framework.messages import (
     CTxIn,
     CTxInWitness,
     WITNESS_SCALE_FACTOR,
+    tx_from_hex,
+)
+from test_framework.script import (
+    sighash_type_to_str,
 )
 from test_framework.script_util import (
     key_to_p2pkh_script,
@@ -49,6 +55,51 @@ Multisig = namedtuple('Multisig', ['privkeys',
                                    'p2sh_p2wsh_script',
                                    'p2sh_p2wsh_addr'])
 
+_keygen_node = None
+_testkeys_path = None
+_pq_key_index = 0
+_pq_seed_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+_pq_default_scheme = os.environ.get("TIDECOIN_TEST_SCHEME", "falcon-512")
+
+def set_keygen_node(node):
+    """Set the node used for PQHD-backed key generation in tests."""
+    global _keygen_node, _testkeys_path
+    _keygen_node = node
+    # Derive tool path from the node's binary location if available.
+    try:
+        bitcoind_path = node.binaries.paths.bitcoind
+        _testkeys_path = os.path.join(os.path.dirname(bitcoind_path), "tidecoin-testkeys")
+    except Exception:
+        pass
+
+def _get_testkeys_path():
+    if _testkeys_path is not None and os.path.exists(_testkeys_path):
+        return _testkeys_path
+    env_path = os.environ.get("TIDECOIN_TESTKEYS")
+    if env_path and os.path.exists(env_path):
+        return env_path
+    builddir = os.environ.get("BUILDDIR")
+    if builddir:
+        candidate = os.path.join(builddir, "bin", "tidecoin-testkeys")
+        if os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError("tidecoin-testkeys not found; set TIDECOIN_TESTKEYS or BUILDDIR")
+
+def _run_testkeys(*, scheme: str, count: int = 1):
+    global _pq_key_index
+    path = _get_testkeys_path()
+    cmd = [
+        path,
+        f"--scheme={scheme}",
+        f"--seed={_pq_seed_hex}",
+        f"--index={_pq_key_index}",
+        f"--count={count}",
+    ]
+    _pq_key_index += count
+    out = subprocess.check_output(cmd, text=True)
+    data = json.loads(out)
+    return data
+
 def get_key(node):
     """Generate a fresh key on node
 
@@ -69,6 +120,8 @@ def get_generate_key():
     """Generate a fresh key
 
     Returns a named tuple of privkey, pubkey and all address and scripts."""
+    if _keygen_node is not None:
+        return get_key(_keygen_node)
     privkey, pubkey = generate_keypair(wif=True)
     return Key(privkey=privkey,
                pubkey=pubkey.hex(),
@@ -117,17 +170,29 @@ def bytes_to_wif(b, compressed=True):
         b += b'\x01'
     return byte_to_base58(b, 239)
 
-def generate_keypair(compressed=True, wif=False):
-    """Generate a new random keypair and return the corresponding ECKey /
-    bytes objects. The private key can also be provided as WIF (wallet
-    import format) string instead, which is often useful for wallet RPC
-    interaction."""
-    privkey = ECKey()
-    privkey.generate(compressed)
-    pubkey = privkey.get_pubkey().get_bytes()
+def generate_keypair(compressed=True, wif=False, scheme=None):
+    """Generate a new PQ keypair and return (privkey_wif, pubkey_bytes).
+
+    scheme: optional scheme name/id (e.g. "falcon-512", "ml-dsa-65", "7").
+    """
+    use_scheme = scheme if scheme is not None else _pq_default_scheme
+    data = _run_testkeys(scheme=use_scheme, count=1)
+    item = data[0] if isinstance(data, list) else data
+    privkey_wif = item["privkey_wif"]
+    pubkey = bytes.fromhex(item["pubkey_hex"])
     if wif:
-        privkey = bytes_to_wif(privkey.get_bytes(), compressed)
-    return privkey, pubkey
+        return privkey_wif, pubkey
+    return privkey_wif, pubkey
+
+def sign_tx_with_key(node, tx, privkeys, prevtxs=None, sighash_type=None):
+    """Sign a transaction using signrawtransactionwithkey RPC."""
+    prevtxs = prevtxs or []
+    kwargs = {}
+    if sighash_type is not None:
+        kwargs["sighashtype"] = sighash_type_to_str(sighash_type)
+    result = node.signrawtransactionwithkey(tx.serialize().hex(), privkeys, prevtxs, **kwargs)
+    assert result.get("complete", False)
+    return tx_from_hex(result["hex"])
 
 def calculate_input_weight(scriptsig_hex, witness_stack_hex=None):
     """Given a scriptSig and a list of witness stack items for an input in hex format,

@@ -7,11 +7,13 @@
 This is meant to be documentation as much as functional tests, so it is kept as simple and readable as possible.
 """
 
+from test_framework.descriptors import descsum_create
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_approx,
     assert_equal,
 )
+from test_framework.wallet_util import generate_keypair
 
 
 class WalletMultisigDescriptorPSBTTest(BitcoinTestFramework):
@@ -23,14 +25,6 @@ class WalletMultisigDescriptorPSBTTest(BitcoinTestFramework):
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
-
-    @staticmethod
-    def _get_xpub(wallet, internal):
-        """Extract the wallet's xpubs using `listdescriptors` and pick the one from the `pkh` descriptor since it's least likely to be accidentally reused (legacy addresses)."""
-        pkh_descriptor = next(filter(lambda d: d["desc"].startswith("pkh(") and d["internal"] == internal, wallet.listdescriptors()["descriptors"]))
-        # Keep all key origin information (master key fingerprint and all derivation steps) for proper support of hardware devices
-        # See section 'Key origin identification' in 'doc/descriptors.md' for more details...
-        return pkh_descriptor["desc"].split("pkh(")[1].split(")")[0]
 
     @staticmethod
     def _check_psbt(psbt, to, value, multisig):
@@ -74,17 +68,28 @@ class WalletMultisigDescriptorPSBTTest(BitcoinTestFramework):
         self.name = f"{self.M}_of_{self.N}_multisig"
         self.log.info(f"Testing {self.name}...")
 
+        # Generate deterministic PQ keypairs for all participants
+        keypairs = [generate_keypair() for _ in range(self.N)]
+        pubkeys = [pub.hex() for _, pub in keypairs]
+
         participants = {
-            # Every participant generates an xpub. The most straightforward way is to create a new descriptor wallet.
-            # This wallet will be the participant's `signer` for the resulting multisig. Avoid reusing this wallet for any other purpose (for privacy reasons).
+            # Every participant imports its own private key (WIF) to sign.
             "signers": [node.get_wallet_rpc(node.createwallet(wallet_name=f"participant_{self.nodes.index(node)}")["name"]) for node in self.nodes],
-            # After participants generate and exchange their xpubs they will each create their own watch-only multisig.
-            # Note: these multisigs are all the same, this just highlights that each participant can independently verify everything on their own node.
             "multisigs": []
         }
 
-        self.log.info("Generate and exchange xpubs...")
-        external_xpubs, internal_xpubs = [[self._get_xpub(signer, internal) for signer in participants["signers"]] for internal in [False, True]]
+        self.log.info("Import participant private keys (WIF) into signer wallets...")
+        for signer, (wif, _) in zip(participants["signers"], keypairs):
+            res = signer.importdescriptors([{
+                "desc": descsum_create(f"wpkh({wif})"),
+                "timestamp": "now",
+                "active": False,
+            }])
+            assert all(r["success"] for r in res)
+
+        self.log.info("Generate and exchange pubkeys...")
+        external_xpubs = pubkeys
+        internal_xpubs = pubkeys
 
         self.log.info("Every participant imports the following descriptors to create the watch-only multisig...")
         participants["multisigs"] = list(self.participants_create_multisigs(external_xpubs, internal_xpubs))

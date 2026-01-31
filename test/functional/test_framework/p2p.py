@@ -746,9 +746,10 @@ class NetworkThread(threading.Thread):
     def close(self, *, timeout=10):
         """Close the connections and network event loop."""
         self.network_event_loop.call_soon_threadsafe(self.network_event_loop.stop)
-        wait_until_helper_internal(lambda: not self.network_event_loop.is_running(), timeout=timeout)
-        self.network_event_loop.close()
         self.join(timeout)
+        if self.is_alive():
+            raise AssertionError("Network thread did not stop after {} seconds".format(timeout))
+        self.network_event_loop.close()
         # Safe to remove event loop.
         NetworkThread.network_event_loop = None
 

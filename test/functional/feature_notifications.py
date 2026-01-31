@@ -12,6 +12,7 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
+from test_framework.wallet_util import generate_keypair
 
 # Linux allow all characters other than \x00
 # Windows disallow control characters (0-31) and /\?%:|"<>
@@ -29,6 +30,9 @@ class NotificationsTest(BitcoinTestFramework):
         self.num_nodes = 2
         self.setup_clean_chain = True
         self.uses_wallet = None
+
+    def skip_test_if_missing_module(self):
+        self.skip_if_no_wallet()
 
     def setup_network(self):
         self.wallet = ''.join(chr(i) for i in range(FILE_CHAR_START, FILE_CHAR_END) if chr(i) not in FILE_CHARS_DISALLOWED)
@@ -56,17 +60,16 @@ class NotificationsTest(BitcoinTestFramework):
     def run_test(self):
         if self.is_wallet_compiled():
             # Setup the descriptors to be imported to the wallet
-            xpriv = "tprv8ZgxMBicQKsPfHCsTwkiM1KT56RXbGGTqvc2hgqzycpwbHqqpcajQeMRZoBD35kW4RtyCemu6j34Ku5DEspmgjKdt2qe4SvRch5Kk8B8A2v"
+            wif_recv, _ = generate_keypair()
+            wif_change, _ = generate_keypair()
             desc_imports = [{
-                "desc": descsum_create(f"wpkh({xpriv}/0/*)"),
+                "desc": descsum_create(f"wpkh({wif_recv})"),
                 "timestamp": 0,
                 "active": True,
-                "keypool": True,
             },{
-                "desc": descsum_create(f"wpkh({xpriv}/1/*)"),
+                "desc": descsum_create(f"wpkh({wif_change})"),
                 "timestamp": 0,
                 "active": True,
-                "keypool": True,
                 "internal": True,
             }]
             # Make the wallets and import the descriptors

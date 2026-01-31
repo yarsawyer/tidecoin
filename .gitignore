@@ -8,6 +8,9 @@
 !/build-aux
 !/build_msvc
 
+# Functional test cache artifacts
+/test/cache/
+
 *.pyc
 
 # Only ignore unexpected patches

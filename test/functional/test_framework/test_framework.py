@@ -39,6 +39,7 @@ from .util import (
     wait_until_helper_internal,
     wallet_importprivkey,
 )
+from .wallet_util import set_keygen_node
 
 
 class TestStatus(Enum):
@@ -342,9 +343,11 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         random.seed(seed)
         self.log.info("PRNG seed is: {}".format(seed))
 
-        self.log.debug('Setting up network thread')
-        self.network_thread = NetworkThread()
-        self.network_thread.start()
+        self.network_thread = None
+        if not getattr(self, "disable_network_thread", False):
+            self.log.debug('Setting up network thread')
+            self.network_thread = NetworkThread()
+            self.network_thread.start()
 
         if self.options.usecli:
             if not self.supports_cli:
@@ -363,8 +366,9 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             print("Testcase failed. Attaching python debugger. Enter ? for help")
             pdb.set_trace()
 
-        self.log.debug('Closing down network thread')
-        self.network_thread.close()
+        if self.network_thread is not None:
+            self.log.debug('Closing down network thread')
+            self.network_thread.close()
         if self.success == TestStatus.FAILED:
             self.log.info("Not stopping nodes as test failed. The dangling processes will be cleaned up later.")
         else:
@@ -468,6 +472,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         self.start_nodes()
         if self.uses_wallet:
             self.import_deterministic_coinbase_privkeys()
+            set_keygen_node(self.nodes[0])
         if not self.setup_clean_chain:
             for n in self.nodes:
                 assert_equal(n.getblockchaininfo()["blocks"], 199)
@@ -903,6 +908,10 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             # Wait for RPC connections to be ready
             cache_node.wait_for_rpc_connection()
 
+            if self.uses_wallet:
+                # No default wallet is auto-created; create one for cache generation.
+                cache_node.createwallet(wallet_name=self.default_wallet_name, load_on_startup=True)
+
             # Set a time in the past, so that blocks don't end up in the future
             cache_node.setmocktime(cache_node.getblockheader(cache_node.getbestblockhash())['time'])
 
@@ -912,7 +921,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             # block in the cache does not age too much (have an old tip age).
             # This is needed so that we are out of IBD when the test starts,
             # see the tip age check in IsInitialBlockDownload().
-            gen_addresses = [k.address for k in TestNode.PRIV_KEYS][:3]
+            gen_addresses = [cache_node.getnewaddress(address_type="bech32") for _ in range(4)]
             assert_equal(len(gen_addresses), 4)
             for i in range(8):
                 self.generatetoaddress(
@@ -930,7 +939,9 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             def cache_path(*paths):
                 return os.path.join(cache_node_dir, self.chain, *paths)
 
-            os.rmdir(cache_path('wallets'))  # Remove empty wallets dir
+            wallets_dir = cache_path('wallets')
+            if os.path.isdir(wallets_dir):
+                shutil.rmtree(wallets_dir)  # Remove cache wallets
             for entry in os.listdir(cache_path()):
                 if entry not in ['chainstate', 'blocks', 'indexes']:  # Only indexes, chainstate and blocks folders
                     os.remove(cache_path(entry))
@@ -939,7 +950,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             self.log.debug("Copy cache directory {} to node {}".format(cache_node_dir, i))
             to_dir = get_datadir_path(self.options.tmpdir, i)
             shutil.copytree(cache_node_dir, to_dir)
-            initialize_datadir(self.options.tmpdir, i, self.chain, self.disable_autoconnect)  # Overwrite port/rpcport in bitcoin.conf
+            initialize_datadir(self.options.tmpdir, i, self.chain, self.disable_autoconnect)  # Overwrite port/rpcport in tidecoin.conf
 
     def _initialize_chain_clean(self):
         """Initialize empty blockchain for use by the test.

@@ -17,6 +17,7 @@ class CreateCache(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 0
         self.uses_wallet = True
+        self.disable_network_thread = True
 
     def setup_network(self):
         pass

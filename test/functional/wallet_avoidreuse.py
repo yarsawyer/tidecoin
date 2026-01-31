@@ -104,9 +104,13 @@ class AvoidReuseTest(BitcoinTestFramework):
 
         # Flags should be node1.avoid_reuse=false, node2.avoid_reuse=true
         assert_equal(self.nodes[0].getwalletinfo()["avoid_reuse"], False)
-        assert_equal(sorted(self.nodes[0].getwalletinfo()["flags"]), sorted(["descriptor_wallet", "last_hardened_xpub_cached"]))
+        flags0 = self.nodes[0].getwalletinfo()["flags"]
+        assert "descriptor_wallet" in flags0
+        assert "avoid_reuse" not in flags0
         assert_equal(self.nodes[1].getwalletinfo()["avoid_reuse"], True)
-        assert_equal(sorted(self.nodes[1].getwalletinfo()["flags"]), sorted(["descriptor_wallet", "last_hardened_xpub_cached", "avoid_reuse"]))
+        flags1 = self.nodes[1].getwalletinfo()["flags"]
+        assert "descriptor_wallet" in flags1
+        assert "avoid_reuse" in flags1
 
         self.restart_node(1)
         self.connect_nodes(0, 1)

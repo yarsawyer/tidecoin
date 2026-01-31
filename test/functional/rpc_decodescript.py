@@ -11,10 +11,28 @@ from test_framework.messages import (
     sha256,
     tx_from_hex,
 )
+from test_framework.script import (
+    CScript,
+    hash160,
+    OP_CHECKSIG,
+    OP_CHECKSIGVERIFY,
+    OP_CHECKMULTISIG,
+    OP_CHECKLOCKTIMEVERIFY,
+    OP_DROP,
+    OP_DUP,
+    OP_ELSE,
+    OP_ENDIF,
+    OP_EQUAL,
+    OP_EQUALVERIFY,
+    OP_HASH160,
+    OP_IF,
+    OP_RETURN,
+)
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
+from test_framework.wallet_util import generate_keypair
 
 
 class DecodeScriptTest(BitcoinTestFramework):
@@ -56,19 +74,20 @@ class DecodeScriptTest(BitcoinTestFramework):
         # thus, no test case for that standard transaction type is here.
 
     def decodescript_script_pub_key(self):
-        public_key = '03b0da749730dc9b4b1f4a14d6902877a92541f5368778853d9c4a0cb7802dcfb2'
-        push_public_key = '21' + public_key
-        public_key_hash = '5dd1d3a048119c27b28293056724d9522f26d945'
-        push_public_key_hash = '14' + public_key_hash
-        uncompressed_public_key = '04b0da749730dc9b4b1f4a14d6902877a92541f5368778853d9c4a0cb7802dcfb25e01fc8fde47c96c98a4f3a8123e33a38a50cf9025cc8c4494a518f991792bb7'
-        push_uncompressed_public_key = '41' + uncompressed_public_key
-        p2wsh_p2pk_script_hash = 'd8590cf8ea0674cf3d49fd7ca249b85ef7485dea62c138468bddeb20cd6519f7'
+        _, pubkey = generate_keypair()
+        public_key = pubkey.hex()
+        public_key_hash = hash160(pubkey).hex()
+
+        p2pk_script = CScript([pubkey, OP_CHECKSIG])
+        p2pkh_script = CScript([OP_DUP, OP_HASH160, bytes.fromhex(public_key_hash), OP_EQUALVERIFY, OP_CHECKSIG])
+        multisig_script = CScript([2, pubkey, pubkey, pubkey, 3, OP_CHECKMULTISIG])
+        p2wsh_p2pk_script_hash = sha256(bytes(p2pk_script)).hex()
 
         # below are test cases for all of the standard transaction types
 
         self.log.info("- P2PK")
         # <pubkey> OP_CHECKSIG
-        rpc_result = self.nodes[0].decodescript(push_public_key + 'ac')
+        rpc_result = self.nodes[0].decodescript(p2pk_script.hex())
         assert_equal(public_key + ' OP_CHECKSIG', rpc_result['asm'])
         assert_equal('pubkey', rpc_result['type'])
         # P2PK is translated to P2WPKH
@@ -76,7 +95,7 @@ class DecodeScriptTest(BitcoinTestFramework):
 
         self.log.info("- P2PKH")
         # OP_DUP OP_HASH160 <PubKeyHash> OP_EQUALVERIFY OP_CHECKSIG
-        rpc_result = self.nodes[0].decodescript('76a9' + push_public_key_hash + '88ac')
+        rpc_result = self.nodes[0].decodescript(p2pkh_script.hex())
         assert_equal('pubkeyhash', rpc_result['type'])
         assert_equal('OP_DUP OP_HASH160 ' + public_key_hash + ' OP_EQUALVERIFY OP_CHECKSIG', rpc_result['asm'])
         # P2PKH is translated to P2WPKH
@@ -87,12 +106,11 @@ class DecodeScriptTest(BitcoinTestFramework):
         # <m> <A pubkey> <B pubkey> <C pubkey> <n> OP_CHECKMULTISIG
         # just imagine that the pub keys used below are different.
         # for our purposes here it does not matter that they are the same even though it is unrealistic.
-        multisig_script = '52' + push_public_key + push_public_key + push_public_key + '53ae'
-        rpc_result = self.nodes[0].decodescript(multisig_script)
+        rpc_result = self.nodes[0].decodescript(multisig_script.hex())
         assert_equal('multisig', rpc_result['type'])
         assert_equal('2 ' + public_key + ' ' + public_key + ' ' + public_key +  ' 3 OP_CHECKMULTISIG', rpc_result['asm'])
         # multisig in P2WSH
-        multisig_script_hash = sha256(bytes.fromhex(multisig_script)).hex()
+        multisig_script_hash = sha256(bytes(multisig_script)).hex()
         assert_equal('witness_v0_scripthash', rpc_result['segwit']['type'])
         assert_equal('0 ' + multisig_script_hash, rpc_result['segwit']['asm'])
 
@@ -100,7 +118,8 @@ class DecodeScriptTest(BitcoinTestFramework):
         # OP_HASH160 <Hash160(redeemScript)> OP_EQUAL.
         # push_public_key_hash here should actually be the hash of a redeem script.
         # but this works the same for purposes of this test.
-        rpc_result = self.nodes[0].decodescript('a9' + push_public_key_hash + '87')
+        p2sh_script = CScript([OP_HASH160, bytes.fromhex(public_key_hash), OP_EQUAL])
+        rpc_result = self.nodes[0].decodescript(p2sh_script.hex())
         assert_equal('scripthash', rpc_result['type'])
         assert_equal('OP_HASH160 ' + public_key_hash + ' OP_EQUAL', rpc_result['asm'])
         # P2SH does not work in segwit secripts. decodescript should not return a result for it.
@@ -130,38 +149,18 @@ class DecodeScriptTest(BitcoinTestFramework):
         # <sender-pubkey> OP_CHECKSIG
         #
         # lock until block 500,000
-        cltv_script = '63' + push_public_key + 'ad670320a107b17568' + push_public_key + 'ac'
-        rpc_result = self.nodes[0].decodescript(cltv_script)
+        cltv_script = CScript([OP_IF, pubkey, OP_CHECKSIGVERIFY, OP_ELSE, 500000, OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_ENDIF, pubkey, OP_CHECKSIG])
+        rpc_result = self.nodes[0].decodescript(cltv_script.hex())
         assert_equal('nonstandard', rpc_result['type'])
         assert_equal('OP_IF ' + public_key + ' OP_CHECKSIGVERIFY OP_ELSE 500000 OP_CHECKLOCKTIMEVERIFY OP_DROP OP_ENDIF ' + public_key + ' OP_CHECKSIG', rpc_result['asm'])
         # CLTV script in P2WSH
-        cltv_script_hash = sha256(bytes.fromhex(cltv_script)).hex()
+        cltv_script_hash = sha256(bytes(cltv_script)).hex()
         assert_equal('0 ' + cltv_script_hash, rpc_result['segwit']['asm'])
-
-        self.log.info("- P2PK with uncompressed pubkey")
-        # <pubkey> OP_CHECKSIG
-        rpc_result = self.nodes[0].decodescript(push_uncompressed_public_key + 'ac')
-        assert_equal('pubkey', rpc_result['type'])
-        assert_equal(uncompressed_public_key + ' OP_CHECKSIG', rpc_result['asm'])
-        # uncompressed pubkeys are invalid for checksigs in segwit scripts.
-        # decodescript should not return a P2WPKH equivalent.
-        assert 'segwit' not in rpc_result
-
-        self.log.info("- multisig with uncompressed pubkey")
-        # <m> <A pubkey> <B pubkey> <n> OP_CHECKMULTISIG
-        # just imagine that the pub keys used below are different.
-        # the purpose of this test is to check that a segwit script is not returned for bare multisig scripts
-        # with an uncompressed pubkey in them.
-        rpc_result = self.nodes[0].decodescript('52' + push_public_key + push_uncompressed_public_key +'52ae')
-        assert_equal('multisig', rpc_result['type'])
-        assert_equal('2 ' + public_key + ' ' + uncompressed_public_key + ' 2 OP_CHECKMULTISIG', rpc_result['asm'])
-        # uncompressed pubkeys are invalid for checksigs in segwit scripts.
-        # decodescript should not return a P2WPKH equivalent.
-        assert 'segwit' not in rpc_result
 
         self.log.info("- P2WPKH")
         # 0 <PubKeyHash>
-        rpc_result = self.nodes[0].decodescript('00' + push_public_key_hash)
+        p2wpkh_script = CScript([0, bytes.fromhex(public_key_hash)])
+        rpc_result = self.nodes[0].decodescript(p2wpkh_script.hex())
         assert_equal('witness_v0_keyhash', rpc_result['type'])
         assert_equal('0 ' + public_key_hash, rpc_result['asm'])
         # segwit scripts do not work nested into each other.
@@ -172,7 +171,8 @@ class DecodeScriptTest(BitcoinTestFramework):
         # 0 <ScriptHash>
         # even though this hash is of a P2PK script which is better used as bare P2WPKH, it should not matter
         # for the purpose of this test.
-        rpc_result = self.nodes[0].decodescript('0020' + p2wsh_p2pk_script_hash)
+        p2wsh_script = CScript([0, bytes.fromhex(p2wsh_p2pk_script_hash)])
+        rpc_result = self.nodes[0].decodescript(p2wsh_script.hex())
         assert_equal('witness_v0_scripthash', rpc_result['type'])
         assert_equal('0 ' + p2wsh_p2pk_script_hash, rpc_result['asm'])
         # segwit scripts do not work nested into each other.

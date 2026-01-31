@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the scanblocks RPC call."""
-from test_framework.address import address_to_scriptpubkey
+from test_framework.address import address_to_scriptpubkey, key_to_p2pkh
 from test_framework.blockfilter import (
     bip158_basic_element_hash,
     bip158_relevant_scriptpubkeys,
@@ -18,12 +18,16 @@ from test_framework.wallet import (
     MiniWallet,
     getnewdestination,
 )
+from test_framework.wallet_util import generate_keypair
 
 
 class ScanblocksTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.extra_args = [["-blockfilterindex=1"], []]
+
+    def skip_test_if_missing_module(self):
+        self.skip_if_no_wallet()
 
     def run_test(self):
         node = self.nodes[0]
@@ -33,11 +37,10 @@ class ScanblocksTest(BitcoinTestFramework):
         _, spk_1, addr_1 = getnewdestination()
         wallet.send_to(from_node=node, scriptPubKey=spk_1, amount=1 * COIN)
 
-        parent_key = "tpubD6NzVbkrYhZ4WaWSyoBvQwbpLkojyoTZPRsgXELWz3Popb3qkjcJyJUGLnL4qHHoQvao8ESaAstxYSnhyswJ76uZPStJRJCTKvosUCJZL5B"
+        _, parent_pub = generate_keypair()
         # send 1.0, mempool only
-        # childkey 5 of `parent_key`
         wallet.send_to(from_node=node,
-                       scriptPubKey=address_to_scriptpubkey("mkS4HXoTYWRTescLGaUTGbtTTYX5EjJyEE"),
+                       scriptPubKey=address_to_scriptpubkey(key_to_p2pkh(parent_pub)),
                        amount=1 * COIN)
 
         # mine a block and assure that the mined blockhash is in the filterresult
@@ -80,7 +83,7 @@ class ScanblocksTest(BitcoinTestFramework):
 
         # make sure the blockhash is present when using the first mined block as start_height
         assert blockhash in node.scanblocks(
-            "start", [{"desc": f"pkh({parent_key}/*)", "range": [0, 100]}], height)['relevant_blocks']
+            "start", [{"desc": f"pkh({parent_pub.hex()})"}], height)['relevant_blocks']
 
         # check that false-positives are included in the result now; note that
         # finding a false-positive at runtime would take too long, hence we simply

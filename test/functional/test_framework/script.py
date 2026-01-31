@@ -682,22 +682,20 @@ def LegacySignatureHash(*args, **kwargs):
     else:
         return (hash256(msg), err)
 
-def sign_input_legacy(tx, input_index, input_scriptpubkey, privkey, sighash_type=SIGHASH_ALL):
-    """Add legacy ECDSA signature for a given transaction input. Note that the signature
-       is prepended to the scriptSig field, i.e. additional data pushes necessary for more
-       complex spends than P2PK (e.g. pubkey for P2PKH) can be already set before."""
-    (sighash, err) = LegacySignatureHash(input_scriptpubkey, tx, input_index, sighash_type)
-    assert err is None
-    der_sig = privkey.sign_ecdsa(sighash)
-    tx.vin[input_index].scriptSig = bytes(CScript([der_sig + bytes([sighash_type])])) + tx.vin[input_index].scriptSig
-
-def sign_input_segwitv0(tx, input_index, input_scriptpubkey, input_amount, privkey, sighash_type=SIGHASH_ALL):
-    """Add segwitv0 ECDSA signature for a given transaction input. Note that the signature
-       is inserted at the bottom of the witness stack, i.e. additional witness data
-       needed (e.g. pubkey for P2WPKH) can already be set before."""
-    sighash = SegwitV0SignatureHash(input_scriptpubkey, tx, input_index, sighash_type, input_amount)
-    der_sig = privkey.sign_ecdsa(sighash)
-    tx.wit.vtxinwit[input_index].scriptWitness.stack.insert(0, der_sig + bytes([sighash_type]))
+def sighash_type_to_str(hashtype):
+    """Convert SIGHASH flags to RPC string form (e.g. ALL|ANYONECANPAY)."""
+    base = hashtype & 0x1f
+    if base == SIGHASH_ALL:
+        name = "ALL"
+    elif base == SIGHASH_NONE:
+        name = "NONE"
+    elif base == SIGHASH_SINGLE:
+        name = "SINGLE"
+    else:
+        name = "ALL"
+    if hashtype & SIGHASH_ANYONECANPAY:
+        name = f"{name}|ANYONECANPAY"
+    return name
 
 # TODO: Allow cached hashPrevouts/hashSequence/hashOutputs to be provided.
 # Performance optimization probably not necessary for python tests, however.

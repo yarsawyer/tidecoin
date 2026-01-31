@@ -11,7 +11,6 @@ except ImportError:
 import subprocess
 import sys
 
-from test_framework.key import ECKey
 from test_framework.messages import (
     COutPoint,
     CTxOut,
@@ -34,6 +33,7 @@ from test_framework.util import (
     assert_equal,
 )
 from test_framework.wallet import MiniWallet
+from test_framework.wallet_util import generate_keypair
 
 
 def calculate_muhash_from_sqlite_utxos(filename):
@@ -62,26 +62,17 @@ class UtxoToSqliteTest(BitcoinTestFramework):
     def run_test(self):
         node = self.nodes[0]
         wallet = MiniWallet(node)
-        key = ECKey()
-
         self.log.info('Create UTXOs with various output script types')
         for i in range(1, 10+1):
-            key.generate(compressed=False)
-            uncompressed_pubkey = key.get_pubkey().get_bytes()
-            key.generate(compressed=True)
-            pubkey = key.get_pubkey().get_bytes()
+            _, pubkey = generate_keypair(wif=True)
+            _, pubkey2 = generate_keypair(wif=True)
 
-            # add output scripts for compressed script type 0 (P2PKH), type 1 (P2SH),
-            # types 2-3 (P2PK compressed), types 4-5 (P2PK uncompressed) and
-            # for uncompressed scripts (bare multisig, segwit, etc.)
+            # add output scripts for P2PKH, P2SH, P2PK, multisig, segwit, and large scripts
             output_scripts = (
                 key_to_p2pkh_script(pubkey),
                 script_to_p2sh_script(key_to_p2pkh_script(pubkey)),
                 key_to_p2pk_script(pubkey),
-                key_to_p2pk_script(uncompressed_pubkey),
-
-                keys_to_multisig_script([pubkey]*i),
-                keys_to_multisig_script([uncompressed_pubkey]*i),
+                keys_to_multisig_script([pubkey, pubkey2][:max(1, i % 2 + 1)]),
                 key_to_p2wpkh_script(pubkey),
                 script_to_p2wsh_script(key_to_p2pkh_script(pubkey)),
                 CScript([CScriptOp.encode_op_n(i)]*(1000*i)),  # large script (up to 10000 bytes)

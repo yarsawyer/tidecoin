@@ -31,7 +31,9 @@ from test_framework.util import (
     get_fee,
     find_vout_for_address,
 )
+from test_framework.address import key_to_p2wpkh
 from test_framework.wallet import MiniWallet
+from test_framework.wallet_util import generate_keypair
 
 
 WALLET_PASSPHRASE = "test"
@@ -574,10 +576,12 @@ def test_maxtxfee_fails(self, rbf_node, dest_address):
 
 def test_watchonly_psbt(self, peer_node, rbf_node, dest_address):
     self.log.info('Test that PSBT is returned for bumpfee in watchonly wallets')
-    priv_rec_desc = "wpkh([00000001/84'/1'/0']tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0/*)#rweraev0"
-    pub_rec_desc = rbf_node.getdescriptorinfo(priv_rec_desc)["descriptor"]
-    priv_change_desc = "wpkh([00000001/84'/1'/0']tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/1/*)#j6uzqvuh"
-    pub_change_desc = rbf_node.getdescriptorinfo(priv_change_desc)["descriptor"]
+    priv_rec_wif, pub_rec = generate_keypair()
+    priv_change_wif, pub_change = generate_keypair()
+    priv_rec_desc = rbf_node.getdescriptorinfo(f"wpkh({priv_rec_wif})")["descriptor"]
+    priv_change_desc = rbf_node.getdescriptorinfo(f"wpkh({priv_change_wif})")["descriptor"]
+    pub_rec_desc = rbf_node.getdescriptorinfo(f"wpkh({pub_rec.hex()})")["descriptor"]
+    pub_change_desc = rbf_node.getdescriptorinfo(f"wpkh({pub_change.hex()})")["descriptor"]
     # Create a wallet with private keys that can sign PSBTs
     rbf_node.createwallet(wallet_name="signer", disable_private_keys=False, blank=True)
     signer = rbf_node.get_wallet_rpc("signer")
@@ -585,14 +589,12 @@ def test_watchonly_psbt(self, peer_node, rbf_node, dest_address):
     reqs = [{
         "desc": priv_rec_desc,
         "timestamp": 0,
-        "range": [0,1],
         "internal": False,
         "keypool": False # Keys can only be imported to the keypool when private keys are disabled
     },
     {
         "desc": priv_change_desc,
         "timestamp": 0,
-        "range": [0, 0],
         "internal": True,
         "keypool": False
     }]
@@ -607,25 +609,21 @@ def test_watchonly_psbt(self, peer_node, rbf_node, dest_address):
     reqs = [{
         "desc": pub_rec_desc,
         "timestamp": 0,
-        "range": [0, 10],
         "internal": False,
-        "keypool": True,
         "watchonly": True,
         "active": True,
     }, {
         "desc": pub_change_desc,
         "timestamp": 0,
-        "range": [0, 10],
         "internal": True,
-        "keypool": True,
         "watchonly": True,
         "active": True,
     }]
     result = watcher.importdescriptors(reqs)
     assert_equal(result, [{'success': True}, {'success': True}])
 
-    funding_address1 = watcher.getnewaddress(address_type='bech32')
-    funding_address2 = watcher.getnewaddress(address_type='bech32')
+    funding_address1 = key_to_p2wpkh(pub_rec)
+    funding_address2 = key_to_p2wpkh(pub_change)
     peer_node.sendmany("", {funding_address1: 0.001, funding_address2: 0.001})
     self.generate(peer_node, 1)
 
@@ -633,7 +631,7 @@ def test_watchonly_psbt(self, peer_node, rbf_node, dest_address):
     # Ensure the payment amount + change can be fully funded using one of the 0.001BTC inputs.
     psbt = watcher.walletcreatefundedpsbt([watcher.listunspent()[0]], {dest_address: 0.0005}, 0,
             {"fee_rate": 1, "add_inputs": False}, True)['psbt']
-    psbt_signed = signer.walletprocesspsbt(psbt=psbt, sign=True, sighashtype="ALL", bip32derivs=True)
+    psbt_signed = signer.walletprocesspsbt(psbt=psbt, sign=True, sighashtype="ALL", bip32derivs=False)
     original_txid = watcher.sendrawtransaction(psbt_signed["hex"])
     assert_equal(len(watcher.decodepsbt(psbt)["tx"]["vin"]), 1)
 

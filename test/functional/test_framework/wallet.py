@@ -21,9 +21,6 @@ from test_framework.address import (
 )
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
-from test_framework.key import (
-    ECKey,
-)
 from test_framework.messages import (
     COIN,
     COutPoint,
@@ -32,6 +29,7 @@ from test_framework.messages import (
     CTxInWitness,
     CTxOut,
     hash256,
+    tx_from_hex,
 )
 from test_framework.script import (
     CScript,
@@ -39,7 +37,6 @@ from test_framework.script import (
     OP_NOP,
     OP_RETURN,
     OP_TRUE,
-    sign_input_legacy,
 )
 from test_framework.script_util import (
     bulk_vout,
@@ -76,7 +73,7 @@ class MiniWalletMode(Enum):
     ----------------+-------------------+-----------+----------+------------+----------
     ADDRESS_OP_TRUE | anyone-can-spend  |  bech32   |   yes    |    no      |   no
     RAW_OP_TRUE     | anyone-can-spend  |  - (raw)  |   no     |    yes     |   no
-    RAW_P2PK        | pay-to-public-key |  - (raw)  |   yes    |    yes     |   yes
+    RAW_P2PK        | pay-to-public-key |  - (raw)  |   yes    |    yes     |   yes (RPC)
     """
     ADDRESS_OP_TRUE = 1
     RAW_OP_TRUE = 2
@@ -96,10 +93,8 @@ class MiniWallet:
         elif mode == MiniWalletMode.RAW_P2PK:
             # use simple deterministic private key (k=1)
             assert tag_name is None
-            self._priv_key = ECKey()
-            self._priv_key.set((1).to_bytes(32, 'big'), True)
-            pub_key = self._priv_key.get_pubkey()
-            self._scriptPubKey = key_to_p2pk_script(pub_key.get_bytes())
+            self._priv_key_wif, pub_key = generate_keypair(wif=True)
+            self._scriptPubKey = key_to_p2pk_script(pub_key)
         elif mode == MiniWalletMode.ADDRESS_OP_TRUE:
             if tag_name is None:
                 self._address, self._witness_script = create_deterministic_address_bcrt1_p2wsh_op_true()
@@ -171,16 +166,28 @@ class MiniWallet:
 
     def sign_tx(self, tx, fixed_length=True):
         if self._mode == MiniWalletMode.RAW_P2PK:
-            # for exact fee calculation, create only signatures with fixed size by default (>49.89% probability):
-            # 65 bytes: high-R val (33 bytes) + low-S val (32 bytes)
-            # with the DER header/skeleton data of 6 bytes added, plus 2 bytes scriptSig overhead
-            # (OP_PUSHn and SIGHASH_ALL), this leads to a scriptSig target size of 73 bytes
-            tx.vin[0].scriptSig = b''
-            while not len(tx.vin[0].scriptSig) == 73:
-                tx.vin[0].scriptSig = b''
-                sign_input_legacy(tx, 0, self._scriptPubKey, self._priv_key)
-                if not fixed_length:
-                    break
+            if not getattr(self, "_last_spent_utxos", None):
+                raise AssertionError("RAW_P2PK signing requires spent UTXO context")
+            prevtxs = []
+            for utxo in self._last_spent_utxos:
+                prevtxs.append({
+                    "txid": utxo["txid"],
+                    "vout": utxo["vout"],
+                    "scriptPubKey": self._scriptPubKey.hex(),
+                    "amount": utxo["value"],
+                })
+            signed = self._test_node.signrawtransactionwithkey(
+                tx.serialize().hex(),
+                [self._priv_key_wif],
+                prevtxs,
+            )
+            assert signed.get("complete", False)
+            signed_tx = tx_from_hex(signed["hex"])
+            tx.vin = signed_tx.vin
+            tx.vout = signed_tx.vout
+            tx.wit = signed_tx.wit
+            tx.nLockTime = signed_tx.nLockTime
+            tx.version = signed_tx.version
         elif self._mode == MiniWalletMode.RAW_OP_TRUE:
             for i in tx.vin:
                 i.scriptSig = CScript([OP_NOP] * 43)  # pad to identical size
@@ -324,7 +331,9 @@ class MiniWallet:
         tx.version = version
         tx.nLockTime = locktime
 
+        self._last_spent_utxos = utxos_to_spend
         self.sign_tx(tx)
+        self._last_spent_utxos = None
 
         if target_vsize:
             self._bulk_tx(tx, target_vsize)
@@ -363,27 +372,50 @@ class MiniWallet:
         # calculate fee
         if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
             vsize = Decimal(104)  # anyone-can-spend
-        elif self._mode == MiniWalletMode.RAW_P2PK:
-            vsize = Decimal(168)  # P2PK (73 bytes scriptSig + 35 bytes scriptPubKey + 60 bytes other)
-        else:
-            assert False
-        if target_vsize and not fee:  # respect fee_rate if target vsize is passed
-            fee = get_fee(target_vsize, fee_rate)
-        send_value = utxo_to_spend["value"] - (fee or (fee_rate * vsize / 1000))
-        if send_value <= 0:
-            raise RuntimeError(f"UTXO value {utxo_to_spend['value']} is too small to cover fees {(fee or (fee_rate * vsize / 1000))}")
-        # create tx
-        tx = self.create_self_transfer_multi(
-            utxos_to_spend=[utxo_to_spend],
-            amount_per_output=int(COIN * send_value),
-            target_vsize=target_vsize,
-            **kwargs,
-        )
-        if not target_vsize:
-            assert_equal(tx["tx"].get_vsize(), vsize)
-        tx["new_utxo"] = tx.pop("new_utxos")[0]
+            if target_vsize and not fee:  # respect fee_rate if target vsize is passed
+                fee = get_fee(target_vsize, fee_rate)
+            send_value = utxo_to_spend["value"] - (fee or (fee_rate * vsize / 1000))
+            if send_value <= 0:
+                raise RuntimeError(f"UTXO value {utxo_to_spend['value']} is too small to cover fees {(fee or (fee_rate * vsize / 1000))}")
+            tx = self.create_self_transfer_multi(
+                utxos_to_spend=[utxo_to_spend],
+                amount_per_output=int(COIN * send_value),
+                target_vsize=target_vsize,
+                **kwargs,
+            )
+            if not target_vsize:
+                assert_equal(tx["tx"].get_vsize(), vsize)
+            tx["new_utxo"] = tx.pop("new_utxos")[0]
+            return tx
 
-        return tx
+        if self._mode == MiniWalletMode.RAW_P2PK:
+            if target_vsize and not fee:
+                fee = get_fee(target_vsize, fee_rate)
+            # Initial pass with zero fee to compute actual vsize after signing.
+            tx = self.create_self_transfer_multi(
+                utxos_to_spend=[utxo_to_spend],
+                amount_per_output=int(COIN * utxo_to_spend["value"]),
+                target_vsize=target_vsize,
+                fee_per_output=0,
+                **kwargs,
+            )
+            actual_vsize = tx["tx"].get_vsize()
+            fee = fee or get_fee(actual_vsize, fee_rate)
+            send_value = utxo_to_spend["value"] - fee
+            if send_value <= 0:
+                raise RuntimeError(f"UTXO value {utxo_to_spend['value']} is too small to cover fees {fee}")
+            tx = self.create_self_transfer_multi(
+                utxos_to_spend=[utxo_to_spend],
+                amount_per_output=int(COIN * send_value),
+                target_vsize=target_vsize,
+                fee_per_output=0,
+                **kwargs,
+            )
+            tx["fee"] = fee
+            tx["new_utxo"] = tx.pop("new_utxos")[0]
+            return tx
+
+        assert False
 
     def sendrawtransaction(self, *, from_node, tx_hex, maxfeerate=0, **kwargs):
         txid = from_node.sendrawtransaction(hexstring=tx_hex, maxfeerate=maxfeerate, **kwargs)

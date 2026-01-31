@@ -10,7 +10,6 @@ import os
 
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
-from test_framework.key import ECPubKey
 from test_framework.messages import COIN
 from test_framework.script_util import keys_to_multisig_script
 from test_framework.test_framework import BitcoinTestFramework
@@ -51,7 +50,6 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
                 self.do_multisig(keys, sigs, output_type)
 
         self.test_multisig_script_limit()
-        self.test_mixing_uncompressed_and_compressed_keys(node0)
         self.test_sortedmulti_descriptors_bip67()
 
         # Check that bech32m is not a supported address type
@@ -158,29 +156,6 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
 
         txinfo = node0.getrawtransaction(tx, True, blk)
         self.log.info("n/m=%d/%d %s size=%d vsize=%d weight=%d" % (nsigs, nkeys, output_type, txinfo["size"], txinfo["vsize"], txinfo["weight"]))
-
-    def test_mixing_uncompressed_and_compressed_keys(self, node):
-        self.log.info('Mixed compressed and uncompressed multisigs are not allowed')
-        pk0, pk1, pk2 = [getnewdestination('bech32')[0].hex() for _ in range(3)]
-
-        # decompress pk2
-        pk_obj = ECPubKey()
-        pk_obj.set(bytes.fromhex(pk2))
-        pk_obj.compressed = False
-        pk2 = pk_obj.get_bytes().hex()
-
-        # Check all permutations of keys because order matters apparently
-        for keys in itertools.permutations([pk0, pk1, pk2]):
-            # Results should be the same as this legacy one
-            legacy_addr = node.createmultisig(2, keys, 'legacy')['address']
-
-            # Generate addresses with the segwit types. These should all make legacy addresses
-            err_msg = ["Unable to make chosen address type, please ensure no uncompressed public keys are present."]
-
-            for addr_type in ['bech32', 'p2sh-segwit']:
-                result = self.nodes[0].createmultisig(nrequired=2, keys=keys, address_type=addr_type)
-                assert_equal(legacy_addr, result['address'])
-                assert_equal(result['warnings'], err_msg)
 
     def test_sortedmulti_descriptors_bip67(self):
         self.log.info('Testing sortedmulti descriptors with BIP 67 test vectors')

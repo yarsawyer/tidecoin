@@ -103,18 +103,16 @@ class DustRelayFeeTest(BitcoinTestFramework):
         self.test_dustrelay()
 
         # prepare output scripts of each standard type
-        _, uncompressed_pubkey = generate_keypair(compressed=False)
-        _, pubkey = generate_keypair(compressed=True)
+        _, pubkey = generate_keypair()
 
         output_scripts = (
-            (key_to_p2pk_script(uncompressed_pubkey),          "P2PK (uncompressed)"),
-            (key_to_p2pk_script(pubkey),                       "P2PK (compressed)"),
+            (key_to_p2pk_script(pubkey),                       "P2PK"),
             (key_to_p2pkh_script(pubkey),                      "P2PKH"),
             (script_to_p2sh_script(CScript([OP_TRUE])),        "P2SH"),
             (key_to_p2wpkh_script(pubkey),                     "P2WPKH"),
             (script_to_p2wsh_script(CScript([OP_TRUE])),       "P2WSH"),
             # largest possible output script considered standard
-            (keys_to_multisig_script([uncompressed_pubkey]*3), "bare multisig (m-of-3)"),
+            (keys_to_multisig_script([pubkey]*3),              "bare multisig (m-of-3)"),
             (CScript([OP_RETURN, b'superimportanthash']),      "null data (OP_RETURN)"),
         )
 

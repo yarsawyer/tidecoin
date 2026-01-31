@@ -612,19 +612,6 @@ class RawTransactionsTest(BitcoinTestFramework):
         # Encrypt wallet and import descriptors
         wallet.encryptwallet("test")
 
-        with WalletUnlock(wallet, "test"):
-            wallet.importdescriptors([{
-                'desc': descsum_create('wpkh(tprv8ZgxMBicQKsPdYeeZbPSKd2KYLmeVKtcFA7kqCxDvDR13MQ6us8HopUR2wLcS2ZKPhLyKsqpDL2FtL73LMHcgoCL7DXsciA8eX8nbjCR2eG/0h/*h)'),
-                'timestamp': 'now',
-                'active': True
-            },
-            {
-                'desc': descsum_create('wpkh(tprv8ZgxMBicQKsPdYeeZbPSKd2KYLmeVKtcFA7kqCxDvDR13MQ6us8HopUR2wLcS2ZKPhLyKsqpDL2FtL73LMHcgoCL7DXsciA8eX8nbjCR2eG/1h/*h)'),
-                'timestamp': 'now',
-                'active': True,
-                'internal': True
-            }])
-
         # Drain the keypool.
         wallet.getnewaddress()
         wallet.getrawchangeaddress()
@@ -751,13 +738,12 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.nodes[3].loadwallet('wwatch')
         wwatch = self.nodes[3].get_wallet_rpc('wwatch')
         # Setup change addresses for the watchonly wallet
+        _, change_pub = generate_keypair()
         desc_import = [{
-            "desc": descsum_create("wpkh(tpubD6NzVbkrYhZ4YNXVQbNhMK1WqguFsUXceaVJKbmno2aZ3B6QfbMeraaYvnBSGpV3vxLyTTK9DYT1yoEck4XUScMzXoQ2U2oSmE2JyMedq3H/1/*)"),
+            "desc": descsum_create(f"wpkh({change_pub.hex()})"),
             "timestamp": "now",
             "internal": True,
             "active": True,
-            "keypool": True,
-            "range": [0, 100],
             "watchonly": True,
         }]
         wwatch.importdescriptors(desc_import)

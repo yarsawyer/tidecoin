@@ -418,9 +418,13 @@ class ListSinceBlockTest(BitcoinTestFramework):
         """Make sure we can track coins by descriptor."""
         self.log.info("Test descriptor lookup by scriptPubKey.")
 
-        # Create a watchonly wallet tracking two multisig descriptors.
-        multi_a = descsum_create("wsh(multi(1,tpubD6NzVbkrYhZ4YBNjUo96Jxd1u4XKWgnoc7LsA1jz3Yc2NiDbhtfBhaBtemB73n9V5vtJHwU6FVXwggTbeoJWQ1rzdz8ysDuQkpnaHyvnvzR/*,tpubD6NzVbkrYhZ4YHdDGMAYGaWxMSC1B6tPRTHuU5t3BcfcS3nrF523iFm5waFd1pP3ZvJt4Jr8XmCmsTBNx5suhcSgtzpGjGMASR3tau1hJz4/*))")
-        multi_b = descsum_create("wsh(multi(1,tpubD6NzVbkrYhZ4YHdDGMAYGaWxMSC1B6tPRTHuU5t3BcfcS3nrF523iFm5waFd1pP3ZvJt4Jr8XmCmsTBNx5suhcSgtzpGjGMASR3tau1hJz4/*,tpubD6NzVbkrYhZ4Y2RLiuEzNQkntjmsLpPYDm3LTRBYynUQtDtpzeUKAcb9sYthSFL3YR74cdFgF5mW8yKxv2W2CWuZDFR2dUpE5PF9kbrVXNZ/*))")
+        # Create a watchonly wallet tracking two multisig descriptors (PQ pubkeys).
+        _, pubkey_a1 = generate_keypair()
+        _, pubkey_a2 = generate_keypair()
+        _, pubkey_b1 = generate_keypair()
+        _, pubkey_b2 = generate_keypair()
+        multi_a = descsum_create(f"wsh(multi(1,{pubkey_a1.hex()},{pubkey_a2.hex()}))")
+        multi_b = descsum_create(f"wsh(multi(1,{pubkey_b1.hex()},{pubkey_b2.hex()}))")
         self.nodes[0].createwallet(wallet_name="wo", disable_private_keys=True)
         wo_wallet = self.nodes[0].get_wallet_rpc("wo")
         wo_wallet.importdescriptors([
@@ -438,8 +442,8 @@ class ListSinceBlockTest(BitcoinTestFramework):
 
         # Send a coin to each descriptor.
         assert_equal(len(wo_wallet.listsinceblock()["transactions"]), 0)
-        addr_a = self.nodes[0].deriveaddresses(multi_a, 0)[0]
-        addr_b = self.nodes[0].deriveaddresses(multi_b, 0)[0]
+        addr_a = self.nodes[0].deriveaddresses(multi_a)[0]
+        addr_b = self.nodes[0].deriveaddresses(multi_b)[0]
         self.nodes[2].sendtoaddress(addr_a, 1)
         self.nodes[2].sendtoaddress(addr_b, 2)
         self.generate(self.nodes[2], 1)

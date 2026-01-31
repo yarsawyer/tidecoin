@@ -35,7 +35,6 @@ from test_framework.script import (
     OP_RETURN,
     OP_TRUE,
     SIGHASH_ALL,
-    sign_input_legacy,
 )
 from test_framework.script_util import (
     DUMMY_MIN_OP_RETURN_SCRIPT,
@@ -52,7 +51,7 @@ from test_framework.util import (
     sync_txindex,
 )
 from test_framework.wallet import MiniWallet
-from test_framework.wallet_util import generate_keypair
+from test_framework.wallet_util import generate_keypair, sign_tx_with_key
 
 
 class MempoolAcceptanceTest(BitcoinTestFramework):
@@ -443,7 +442,13 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         tx_spend = CTransaction()
         tx_spend.vin.append(CTxIn(COutPoint(tx.txid_int, 0), b""))
         tx_spend.vout.append(CTxOut(tx.vout[0].nValue - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
-        sign_input_legacy(tx_spend, 0, tx.vout[0].scriptPubKey, privkey, sighash_type=SIGHASH_ALL)
+        prevtx = {
+            "txid": f"{tx.txid_int:064x}",
+            "vout": 0,
+            "scriptPubKey": tx.vout[0].scriptPubKey.hex(),
+            "amount": Decimal(tx.vout[0].nValue) / COIN,
+        }
+        tx_spend = sign_tx_with_key(node, tx_spend, [privkey], [prevtx], sighash_type=SIGHASH_ALL)
         tx_spend.vin[0].scriptSig = bytes(CScript([OP_0])) + tx_spend.vin[0].scriptSig
         self.check_mempool_result(
             result_expected=[{'txid': tx_spend.txid_hex, 'allowed': True, 'vsize': tx_spend.get_vsize(), 'fees': { 'base': Decimal('0.00000700')}}],

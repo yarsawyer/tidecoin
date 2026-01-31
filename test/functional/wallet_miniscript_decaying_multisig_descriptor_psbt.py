@@ -28,37 +28,38 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
         self.skip_if_no_wallet()
 
     @staticmethod
-    def _get_xpub(wallet, internal):
-        """Extract the wallet's xpubs using `listdescriptors` and pick the one from the `pkh` descriptor since it's least likely to be accidentally reused (legacy addresses)."""
-        pkh_descriptor = next(filter(lambda d: d["desc"].startswith("pkh(") and d["internal"] == internal, wallet.listdescriptors()["descriptors"]))
-        # keep all key origin information (master key fingerprint and all derivation steps) for proper support of hardware devices
-        # see section 'Key origin identification' in 'doc/descriptors.md' for more details...
-        return pkh_descriptor["desc"].split("pkh(")[1].split(")")[0]
+    def _get_pubkey(wallet, internal):
+        """Extract a single pubkey from the wallet for miniscript descriptors."""
+        if internal:
+            addr = wallet.getrawchangeaddress()
+        else:
+            addr = wallet.getnewaddress()
+        return wallet.getaddressinfo(addr)["pubkey"]
 
-    def create_multisig(self, external_xpubs, internal_xpubs):
+    def create_multisig(self, external_pubkeys, internal_pubkeys):
         """The multisig is created by importing the following descriptors. The resulting wallet is watch-only and every signer can do this."""
         self.node.createwallet(wallet_name=f"{self.name}", blank=True, disable_private_keys=True)
         multisig = self.node.get_wallet_rpc(f"{self.name}")
         # spending policy: `thresh(4,pk(key_1),pk(key_2),pk(key_3),pk(key_4),after(t1),after(t2),after(t3))`
         # IMPORTANT: when backing up your descriptor, the order of key_1...key_4 must be correct!
-        external = multisig.getdescriptorinfo(f"wsh(thresh({self.N},pk({'),s:pk('.join(external_xpubs)}),sln:after({'),sln:after('.join(map(str, self.locktimes))})))")
-        internal = multisig.getdescriptorinfo(f"wsh(thresh({self.N},pk({'),s:pk('.join(internal_xpubs)}),sln:after({'),sln:after('.join(map(str, self.locktimes))})))")
+        external = multisig.getdescriptorinfo(f"wsh(thresh({self.N},pk({'),s:pk('.join(external_pubkeys)}),sln:after({'),sln:after('.join(map(str, self.locktimes))})))")
+        internal = multisig.getdescriptorinfo(f"wsh(thresh({self.N},pk({'),s:pk('.join(internal_pubkeys)}),sln:after({'),sln:after('.join(map(str, self.locktimes))})))")
         result = multisig.importdescriptors([
             {  # receiving addresses (internal: False)
                 "desc": external["descriptor"],
-                "active": True,
+                "active": False,
                 "internal": False,
                 "timestamp": "now",
             },
             {  # change addresses (internal: True)
                 "desc": internal["descriptor"],
-                "active": True,
+                "active": False,
                 "internal": True,
                 "timestamp": "now",
             },
         ])
         assert all(r["success"] for r in result)
-        return multisig
+        return multisig, external["descriptor"], internal["descriptor"]
 
     def run_test(self):
         self.node = self.nodes[0]
@@ -71,12 +72,12 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
         self.name = f"{self.M}_of_{self.N}_decaying_multisig"
         self.log.info(f"Testing a miniscript multisig which starts as 4-of-4 and 'decays' to 3-of-4 at block height {self.locktimes[0]}, 2-of-4 at {self.locktimes[1]}, and finally 1-of-4 at {self.locktimes[2]}...")
 
-        self.log.info("Create the signer wallets and get their xpubs...")
+        self.log.info("Create the signer wallets and get their pubkeys...")
         signers = [self.node.get_wallet_rpc(self.node.createwallet(wallet_name=f"signer_{i}")["name"]) for i in range(self.N)]
-        external_xpubs, internal_xpubs = [[self._get_xpub(signer, internal) for signer in signers] for internal in [False, True]]
+        external_pubkeys, internal_pubkeys = [[self._get_pubkey(signer, internal) for signer in signers] for internal in [False, True]]
 
-        self.log.info("Create the watch-only decaying multisig using signers' xpubs...")
-        multisig = self.create_multisig(external_xpubs, internal_xpubs)
+        self.log.info("Create the watch-only decaying multisig using signers' pubkeys...")
+        multisig, external_desc, internal_desc = self.create_multisig(external_pubkeys, internal_pubkeys)
 
         self.log.info("Get a mature utxo to send to the multisig...")
         coordinator_wallet = self.node.get_wallet_rpc(self.node.createwallet(wallet_name="coordinator")["name"])
@@ -84,7 +85,9 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
 
         self.log.info("Send funds to the multisig's receiving address...")
         deposit_amount = 6.15
-        coordinator_wallet.sendtoaddress(multisig.getnewaddress(), deposit_amount)
+        recv_addr = coordinator_wallet.deriveaddresses(external_desc)[0]
+        change_addr = coordinator_wallet.deriveaddresses(internal_desc)[0]
+        coordinator_wallet.sendtoaddress(recv_addr, deposit_amount)
         self.generate(self.node, 1)
         assert_approx(multisig.getbalance(), deposit_amount, vspan=0.001)
 
@@ -99,7 +102,13 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
             # in this test each signer signs the same psbt "in series" one after the other.
             # Another option is for each signer to sign the original psbt, and then combine
             # and finalize these. In some cases this may be more optimal for coordination.
-            psbt = multisig.walletcreatefundedpsbt(inputs=[], outputs={receiver.getnewaddress(): amount}, feeRate=0.00010, locktime=locktime)
+            psbt = multisig.walletcreatefundedpsbt(
+                inputs=[],
+                outputs={receiver.getnewaddress(): amount},
+                feeRate=0.00010,
+                locktime=locktime,
+                options={"changeAddress": change_addr},
+            )
             # the random sample asserts that any of the signing keys can sign for the 3-of-4,
             # 2-of-4, and 1-of-4. While this is basic behavior of the miniscript thresh primitive,
             # it is a critical property of this wallet.

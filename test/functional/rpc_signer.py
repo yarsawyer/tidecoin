@@ -35,6 +35,7 @@ class RPCSignerTest(BitcoinTestFramework):
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_external_signer()
+        self.skip("external signer flow relies on xpub-based ranged descriptors, not supported in PQ-only builds")
 
     def set_mock_result(self, node, res):
         with open(os.path.join(node.cwd, "mock_result"), "w", encoding="utf8") as f:

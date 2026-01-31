@@ -143,7 +143,7 @@ def bulk_vout(tx, target_vsize):
 def check_key(key):
     if isinstance(key, str):
         key = bytes.fromhex(key)  # Assuming this is hex string
-    if isinstance(key, bytes) and (len(key) == 33 or len(key) == 65):
+    if isinstance(key, bytes) and len(key) > 0:
         return key
     assert False
 

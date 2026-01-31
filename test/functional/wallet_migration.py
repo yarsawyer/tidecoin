@@ -16,7 +16,6 @@ from test_framework.address import (
     script_to_p2wsh,
 )
 from test_framework.descriptors import descsum_create
-from test_framework.key import ECPubKey
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.messages import COIN, CTransaction, CTxOut
 from test_framework.script import hash160
@@ -26,6 +25,7 @@ from test_framework.util import (
     assert_raises_rpc_error,
     find_vout_for_address,
     sha256sum_file,
+    wallet_importprivkey,
 )
 from test_framework.wallet_util import (
     get_generate_key,
@@ -921,46 +921,6 @@ class WalletMigrationTest(BitcoinTestFramework):
 
         wallet.unloadwallet()
 
-    def test_hybrid_pubkey(self):
-        self.log.info("Test migration when wallet contains a hybrid pubkey")
-
-        wallet = self.create_legacy_wallet("hybrid_keys")
-
-        # Get the hybrid pubkey for one of the keys in the wallet
-        normal_pubkey = wallet.getaddressinfo(wallet.getnewaddress())["pubkey"]
-        first_byte = bytes.fromhex(normal_pubkey)[0] + 4 # Get the hybrid pubkey first byte
-        parsed_pubkey = ECPubKey()
-        parsed_pubkey.set(bytes.fromhex(normal_pubkey))
-        parsed_pubkey.compressed = False
-        hybrid_pubkey_bytes = bytearray(parsed_pubkey.get_bytes())
-        hybrid_pubkey_bytes[0] = first_byte # Make it hybrid
-        hybrid_pubkey = hybrid_pubkey_bytes.hex()
-
-        # Import the hybrid pubkey
-        wallet.importpubkey(hybrid_pubkey)
-        p2pkh_addr = key_to_p2pkh(hybrid_pubkey)
-        p2pkh_addr_info = wallet.getaddressinfo(p2pkh_addr)
-        assert_equal(p2pkh_addr_info["iswatchonly"], True)
-        assert_equal(p2pkh_addr_info["ismine"], False) # Things involving hybrid pubkeys are not spendable
-
-        # Also import the p2wpkh for the pubkey to make sure we don't migrate it
-        p2wpkh_addr = key_to_p2wpkh(hybrid_pubkey)
-        wallet.importaddress(p2wpkh_addr)
-
-        migrate_info, wallet = self.migrate_and_get_rpc("hybrid_keys")
-
-        # Both addresses should only appear in the watchonly wallet
-        p2pkh_addr_info = wallet.getaddressinfo(p2pkh_addr)
-        assert_equal(p2pkh_addr_info["ismine"], False)
-        p2wpkh_addr_info = wallet.getaddressinfo(p2wpkh_addr)
-        assert_equal(p2wpkh_addr_info["ismine"], False)
-
-        watchonly_wallet = self.master_node.get_wallet_rpc(migrate_info["watchonly_name"])
-        watchonly_p2pkh_addr_info = watchonly_wallet.getaddressinfo(p2pkh_addr)
-        assert_equal(watchonly_p2pkh_addr_info["ismine"], True)
-        watchonly_p2wpkh_addr_info = watchonly_wallet.getaddressinfo(p2wpkh_addr)
-        assert_equal(watchonly_p2wpkh_addr_info["ismine"], True)
-
         # There should only be raw or addr descriptors
         for desc in watchonly_wallet.listdescriptors()["descriptors"]:
             if desc["desc"].startswith("raw(") or desc["desc"].startswith("addr("):
@@ -1166,7 +1126,7 @@ class WalletMigrationTest(BitcoinTestFramework):
         self.log.info("Test migrating standalone private keys")
         wallet = self.create_legacy_wallet("import_privkeys", blank=True)
         privkey, pubkey = generate_keypair(wif=True)
-        wallet.importprivkey(privkey=privkey, label="hi", rescan=False)
+        wallet_importprivkey(wallet, privkey, "now", label="hi")
 
         # Migrate and verify
         res, wallet = self.migrate_and_get_rpc("import_privkeys")
@@ -1257,67 +1217,47 @@ class WalletMigrationTest(BitcoinTestFramework):
         # In order to get the wsh(pkh()) into only mapScripts and not setWatchOnly, we need to utilize
         # importmulti and wrap the wsh(pkh()) inside of a sh(). This will insert the sh(wsh(pkh())) into
         # setWatchOnly but not the wsh(pkh()).
-        # Furthermore, migration should not migrate the wsh(pkh()) if the key is uncompressed.
-        comp_wif, comp_pubkey = generate_keypair(compressed=True, wif=True)
-        comp_pkh_script = key_to_p2pkh_script(comp_pubkey).hex()
-        comp_wsh_pkh_script = script_to_p2wsh_script(comp_pkh_script).hex()
-        comp_sh_wsh_pkh_script = script_to_p2sh_script(comp_wsh_pkh_script).hex()
-        comp_wsh_pkh_addr = script_to_p2wsh(comp_pkh_script)
+        key_wif, pubkey = generate_keypair(wif=True)
+        pkh_script = key_to_p2pkh_script(pubkey).hex()
+        wsh_pkh_script = script_to_p2wsh_script(pkh_script).hex()
+        sh_wsh_pkh_script = script_to_p2sh_script(wsh_pkh_script).hex()
+        wsh_pkh_addr = script_to_p2wsh(pkh_script)
 
-        uncomp_wif, uncomp_pubkey = generate_keypair(compressed=False, wif=True)
-        uncomp_pkh_script = key_to_p2pkh_script(uncomp_pubkey).hex()
-        uncomp_wsh_pkh_script = script_to_p2wsh_script(uncomp_pkh_script).hex()
-        uncomp_sh_wsh_pkh_script = script_to_p2sh_script(uncomp_wsh_pkh_script).hex()
-        uncomp_wsh_pkh_addr = script_to_p2wsh(uncomp_pkh_script)
-        invalid_addrs.append(uncomp_wsh_pkh_addr)
-
-        import_res = wallet.importmulti([
-            {
-                "scriptPubKey": comp_sh_wsh_pkh_script,
-                "timestamp": "now",
-                "redeemscript": comp_wsh_pkh_script,
-                "witnessscript": comp_pkh_script,
-                "keys": [
-                    comp_wif,
-                ],
-            },
-            {
-                "scriptPubKey": uncomp_sh_wsh_pkh_script,
-                "timestamp": "now",
-                "redeemscript": uncomp_wsh_pkh_script,
-                "witnessscript": uncomp_pkh_script,
-                "keys": [
-                    uncomp_wif,
-                ],
-            },
-        ])
+        import_res = wallet.importmulti([{
+            "scriptPubKey": sh_wsh_pkh_script,
+            "timestamp": "now",
+            "redeemscript": wsh_pkh_script,
+            "witnessscript": pkh_script,
+            "keys": [
+                key_wif,
+            ],
+        }])
         assert_equal(import_res[0]["success"], True)
-        assert_equal(import_res[1]["success"], True)
 
         # Create a wsh(sh(pkh())) - P2SH inside of P2WSH is invalid
-        comp_sh_pkh_script = script_to_p2sh_script(comp_pkh_script).hex()
-        wsh_sh_pkh_script = script_to_p2wsh_script(comp_sh_pkh_script).hex()
-        wsh_sh_pkh_addr = script_to_p2wsh(comp_sh_pkh_script)
+        sh_pkh_script = script_to_p2sh_script(pkh_script).hex()
+        wsh_sh_pkh_script = script_to_p2wsh_script(sh_pkh_script).hex()
+        wsh_sh_pkh_addr = script_to_p2wsh(sh_pkh_script)
         invalid_addrs.append(wsh_sh_pkh_addr)
 
         # Import wsh(sh(pkh()))
-        wallet.importaddress(address=comp_sh_pkh_script, p2sh=False)
+        wallet.importaddress(address=sh_pkh_script, p2sh=False)
         wallet.importaddress(address=wsh_sh_pkh_script, p2sh=False)
 
         # Create a wsh(wsh(pkh())) - P2WSH inside of P2WSH is invalid
-        wsh_wsh_pkh_script = script_to_p2wsh_script(comp_wsh_pkh_script).hex()
-        wsh_wsh_pkh_addr = script_to_p2wsh(comp_wsh_pkh_script)
+        wsh_wsh_pkh_script = script_to_p2wsh_script(wsh_pkh_script).hex()
+        wsh_wsh_pkh_addr = script_to_p2wsh(wsh_pkh_script)
         invalid_addrs.append(wsh_wsh_pkh_addr)
 
         # Import wsh(wsh(pkh()))
         wallet.importaddress(address=wsh_wsh_pkh_script, p2sh=False)
 
-        # The wsh(pkh()) with a compressed key is always valid, so we should see that the wallet detects it as ismine, not
+        # The wsh(pkh()) script is valid, so we should see that the wallet detects it as ismine, not
         # watchonly, and can provide us information about the witnessScript via "embedded"
-        comp_wsh_pkh_addr_info = wallet.getaddressinfo(comp_wsh_pkh_addr)
-        assert_equal(comp_wsh_pkh_addr_info["ismine"], True)
-        assert_equal(comp_wsh_pkh_addr_info["iswatchonly"], False)
-        assert "embedded" in comp_wsh_pkh_addr_info
+        wsh_pkh_addr_info = wallet.getaddressinfo(wsh_pkh_addr)
+        assert_equal(wsh_pkh_addr_info["ismine"], True)
+        assert_equal(wsh_pkh_addr_info["iswatchonly"], False)
+        assert "embedded" in wsh_pkh_addr_info
 
         # The invalid addresses are invalid, so the legacy wallet should not detect them as ismine,
         # nor consider them watchonly. However, because the legacy wallet has the witnessScripts/redeemScripts,
@@ -1330,7 +1270,7 @@ class WalletMigrationTest(BitcoinTestFramework):
 
         # Fund those output scripts, although the invalid addresses will not have any balance.
         # This behavior follows as the addresses are not ismine.
-        def_wallet.send([{comp_wsh_pkh_addr: 1}] + [{k: i + 1} for i, k in enumerate(invalid_addrs)])
+        def_wallet.send([{wsh_pkh_addr: 1}] + [{k: i + 1} for i, k in enumerate(invalid_addrs)])
         self.generate(self.nodes[0], 6)
         bal = wallet.getbalances()
         assert_equal(bal["mine"]["trusted"], 1)
@@ -1342,11 +1282,11 @@ class WalletMigrationTest(BitcoinTestFramework):
 
         assert_equal(wallet.getbalances()["mine"]["trusted"], 1)
 
-        # After migration, the wsh(pkh()) with a compressed key is still valid and the descriptor wallet will have
+        # After migration, the wsh(pkh()) script is still valid and the descriptor wallet will have
         # information about the witnessScript
-        comp_wsh_pkh_addr_info = wallet.getaddressinfo(comp_wsh_pkh_addr)
-        assert_equal(comp_wsh_pkh_addr_info["ismine"], True)
-        assert "embedded" in comp_wsh_pkh_addr_info
+        wsh_pkh_addr_info = wallet.getaddressinfo(wsh_pkh_addr)
+        assert_equal(wsh_pkh_addr_info["ismine"], True)
+        assert "embedded" in wsh_pkh_addr_info
 
         # After migration, the invalid addresses should still not be detected as ismine and not watchonly.
         # The descriptor wallet should not have migrated these at all, so there should additionally be no
@@ -1366,7 +1306,7 @@ class WalletMigrationTest(BitcoinTestFramework):
         def_wallet = self.master_node.get_wallet_rpc(self.default_wallet_name)
         wallet = self.create_legacy_wallet("miniscript")
 
-        privkey, _ = generate_keypair(compressed=True, wif=True)
+        privkey, _ = generate_keypair(wif=True)
 
         # Make a descriptor where we only have some of the keys. This will be migrated to the watchonly wallet.
         some_keys_priv_desc = descsum_create(f"wsh(or_b(pk({privkey}),s:pk(029ffbe722b147f3035c87cb1c60b9a5947dd49c774cc31e94773478711a929ac0)))")
@@ -1416,7 +1356,7 @@ class WalletMigrationTest(BitcoinTestFramework):
         self.log.info("Test migrating a multisig that we do not have any private keys for")
         wallet = self.create_legacy_wallet("multisig_noprivs")
 
-        _, pubkey = generate_keypair(compressed=True, wif=True)
+        _, pubkey = generate_keypair(wif=True)
 
         add_ms_res = wallet.addmultisigaddress(nrequired=1, keys=[pubkey.hex()])
         addr = add_ms_res["address"]
@@ -1485,7 +1425,6 @@ class WalletMigrationTest(BitcoinTestFramework):
         self.test_addressbook()
         self.test_migrate_raw_p2sh()
         self.test_conflict_txs()
-        self.test_hybrid_pubkey()
         self.test_failed_migration_cleanup()
         self.test_failed_migration_cleanup_relative_path()
         self.test_avoidreuse()

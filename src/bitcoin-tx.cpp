@@ -17,6 +17,7 @@
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
+#include <script/interpreter.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <univalue.h>
@@ -38,6 +39,7 @@ using util::TrimString;
 using util::TrimStringView;
 
 static bool fCreateBlank;
+static bool fVerify;
 static std::map<std::string,UniValue> registers;
 static const int CONTINUE_EXECUTION=-1;
 
@@ -51,6 +53,7 @@ static void SetupBitcoinTxArgs(ArgsManager &argsman)
     argsman.AddArg("-create", "Create new, empty TX.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-json", "Select JSON output", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-txid", "Output only the hex-encoded transaction id of the resultant transaction.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-verify", "Verify input scripts using prevtxs register and output a boolean result.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     SetupChainParamsBaseOptions(argsman);
 
     argsman.AddArg("delin=N", "Delete input N from TX", ArgsManager::ALLOW_ANY, OptionsCategory::COMMANDS);
@@ -104,6 +107,7 @@ static int AppInitRawTx(int argc, char* argv[])
     }
 
     fCreateBlank = gArgs.GetBoolArg("-create", false);
+    fVerify = gArgs.GetBoolArg("-verify", false);
 
     if (argc < 2 || HelpRequested(gArgs) || gArgs.GetBoolArg("-version", false)) {
         // First part of help message is specific to this utility
@@ -565,6 +569,54 @@ static std::vector<unsigned char> ParseHexUV(const UniValue& v, const std::strin
     return ParseHex(strHex);
 }
 
+static void AddPrevTxsToView(CCoinsViewCache& view, const UniValue& prevtxsObj)
+{
+    for (unsigned int previdx = 0; previdx < prevtxsObj.size(); previdx++) {
+        const UniValue& prevOut = prevtxsObj[previdx];
+        if (!prevOut.isObject())
+            throw std::runtime_error("expected prevtxs internal object");
+
+        std::map<std::string, UniValue::VType> types = {
+            {"txid", UniValue::VSTR},
+            {"vout", UniValue::VNUM},
+            {"scriptPubKey", UniValue::VSTR},
+        };
+        if (!prevOut.checkObject(types))
+            throw std::runtime_error("prevtxs internal object typecheck fail");
+
+        auto txid{Txid::FromHex(prevOut["txid"].get_str())};
+        if (!txid) {
+            throw std::runtime_error("txid must be hexadecimal string (not '" + prevOut["txid"].get_str() + "')");
+        }
+
+        const int nOut = prevOut["vout"].getInt<int>();
+        if (nOut < 0)
+            throw std::runtime_error("vout cannot be negative");
+
+        COutPoint out(*txid, nOut);
+        std::vector<unsigned char> pkData(ParseHexUV(prevOut["scriptPubKey"], "scriptPubKey"));
+        CScript scriptPubKey(pkData.begin(), pkData.end());
+
+        {
+            const Coin& coin = view.AccessCoin(out);
+            if (!coin.IsSpent() && coin.out.scriptPubKey != scriptPubKey) {
+                std::string err("Previous output scriptPubKey mismatch:\n");
+                err = err + ScriptToAsmStr(coin.out.scriptPubKey) + "\nvs:\n"+
+                    ScriptToAsmStr(scriptPubKey);
+                throw std::runtime_error(err);
+            }
+            Coin newcoin;
+            newcoin.out.scriptPubKey = scriptPubKey;
+            newcoin.out.nValue = MAX_MONEY;
+            if (prevOut.exists("amount")) {
+                newcoin.out.nValue = AmountFromValue(prevOut["amount"]);
+            }
+            newcoin.nHeight = 1;
+            view.AddCoin(out, std::move(newcoin), true);
+        }
+    }
+}
+
 static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 {
     int nHashType = SIGHASH_ALL;
@@ -599,60 +651,19 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
     if (!registers.count("prevtxs"))
         throw std::runtime_error("prevtxs register variable must be set.");
     UniValue prevtxsObj = registers["prevtxs"];
-    {
-        for (unsigned int previdx = 0; previdx < prevtxsObj.size(); previdx++) {
-            const UniValue& prevOut = prevtxsObj[previdx];
-            if (!prevOut.isObject())
-                throw std::runtime_error("expected prevtxs internal object");
-
-            std::map<std::string, UniValue::VType> types = {
-                {"txid", UniValue::VSTR},
-                {"vout", UniValue::VNUM},
-                {"scriptPubKey", UniValue::VSTR},
-            };
-            if (!prevOut.checkObject(types))
-                throw std::runtime_error("prevtxs internal object typecheck fail");
-
-            auto txid{Txid::FromHex(prevOut["txid"].get_str())};
-            if (!txid) {
-                throw std::runtime_error("txid must be hexadecimal string (not '" + prevOut["txid"].get_str() + "')");
-            }
-
-            const int nOut = prevOut["vout"].getInt<int>();
-            if (nOut < 0)
-                throw std::runtime_error("vout cannot be negative");
-
-            COutPoint out(*txid, nOut);
-            std::vector<unsigned char> pkData(ParseHexUV(prevOut["scriptPubKey"], "scriptPubKey"));
-            CScript scriptPubKey(pkData.begin(), pkData.end());
-
-            {
-                const Coin& coin = view.AccessCoin(out);
-                if (!coin.IsSpent() && coin.out.scriptPubKey != scriptPubKey) {
-                    std::string err("Previous output scriptPubKey mismatch:\n");
-                    err = err + ScriptToAsmStr(coin.out.scriptPubKey) + "\nvs:\n"+
-                        ScriptToAsmStr(scriptPubKey);
-                    throw std::runtime_error(err);
-                }
-                Coin newcoin;
-                newcoin.out.scriptPubKey = scriptPubKey;
-                newcoin.out.nValue = MAX_MONEY;
-                if (prevOut.exists("amount")) {
-                    newcoin.out.nValue = AmountFromValue(prevOut["amount"]);
-                }
-                newcoin.nHeight = 1;
-                view.AddCoin(out, std::move(newcoin), true);
-            }
-
-            // if redeemScript given and private keys given,
-            // add redeemScript to the tempKeystore so it can be signed:
-            if ((scriptPubKey.IsPayToScriptHash() || scriptPubKey.IsPayToWitnessScriptHash()) &&
-                prevOut.exists("redeemScript")) {
-                UniValue v = prevOut["redeemScript"];
-                std::vector<unsigned char> rsData(ParseHexUV(v, "redeemScript"));
-                CScript redeemScript(rsData.begin(), rsData.end());
-                tempKeystore.AddCScript(redeemScript);
-            }
+    AddPrevTxsToView(view, prevtxsObj);
+    for (unsigned int previdx = 0; previdx < prevtxsObj.size(); previdx++) {
+        const UniValue& prevOut = prevtxsObj[previdx];
+        std::vector<unsigned char> pkData(ParseHexUV(prevOut["scriptPubKey"], "scriptPubKey"));
+        CScript scriptPubKey(pkData.begin(), pkData.end());
+        // if redeemScript given and private keys given,
+        // add redeemScript to the tempKeystore so it can be signed:
+        if ((scriptPubKey.IsPayToScriptHash() || scriptPubKey.IsPayToWitnessScriptHash()) &&
+            prevOut.exists("redeemScript")) {
+            UniValue v = prevOut["redeemScript"];
+            std::vector<unsigned char> rsData(ParseHexUV(v, "redeemScript"));
+            CScript redeemScript(rsData.begin(), rsData.end());
+            tempKeystore.AddCScript(redeemScript);
         }
     }
 
@@ -672,8 +683,13 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 
         SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
-        if (!fHashSingle || (i < mergedTx.vout.size()))
+        if (!fHashSingle || (i < mergedTx.vout.size())) {
             ProduceSignature(keystore, MutableTransactionSignatureCreator(mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+        }
+
+        if (fVerify && !sigdata.complete) {
+            throw std::runtime_error(strprintf("signing failed for input %u", i));
+        }
 
         if (amount == MAX_MONEY && !sigdata.scriptWitness.IsNull()) {
             throw std::runtime_error(strprintf("Missing amount for CTxOut with scriptPubKey=%s", HexStr(prevPubKey)));
@@ -683,6 +699,36 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
     }
 
     tx = mergedTx;
+}
+
+static void VerifyTx(const CTransaction& tx)
+{
+    const unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
+    if (!registers.count("prevtxs")) {
+        throw std::runtime_error("prevtxs register variable must be set.");
+    }
+    UniValue prevtxsObj = registers["prevtxs"];
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
+    AddPrevTxsToView(view, prevtxsObj);
+
+    const PrecomputedTransactionData txdata(tx);
+    for (unsigned int i = 0; i < tx.vin.size(); i++) {
+        const CTxIn& txin = tx.vin[i];
+        const Coin& coin = view.AccessCoin(txin.prevout);
+        if (coin.IsSpent()) {
+            throw std::runtime_error("prevtxs missing for input");
+        }
+        if (coin.out.nValue == MAX_MONEY && !txin.scriptWitness.IsNull()) {
+            throw std::runtime_error(strprintf("Missing amount for CTxOut with scriptPubKey=%s", HexStr(coin.out.scriptPubKey)));
+        }
+        ScriptError serror = SCRIPT_ERR_OK;
+        if (!VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, script_verify_flags,
+                          TransactionSignatureChecker(&tx, i, coin.out.nValue, txdata, MissingDataBehavior::FAIL, allow_legacy), &serror)) {
+            throw std::runtime_error(strprintf("script verification failed: %s", ScriptErrorString(serror)));
+        }
+    }
 }
 
 static void MutateTx(CMutableTransaction& tx, const std::string& command,
@@ -761,6 +807,18 @@ static void OutputTx(const CTransaction& tx)
         OutputTxHex(tx);
 }
 
+static void OutputVerifyResult()
+{
+    if (gArgs.GetBoolArg("-json", false)) {
+        UniValue entry(UniValue::VOBJ);
+        entry.pushKV("valid", true);
+        std::string jsonOutput = entry.write(4);
+        tfm::format(std::cout, "%s\n", jsonOutput);
+    } else {
+        tfm::format(std::cout, "OK\n");
+    }
+}
+
 static std::string readStdin()
 {
     char buf[4096];
@@ -825,7 +883,12 @@ static int CommandLineRawTx(int argc, char* argv[])
             MutateTx(tx, key, value);
         }
 
-        OutputTx(CTransaction(tx));
+        if (fVerify) {
+            VerifyTx(CTransaction(tx));
+            OutputVerifyResult();
+        } else {
+            OutputTx(CTransaction(tx));
+        }
     }
     catch (const std::exception& e) {
         strPrint = std::string("error: ") + e.what();

@@ -139,6 +139,17 @@ add_executable(test_bitcoin
 )
 set_target_properties(test_bitcoin PROPERTIES OUTPUT_NAME test_tidecoin)
 
+add_executable(tidecoin_testkeys
+  pq_testkeys.cpp
+)
+set_target_properties(tidecoin_testkeys PROPERTIES OUTPUT_NAME tidecoin-testkeys)
+target_link_libraries(tidecoin_testkeys
+  PRIVATE
+    bitcoin_common
+    bitcoin_util
+    univalue
+)
+
 include(TargetDataSources)
 target_json_data_sources(test_bitcoin
   data/base58_encode_decode.json

@@ -327,9 +327,9 @@ public:
             consensus.vDeployments[deployment_pos].min_activation_height = version_bits_params.min_activation_height;
         }
 
-        genesis = CreateGenesisBlock(1609074580, 12350701, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(1609074580, 0, 0x200f0f0f, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"d71ebc33c3d9932b8a84751152bd5932086ed9510d7f8e5054efb59a15ef6847"});
+        assert(consensus.hashGenesisBlock == uint256{"c19a1b559b1ea55d7c5ee23031c6a06fb917c641ae896587f42a1847bf2a2e8b"});
         assert(genesis.hashMerkleRoot == uint256{"50a03c5c0b982dccfd03bebc0f6142fa298354743dce82be936e69335d614ff8"});
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.

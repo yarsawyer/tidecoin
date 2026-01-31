@@ -204,41 +204,19 @@ class WalletSendTest(BitcoinTestFramework):
         # w2 contains the private keys for w3
         self.nodes[1].createwallet(wallet_name="w2", blank=True)
         w2 = self.nodes[1].get_wallet_rpc("w2")
-        xpriv = "tprv8ZgxMBicQKsPfHCsTwkiM1KT56RXbGGTqvc2hgqzycpwbHqqpcajQeMRZoBD35kW4RtyCemu6j34Ku5DEspmgjKdt2qe4SvRch5Kk8B8A2v"
-        xpub = "tpubD6NzVbkrYhZ4YkEfMbRJkQyZe7wTkbTNRECozCtJPtdLRn6cT1QKb8yHjwAPcAr26eHBFYs5iLiFFnCbwPRsncCKUKCfubHDMGKzMVcN1Jg"
-        w2.importdescriptors([{
-            "desc": descsum_create("wpkh(" + xpriv + "/0/0/*)"),
-            "timestamp": "now",
-            "range": [0, 100],
-            "active": True
-        },{
-            "desc": descsum_create("wpkh(" + xpriv + "/0/1/*)"),
-            "timestamp": "now",
-            "range": [0, 100],
-            "active": True,
-            "internal": True
-        }])
-
         # w3 is a watch-only wallet, based on w2
         self.nodes[1].createwallet(wallet_name="w3", disable_private_keys=True)
         w3 = self.nodes[1].get_wallet_rpc("w3")
-        # Match the privkeys in w2 for descriptors
-        res = w3.importdescriptors([{
-            "desc": descsum_create("wpkh(" + xpub + "/0/0/*)"),
-            "timestamp": "now",
-            "range": [0, 100],
-            "active": True,
-        },{
-            "desc": descsum_create("wpkh(" + xpub + "/0/1/*)"),
-            "timestamp": "now",
-            "range": [0, 100],
-            "active": True,
-            "internal": True,
-        }])
-        assert_equal(res, [{"success": True}, {"success": True}])
+        # Create a small watch-only set by exporting pubkeys from w2 addresses.
+        addrs = [w2.getnewaddress() for _ in range(3)]
+        descs = []
+        for addr in addrs:
+            pubkey = w2.getaddressinfo(addr)["pubkey"]
+            descs.append({"desc": descsum_create(f"wpkh({pubkey})"), "timestamp": "now"})
+        res = w3.importdescriptors(descs)
+        assert all(r["success"] for r in res)
 
-        for _ in range(3):
-            a2_receive = w2.getnewaddress()
+        a2_receive = addrs[-1]
         w0.sendtoaddress(a2_receive, 10) # fund w3
         self.generate(self.nodes[0], 1)
 

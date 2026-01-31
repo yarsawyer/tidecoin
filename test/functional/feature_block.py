@@ -5,6 +5,7 @@
 """Test block processing."""
 import copy
 import time
+from decimal import Decimal
 
 from test_framework.blocktools import (
     create_block,
@@ -44,7 +45,6 @@ from test_framework.script import (
     OP_INVALIDOPCODE,
     OP_RETURN,
     OP_TRUE,
-    sign_input_legacy,
 )
 from test_framework.script_util import (
     script_to_p2sh_script,
@@ -55,7 +55,7 @@ from test_framework.util import (
     assert_greater_than,
     assert_raises_rpc_error,
 )
-from test_framework.wallet_util import generate_keypair
+from test_framework.wallet_util import generate_keypair, sign_tx_with_key
 from data import invalid_txs
 
 
@@ -99,7 +99,7 @@ class FullBlockTest(BitcoinTestFramework):
         self.bootstrap_p2p()  # Add one p2p connection to the node
 
         self.block_heights = {}
-        self.coinbase_key, self.coinbase_pubkey = generate_keypair()
+        self.coinbase_privkey, self.coinbase_pubkey = generate_keypair()
         self.tip = None
         self.blocks = {}
         self.genesis_hash = int(self.nodes[0].getbestblockhash(), 16)
@@ -561,8 +561,19 @@ class FullBlockTest(BitcoinTestFramework):
             # second input is corresponding P2SH output from b39
             tx.vin.append(CTxIn(COutPoint(b39.vtx[i].txid_int, 0), b''))
             # Note: must pass the redeem_script (not p2sh_script) to the signature hash function
-            tx.vin[1].scriptSig = CScript([redeem_script])
-            sign_input_legacy(tx, 1, redeem_script, self.coinbase_key)
+            prevtx = {
+                "txid": f"{b39.vtx[i].txid_int:064x}",
+                "vout": 0,
+                "scriptPubKey": b39.vtx[i].vout[0].scriptPubKey.hex(),
+                "redeemScript": redeem_script.hex(),
+                "amount": Decimal(b39.vtx[i].vout[0].nValue) / COIN,
+            }
+            signed = sign_tx_with_key(self.nodes[0], tx, [self.coinbase_privkey], [prevtx])
+            tx.vin = signed.vin
+            tx.vout = signed.vout
+            tx.wit = signed.wit
+            tx.nLockTime = signed.nLockTime
+            tx.version = signed.version
             new_txs.append(tx)
             lastOutpoint = COutPoint(tx.txid_int, 0)
 
@@ -1348,7 +1359,18 @@ class FullBlockTest(BitcoinTestFramework):
         if (scriptPubKey[0] == OP_TRUE):  # an anyone-can-spend
             tx.vin[0].scriptSig = CScript()
             return
-        sign_input_legacy(tx, 0, spend_tx.vout[0].scriptPubKey, self.coinbase_key)
+        prevtx = {
+            "txid": f"{spend_tx.txid_int:064x}",
+            "vout": 0,
+            "scriptPubKey": spend_tx.vout[0].scriptPubKey.hex(),
+            "amount": Decimal(spend_tx.vout[0].nValue) / COIN,
+        }
+        signed = sign_tx_with_key(self.nodes[0], tx, [self.coinbase_privkey], [prevtx])
+        tx.vin = signed.vin
+        tx.vout = signed.vout
+        tx.wit = signed.wit
+        tx.nLockTime = signed.nLockTime
+        tx.version = signed.version
 
     def create_and_sign_transaction(self, spend_tx, value, output_script=None):
         if output_script is None:
