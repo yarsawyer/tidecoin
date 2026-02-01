@@ -404,7 +404,7 @@ TestChain100Setup::TestChain100Setup(
     {
         LOCK(::cs_main);
         const std::string tip_hash{m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString()};
-        const std::string expected{"c774aa42fe876a41ab201e90b100029b5a8aeccdd77cf86a924f201fed161fa0"};
+        const std::string expected{"a6dbe194dc530a812550978d7e00b5a494ef0e8f8cef412328fa0c9145d8df1a"};
         if (tip_hash != expected) {
             throw std::runtime_error(strprintf("TestChain100Setup unexpected tip hash (expected=%s actual=%s)", expected, tip_hash));
         }
@@ -437,7 +437,8 @@ CBlock TestChain100Setup::CreateBlock(
     }
     RegenerateCommitments(block, *Assert(m_node.chainman));
 
-    while (!CheckProofOfWork(block.GetPoWHash(), block.nBits, m_node.chainman->GetConsensus())) ++block.nNonce;
+    const int height{chainstate.m_chain.Height() + 1};
+    while (!CheckProofOfWork(block, m_node.chainman->GetConsensus(), height)) ++block.nNonce;
 
     return block;
 }

@@ -908,7 +908,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             # Wait for RPC connections to be ready
             cache_node.wait_for_rpc_connection()
 
-            if self.uses_wallet:
+            if self.uses_wallet is not False:
                 # No default wallet is auto-created; create one for cache generation.
                 cache_node.createwallet(wallet_name=self.default_wallet_name, load_on_startup=True)
 
@@ -921,7 +921,9 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             # block in the cache does not age too much (have an old tip age).
             # This is needed so that we are out of IBD when the test starts,
             # see the tip age check in IsInitialBlockDownload().
-            gen_addresses = [cache_node.getnewaddress(address_type="bech32") for _ in range(4)]
+            from test_framework.address import create_deterministic_address_p2wsh_op_true
+            miniwallet_addr, _ = create_deterministic_address_p2wsh_op_true(self.chain)
+            gen_addresses = [miniwallet_addr] + [cache_node.getnewaddress(address_type="bech32") for _ in range(3)]
             assert_equal(len(gen_addresses), 4)
             for i in range(8):
                 self.generatetoaddress(

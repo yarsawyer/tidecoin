@@ -28,7 +28,7 @@ from test_framework.script_util import (
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinTestFramework, SkipTest
 from test_framework.util import (
     assert_equal,
 )
@@ -53,11 +53,15 @@ def calculate_muhash_from_sqlite_utxos(filename):
 class UtxoToSqliteTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
+        # Enable wallet but skip deterministic coinbase key import
+        self.uses_wallet = None
         # we want to create some UTXOs with non-standard output scripts
         self.extra_args = [['-acceptnonstdtxn=1']]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_py_sqlite3()
+        if not self.is_wallet_compiled():
+            raise SkipTest("wallet has not been compiled.")
 
     def run_test(self):
         node = self.nodes[0]

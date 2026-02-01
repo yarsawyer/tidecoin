@@ -1081,7 +1081,9 @@ public:
 struct MiniscriptKey {
     uint32_t index;
     size_t key_size;
+    uint8_t scheme_prefix{0};
     size_t size() const { return key_size; }
+    uint8_t operator[](size_t) const { return scheme_prefix; }
 };
 
 /**
@@ -1248,6 +1250,10 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
                 return {};
             }
             if (pubkey.IsFullyValid()) {
+                if (pubkey.size() == 0 || pq::SchemeFromPrefix(pubkey[0]) == nullptr) {
+                    error = "Pubkey must include a valid PQ scheme prefix";
+                    return {};
+                }
                 ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey));
                 return ret;
             }
@@ -1257,11 +1263,15 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
         CKey key = DecodeSecret(str);
         if (key.IsValid()) {
             CPubKey pubkey = key.GetPubKey();
+            if (pubkey.size() == 0 || pq::SchemeFromPrefix(pubkey[0]) == nullptr) {
+                error = "Pubkey must include a valid PQ scheme prefix";
+                return {};
+            }
             out.keys.emplace(pubkey.GetID(), key);
             ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey));
             return ret;
         }
-        error = "Pubkey must be raw prefixed hex or WIF private key";
+        error = "Pubkey must be raw PQ prefixed hex (WIF private keys are not supported)";
         return {};
     }
 
@@ -1364,13 +1374,25 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkey(uint32_t& key_exp_index
         error = "Key origin metadata is not supported";
         return {};
     }
-    return ParsePubkeyInner(key_exp_index, sp, ctx, out, apostrophe, error);
+    auto ret = ParsePubkeyInner(key_exp_index, sp, ctx, out, apostrophe, error);
+    if (ret.empty()) return ret;
+    for (const auto& p : ret) {
+        const auto pfx = p->GetSchemePrefix();
+        if (!pfx || pq::SchemeFromPrefix(*pfx) == nullptr) {
+            error = "Pubkey must include a valid PQ scheme prefix";
+            return {};
+        }
+    }
+    return ret;
 }
 
 std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptContext ctx, const SigningProvider& provider)
 {
     // Key cannot be hybrid
     if (!pubkey.IsValidNonHybrid()) {
+        return nullptr;
+    }
+    if (pubkey.size() == 0 || pq::SchemeFromPrefix(pubkey[0]) == nullptr) {
         return nullptr;
     }
     std::unique_ptr<PubkeyProvider> key_provider = std::make_unique<ConstPubkeyProvider>(0, pubkey);
@@ -1411,11 +1433,17 @@ struct KeyParser {
     template<typename I> std::optional<Key> FromString(I begin, I end) const
     {
         assert(m_out);
-        Key key{static_cast<uint32_t>(m_keys.size()), 0};
+        Key key{static_cast<uint32_t>(m_keys.size()), 0, 0};
         uint32_t exp_index = m_offset + key.index;
         auto pk = ParsePubkey(exp_index, {&*begin, &*end}, ParseContext(), *m_out, m_key_parsing_error);
         if (pk.empty()) return {};
         key.key_size = pk.at(0)->GetSize();
+        const auto pfx = pk.at(0)->GetSchemePrefix();
+        if (!pfx || pq::SchemeFromPrefix(*pfx) == nullptr) {
+            m_key_parsing_error = "Pubkey must include a valid PQ scheme prefix";
+            return {};
+        }
+        key.scheme_prefix = *pfx;
         m_keys.emplace_back(std::move(pk));
         return key;
     }
@@ -1428,11 +1456,16 @@ struct KeyParser {
     template<typename I> std::optional<Key> FromPKBytes(I begin, I end) const
     {
         assert(m_in);
-        Key key{static_cast<uint32_t>(m_keys.size()), 0};
+        Key key{static_cast<uint32_t>(m_keys.size()), 0, 0};
         CPubKey pubkey(begin, end);
         if (auto pubkey_provider = InferPubkey(pubkey, ParseContext(), *m_in)) {
             m_keys.emplace_back();
             key.key_size = pubkey_provider->GetSize();
+            if (pubkey.size() == 0 || pq::SchemeFromPrefix(pubkey[0]) == nullptr) {
+                m_key_parsing_error = "Pubkey must include a valid PQ scheme prefix";
+                return {};
+            }
+            key.scheme_prefix = pubkey[0];
             m_keys.back().push_back(std::move(pubkey_provider));
             return key;
         }
@@ -1449,8 +1482,13 @@ struct KeyParser {
         CPubKey pubkey;
         if (m_in->GetPubKey(keyid, pubkey)) {
             if (auto pubkey_provider = InferPubkey(pubkey, ParseContext(), *m_in)) {
-                Key key{static_cast<uint32_t>(m_keys.size()), 0};
+                Key key{static_cast<uint32_t>(m_keys.size()), 0, 0};
                 key.key_size = pubkey_provider->GetSize();
+                if (pubkey.size() == 0 || pq::SchemeFromPrefix(pubkey[0]) == nullptr) {
+                    m_key_parsing_error = "Pubkey must include a valid PQ scheme prefix";
+                    return {};
+                }
+                key.scheme_prefix = pubkey[0];
                 m_keys.emplace_back();
                 m_keys.back().push_back(std::move(pubkey_provider));
                 return key;

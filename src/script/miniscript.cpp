@@ -256,11 +256,11 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
 }
 
 size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs,
-                        size_t n_keys, MiniscriptContext ms_ctx) {
+                        size_t n_keys, size_t key_push_size, size_t keys_push_size, MiniscriptContext ms_ctx) {
     switch (fragment) {
         case Fragment::JUST_1:
         case Fragment::JUST_0: return 1;
-        case Fragment::PK_K: return IsTapscript(ms_ctx) ? 33 : 34;
+        case Fragment::PK_K: return key_push_size;
         case Fragment::PK_H: return 3 + 21;
         case Fragment::OLDER:
         case Fragment::AFTER: return 1 + BuildScript(k).size();
@@ -268,7 +268,7 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
         case Fragment::SHA256: return 4 + 2 + 33;
         case Fragment::HASH160:
         case Fragment::RIPEMD160: return 4 + 2 + 21;
-        case Fragment::MULTI: return 1 + BuildScript(n_keys).size() + BuildScript(k).size() + 34 * n_keys;
+        case Fragment::MULTI: return 1 + BuildScript(n_keys).size() + BuildScript(k).size() + keys_push_size;
         case Fragment::AND_V: return subsize;
         case Fragment::WRAP_V: return subsize + (sub0typ << "x"_mst);
         case Fragment::WRAP_S:

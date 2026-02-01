@@ -14,7 +14,7 @@
 #include <boost/test/unit_test.hpp>
 
 struct HeadersGeneratorSetup : public RegTestingSetup {
-    /** Search for a nonce to meet (regtest) proof of work */
+    /** Initialize a nonce without grinding expensive PQ PoW. */
     void FindProofOfWork(CBlockHeader& starting_header);
     /**
      * Generate headers in a chain that build off a given starting hash, using
@@ -28,9 +28,7 @@ struct HeadersGeneratorSetup : public RegTestingSetup {
 
 void HeadersGeneratorSetup::FindProofOfWork(CBlockHeader& starting_header)
 {
-    while (!CheckProofOfWork(starting_header.GetPoWHash(), starting_header.nBits, Params().GetConsensus())) {
-        ++(starting_header.nNonce);
-    }
+    starting_header.nNonce = 0;
 }
 
 void HeadersGeneratorSetup::GenerateHeaders(std::vector<CBlockHeader>& headers,
@@ -58,7 +56,7 @@ void HeadersGeneratorSetup::GenerateHeaders(std::vector<CBlockHeader>& headers,
 BOOST_FIXTURE_TEST_SUITE(headers_sync_chainwork_tests, HeadersGeneratorSetup)
 
 // In this test, we construct two sets of headers from genesis, one with
-// sufficient proof of work and one without.
+// sufficient chain work and one without.
 // 1. We deliver the first set of headers and verify that the headers sync state
 //    updates to the REDOWNLOAD phase successfully.
 // 2. Then we deliver the second set of headers and verify that they fail
@@ -72,11 +70,11 @@ BOOST_AUTO_TEST_CASE(headers_sync_state)
 
     std::unique_ptr<HeadersSyncState> hss;
 
+    // Use enough headers to cross multiple commitment points with the default
+    // commitment period, while avoiding PQ PoW grinding in this test.
     const int target_blocks = 15000;
-    arith_uint256 chain_work = target_blocks*2;
 
-    // Generate headers for two different chains (using differing merkle roots
-    // to ensure the headers are different).
+    // Generate headers for the first chain.
     GenerateHeaders(first_chain, target_blocks-1, Params().GenesisBlock().GetHash(),
             Params().GenesisBlock().nVersion, Params().GenesisBlock().nTime,
             ArithToUint256(0), Params().GenesisBlock().nBits);
@@ -86,6 +84,11 @@ BOOST_AUTO_TEST_CASE(headers_sync_state)
             ArithToUint256(1), Params().GenesisBlock().nBits);
 
     const CBlockIndex* chain_start = WITH_LOCK(::cs_main, return m_node.chainman->m_blockman.LookupBlockIndex(Params().GenesisBlock().GetHash()));
+    const arith_uint256 per_block_proof = GetBlockProof(CBlockIndex(Params().GenesisBlock()));
+    arith_uint256 chain_work = chain_start->nChainWork;
+    for (int i = 0; i < target_blocks - 1; ++i) {
+        chain_work += per_block_proof;
+    }
     std::vector<CBlockHeader> headers_batch;
 
     // Feed the first chain to HeadersSyncState, by delivering 1 header
@@ -97,7 +100,7 @@ BOOST_AUTO_TEST_CASE(headers_sync_state)
     // Pretend the first header is still "full", so we don't abort.
     auto result = hss->ProcessNextHeaders(headers_batch, true);
 
-    // This chain should look valid, and we should have met the proof-of-work
+    // This chain should look valid, and we should have met the chain work
     // requirement.
     BOOST_CHECK(result.success);
     BOOST_CHECK(result.request_more);
@@ -149,6 +152,8 @@ BOOST_AUTO_TEST_CASE(headers_sync_window_retarget_post_auxpow)
     Consensus::Params params = Params().GetConsensus();
     params.nNewPowDiffHeight = 0;
     params.nPowAveragingWindow = 4;
+    params.nPowMaxAdjustUp = 16;
+    params.nPowMaxAdjustDown = 32;
     params.fPowAllowMinDifficultyBlocks = false;
     params.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
 

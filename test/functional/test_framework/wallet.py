@@ -13,7 +13,7 @@ from typing import (
 )
 from test_framework.address import (
     address_to_scriptpubkey,
-    create_deterministic_address_bcrt1_p2wsh_op_true,
+    create_deterministic_address_p2wsh_op_true,
     key_to_p2pkh,
     key_to_p2sh_p2wpkh,
     key_to_p2wpkh,
@@ -97,7 +97,7 @@ class MiniWallet:
             self._scriptPubKey = key_to_p2pk_script(pub_key)
         elif mode == MiniWalletMode.ADDRESS_OP_TRUE:
             if tag_name is None:
-                self._address, self._witness_script = create_deterministic_address_bcrt1_p2wsh_op_true()
+                self._address, self._witness_script = create_deterministic_address_p2wsh_op_true(self._test_node.chain)
             else:
                 tag_hash = hash256(tag_name.encode())
                 self._witness_script = CScript([tag_hash, OP_DROP, OP_TRUE])
@@ -371,7 +371,7 @@ class MiniWallet:
         assert fee >= 0
         # calculate fee
         if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
-            vsize = Decimal(104)  # anyone-can-spend
+            vsize = Decimal(96)  # anyone-can-spend (Tidecoin vsize)
             if target_vsize and not fee:  # respect fee_rate if target vsize is passed
                 fee = get_fee(target_vsize, fee_rate)
             send_value = utxo_to_spend["value"] - (fee or (fee_rate * vsize / 1000))

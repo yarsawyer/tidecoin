@@ -148,11 +148,18 @@ BOOST_FIXTURE_TEST_CASE(stale_tip_peer_management, OutboundTest)
     constexpr int max_outbound_full_relay = MAX_OUTBOUND_FULL_RELAY_CONNECTIONS;
     CConnman::Options options;
     options.m_max_automatic_connections = DEFAULT_MAX_PEER_CONNECTIONS;
+    options.m_use_addrman_outgoing = true;
+    options.m_msgproc = peerLogic.get();
 
     const auto time_init{GetTime<std::chrono::seconds>()};
     SetMockTime(time_init);
-    const auto time_later{time_init + 3 * std::chrono::seconds{m_node.chainman->GetConsensus().nPowTargetSpacing} + 1s};
+    // Stale-tip checks only run every STALE_CHECK_INTERVAL (10 minutes). With
+    // 60s target spacing, 3*spacing is <10 minutes, so ensure mock time
+    // advances beyond the stale check interval.
+    const auto min_stale_interval{std::chrono::seconds{11min}};
+    const auto time_later{time_init + std::max(3 * std::chrono::seconds{m_node.chainman->GetConsensus().nPowTargetSpacing} + 1s, min_stale_interval)};
     connman->Init(options);
+    connman->SetNetworkActive(true);
     std::vector<CNode *> vNodes;
 
     // Mock some outbound peers

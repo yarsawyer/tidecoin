@@ -83,6 +83,12 @@ def _get_testkeys_path():
         candidate = os.path.join(builddir, "bin", "tidecoin-testkeys")
         if os.path.exists(candidate):
             return candidate
+    # Fallback to common in-repo build directories.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    for build_dir in ("build", "build_dev_mode"):
+        candidate = os.path.join(repo_root, build_dir, "bin", "tidecoin-testkeys")
+        if os.path.exists(candidate):
+            return candidate
     raise FileNotFoundError("tidecoin-testkeys not found; set TIDECOIN_TESTKEYS or BUILDDIR")
 
 def _run_testkeys(*, scheme: str, count: int = 1):
@@ -183,6 +189,22 @@ def generate_keypair(compressed=True, wif=False, scheme=None):
     if wif:
         return privkey_wif, pubkey
     return privkey_wif, pubkey
+
+def generate_keypair_at_index(index, scheme=None):
+    """Generate a deterministic PQ keypair at a fixed index without advancing the global counter."""
+    use_scheme = scheme if scheme is not None else _pq_default_scheme
+    path = _get_testkeys_path()
+    cmd = [
+        path,
+        f"--scheme={use_scheme}",
+        f"--seed={_pq_seed_hex}",
+        f"--index={index}",
+        "--count=1",
+    ]
+    out = subprocess.check_output(cmd, text=True)
+    data = json.loads(out)
+    item = data[0] if isinstance(data, list) else data
+    return item["privkey_wif"], bytes.fromhex(item["pubkey_hex"])
 
 def sign_tx_with_key(node, tx, privkeys, prevtxs=None, sighash_type=None):
     """Sign a transaction using signrawtransactionwithkey RPC."""

@@ -9,17 +9,20 @@
 #include <compare>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <type_traits>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include <consensus/consensus.h>
 #include <policy/policy.h>
+#include <pq/pq_scheme.h>
 #include <script/interpreter.h>
 #include <script/parsing.h>
 #include <script/script.h>
@@ -29,6 +32,8 @@
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/vector.h>
+
+class CPubKey;
 
 namespace miniscript {
 
@@ -256,8 +261,28 @@ constexpr uint32_t MaxScriptSize(MiniscriptContext)
 //! Helper function for Node::CalcType.
 Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys, MiniscriptContext ms_ctx);
 
+//! Return the serialized size of a script push for a data element.
+inline size_t ScriptPushSize(size_t data_size)
+{
+    const size_t prefix = data_size < 0x4c ? 1 : (data_size <= 0xff ? 2 : (data_size <= 0xffff ? 3 : 5));
+    return prefix + data_size;
+}
+
+//! Return the serialized size of a witness stack element.
+inline uint32_t WitnessElementSize(size_t data_size)
+{
+    return static_cast<uint32_t>(GetSizeOfCompactSize(data_size) + data_size);
+}
+
+template<typename T, typename = void>
+struct HasIndexOperator : std::false_type {};
+
+template<typename T>
+struct HasIndexOperator<T, std::void_t<decltype(std::declval<const T&>()[0])>> : std::true_type {};
+
 //! Helper function for Node::CalcScriptLen.
-size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys, MiniscriptContext ms_ctx);
+size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys,
+                        size_t key_push_size, size_t keys_push_size, MiniscriptContext ms_ctx);
 
 //! A helper sanitizer/checker for the output of CalcType.
 Type SanitizeType(Type x);
@@ -545,7 +570,16 @@ private:
             subsize += sub->ScriptSize();
         }
         Type sub0type = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
-        return internal::ComputeScriptLen(fragment, sub0type, subsize, k, subs.size(), keys.size(), m_script_ctx);
+        size_t key_push_size = 0;
+        size_t keys_push_size = 0;
+        if (!keys.empty()) {
+            key_push_size = internal::ScriptPushSize(keys[0].size());
+            for (const auto& key : keys) {
+                keys_push_size += internal::ScriptPushSize(key.size());
+            }
+        }
+        return internal::ComputeScriptLen(fragment, sub0type, subsize, k, subs.size(), keys.size(),
+                                          key_push_size, keys_push_size, m_script_ctx);
     }
 
     /* Apply a recursive algorithm to a Miniscript tree, without actual recursive calls.
@@ -1079,15 +1113,31 @@ private:
     }
 
     internal::WitnessSize CalcWitnessSize() const {
-        const uint32_t sig_size = 1 + 72;
-        const uint32_t pubkey_size = 1 + 33;
+        const auto sig_elem_size = [](const Key& key) -> uint32_t {
+            if constexpr (internal::HasIndexOperator<Key>::value) {
+                CHECK_NONFATAL(key.size() > 0);
+                const auto* scheme = pq::SchemeFromPrefix(static_cast<uint8_t>(key[0]));
+                CHECK_NONFATAL(scheme != nullptr);
+                const size_t sig_bytes = scheme->sig_bytes_max;
+                return internal::WitnessElementSize(sig_bytes + 1);
+            } else {
+                return internal::WitnessElementSize(72 + 1);
+            }
+        };
+        const auto pubkey_elem_size = [](const Key& key) -> uint32_t {
+            return internal::WitnessElementSize(key.size());
+        };
         switch (fragment) {
             case Fragment::JUST_0: return {{}, 0};
             case Fragment::JUST_1:
             case Fragment::OLDER:
             case Fragment::AFTER: return {0, {}};
-            case Fragment::PK_K: return {sig_size, 1};
-            case Fragment::PK_H: return {sig_size + pubkey_size, 1 + pubkey_size};
+            case Fragment::PK_K: return {sig_elem_size(keys[0]), 1};
+            case Fragment::PK_H: {
+                const uint32_t pubkey_size = pubkey_elem_size(keys[0]);
+                const uint32_t sig_size = sig_elem_size(keys[0]);
+                return {sig_size + pubkey_size, 1 + pubkey_size};
+            }
             case Fragment::SHA256:
             case Fragment::RIPEMD160:
             case Fragment::HASH256:
@@ -1107,7 +1157,19 @@ private:
             case Fragment::OR_C: return {subs[0]->ws.sat | (subs[0]->ws.dsat + subs[1]->ws.sat), {}};
             case Fragment::OR_D: return {subs[0]->ws.sat | (subs[0]->ws.dsat + subs[1]->ws.sat), subs[0]->ws.dsat + subs[1]->ws.dsat};
             case Fragment::OR_I: return {(subs[0]->ws.sat + 1 + 1) | (subs[1]->ws.sat + 1), (subs[0]->ws.dsat + 1 + 1) | (subs[1]->ws.dsat + 1)};
-            case Fragment::MULTI: return {k * sig_size + 1, k + 1};
+            case Fragment::MULTI: {
+                std::vector<uint32_t> sig_sizes;
+                sig_sizes.reserve(keys.size());
+                for (const auto& key : keys) {
+                    sig_sizes.push_back(sig_elem_size(key));
+                }
+                std::sort(sig_sizes.begin(), sig_sizes.end(), std::greater<uint32_t>());
+                uint32_t sat_size = 1;
+                for (uint32_t i = 0; i < k && i < sig_sizes.size(); ++i) {
+                    sat_size += sig_sizes[i];
+                }
+                return {sat_size, k + 1};
+            }
             case Fragment::WRAP_A:
             case Fragment::WRAP_N:
             case Fragment::WRAP_S:
@@ -1833,7 +1895,7 @@ inline NodeRef<Key> Parse(std::span<const char> in, const Ctx& ctx)
                 auto& [key, key_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::WRAP_C, Vector(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(key))))));
                 in = in.subspan(key_size + 1);
-                script_size += IsTapscript(ctx.MsContext()) ? 33 : 34;
+                script_size += internal::ScriptPushSize(constructed.back()->subs[0]->keys[0].size());
             } else if (Const("pkh(", in)) {
                 auto res = ParseKeyEnd<Key>(in, ctx);
                 if (!res) return {};
@@ -1847,7 +1909,7 @@ inline NodeRef<Key> Parse(std::span<const char> in, const Ctx& ctx)
                 auto& [key, key_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(key))));
                 in = in.subspan(key_size + 1);
-                script_size += IsTapscript(ctx.MsContext()) ? 32 : 33;
+                script_size += internal::ScriptPushSize(constructed.back()->keys[0].size()) - 1;
             } else if (Const("pk_h(", in)) {
                 auto res = ParseKeyEnd<Key>(in, ctx);
                 if (!res) return {};
@@ -2190,12 +2252,13 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
                 break;
             }
             // Public keys
-            if (in[0].second.size() == 33 || in[0].second.size() == 32) {
+            if (!in[0].second.empty()) {
                 auto key = ctx.FromPKBytes(in[0].second.begin(), in[0].second.end());
-                if (!key) return {};
-                ++in;
-                constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(*key))));
-                break;
+                if (key) {
+                    ++in;
+                    constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(*key))));
+                    break;
+                }
             }
             if (last - in >= 5 && in[0].first == OP_VERIFY && in[1].first == OP_EQUAL && in[3].first == OP_HASH160 && in[4].first == OP_DUP && in[2].second.size() == 20) {
                 auto key = ctx.FromPKHBytes(in[2].second.begin(), in[2].second.end());
@@ -2246,7 +2309,6 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
                 if (!n || last - in < 3 + *n) return {};
                 if (*n < 1 || *n > 20) return {};
                 for (int i = 0; i < *n; ++i) {
-                    if (in[2 + i].second.size() != 33) return {};
                     auto key = ctx.FromPKBytes(in[2 + i].second.begin(), in[2 + i].second.end());
                     if (!key) return {};
                     keys.push_back(std::move(*key));

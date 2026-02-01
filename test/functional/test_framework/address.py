@@ -44,12 +44,23 @@ class AddressType(enum.Enum):
 b58chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 
-def create_deterministic_address_bcrt1_p2wsh_op_true():
+def get_chain_bech32_hrp(chain):
+    """Return the bech32 HRP for the given chain."""
+    return {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}.get(chain, "rtbc")
+
+def create_deterministic_address_p2wsh_op_true(chain):
     """Generates a deterministic bech32 address (segwit v0 P2WSH) that
     can be spent with a witness stack of OP_TRUE.
 
     Returns a tuple with the generated address and the witness script.
     """
+    witness_script = CScript([OP_TRUE])
+    hrp = get_chain_bech32_hrp(chain)
+    address = encode_segwit_address(hrp, 0, sha256(witness_script))
+    return (address, witness_script)
+
+def create_deterministic_address_bcrt1_p2wsh_op_true():
+    """Backward-compatible helper for Bitcoin regtest addresses."""
     return (ADDRESS_BCRT1_P2WSH_OP_TRUE, CScript([OP_TRUE]))
 
 
@@ -158,7 +169,7 @@ def check_script(script):
 
 def bech32_to_bytes(address):
     hrp = address.split('1')[0]
-    if hrp not in ['bc', 'tb', 'bcrt']:
+    if hrp not in ['bc', 'tb', 'bcrt', 'tbc', 'ttbc', 'rtbc', 'q', 'tq', 'rq']:
         return (None, None)
     version, payload = decode_segwit_address(hrp, address)
     if version is None:
