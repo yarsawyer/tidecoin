@@ -7,6 +7,7 @@
 #include <hash.h>
 #include <key.h>
 #include <key_io.h>
+#include <pq/pq_api.h>
 #include <pubkey.h>
 #include <uint256.h>
 #include <util/strencodings.h>
@@ -64,6 +65,15 @@ bool MessageSign(
     if (!privkey.Sign(MessageHash(message), signature_bytes)) {
         return false;
     }
+
+    const CPubKey pubkey = privkey.GetPubKey();
+    if (!pubkey.IsValid()) {
+        return false;
+    }
+    if (pubkey.size() <= 1 || pq::SchemeFromPrefix(pubkey[0]) == nullptr) {
+        return false;
+    }
+    signature_bytes.insert(signature_bytes.end(), pubkey.begin() + 1, pubkey.end());
 
     signature = EncodeBase64(signature_bytes);
 

@@ -2,17 +2,24 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <addresstype.h>
 #include <core_io.h>
 #include <interfaces/chain.h>
+#include <key.h>
+#include <key_io.h>
 #include <node/context.h>
+#include <pq/pq_api.h>
 #include <rpc/blockchain.h>
 #include <rpc/client.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
+#include <script/script.h>
 #include <test/util/setup_common.h>
 #include <univalue.h>
+#include <util/strencodings.h>
 #include <util/time.h>
 
+#include <array>
 #include <any>
 
 #include <boost/test/unit_test.hpp>
@@ -193,16 +200,47 @@ BOOST_AUTO_TEST_CASE(rpc_togglenetwork)
 BOOST_AUTO_TEST_CASE(rpc_rawsign)
 {
     UniValue r;
-    // input is a 1-of-2 multisig (so is output):
-    std::string prevout =
-      "[{\"txid\":\"b4cc287e58f87cdae59417329f710f3ecd75a4ee1d2872b7248f50977c8493f3\","
-      "\"vout\":1,\"scriptPubKey\":\"a914b10c9df5f7edf436c697f02f1efdba4cf399615187\","
-      "\"redeemScript\":\"512103debedc17b3df2badbcdd86d5feb4562b86fe182e5998abd8bcd4f122c6155b1b21027e940bb73ab8732bfdf7f9216ecefca5b94d6df834e77e108f68e66f126044c052ae\"}]";
-    r = CallRPC(std::string("createrawtransaction ")+prevout+" "+
-      "{\"3HqAe9LtNBjnsfM4CyYaWTnvCaUYT7v4oZ\":11}");
+    auto make_key = [](uint8_t tag) {
+        std::array<uint8_t, 64> material{};
+        for (size_t i = 0; i < material.size(); ++i) {
+            material[i] = static_cast<uint8_t>(tag ^ static_cast<uint8_t>(i * 131));
+        }
+        std::vector<uint8_t> pk_raw;
+        pq::SecureKeyBytes sk_raw;
+        BOOST_REQUIRE(pq::KeyGenFromSeed(/*pqhd_version=*/1,
+                                         pq::SchemeId::FALCON_512,
+                                         material,
+                                         pk_raw,
+                                         sk_raw));
+        CPrivKey sk_encoded;
+        BOOST_REQUIRE(pq::EncodeSecretKey(pq::kFalcon512Info,
+                                          std::span<const unsigned char>{sk_raw.data(), sk_raw.size()},
+                                          sk_encoded));
+        CKey key;
+        key.Set(sk_encoded.begin(), sk_encoded.end());
+        BOOST_REQUIRE(key.IsValid());
+        return key;
+    };
+
+    // input is a 1-of-2 PQ multisig (so is output):
+    const CKey key1 = make_key(1);
+    const CKey key2 = make_key(2);
+    const CPubKey pubkey1 = key1.GetPubKey();
+    const CPubKey pubkey2 = key2.GetPubKey();
+    const CScript redeem_script = CScript() << OP_1
+                                           << ToByteVector(pubkey1)
+                                           << ToByteVector(pubkey2)
+                                           << OP_2 << OP_CHECKMULTISIG;
+    const CScript script_pubkey = GetScriptForDestination(ScriptHash(redeem_script));
+    const std::string p2sh_addr = EncodeDestination(ScriptHash(redeem_script));
+    const std::string prevout = strprintf(
+        "[{\"txid\":\"b4cc287e58f87cdae59417329f710f3ecd75a4ee1d2872b7248f50977c8493f3\","
+        "\"vout\":1,\"scriptPubKey\":\"%s\",\"redeemScript\":\"%s\"}]",
+        HexStr(script_pubkey), HexStr(redeem_script));
+    r = CallRPC(strprintf("createrawtransaction %s {\"%s\":11}", prevout, p2sh_addr));
     std::string notsigned = r.get_str();
-    std::string privkey1 = "\"KzsXybp9jX64P5ekX1KUxRQ79Jht9uzW7LorgwE65i5rWACL6LQe\"";
-    std::string privkey2 = "\"Kyhdf5LuKTRx4ge69ybABsiUAWjVRK4XGxAKk2FQLp2HjGMy87Z4\"";
+    std::string privkey1 = strprintf("\"%s\"", EncodeSecret(key1));
+    std::string privkey2 = strprintf("\"%s\"", EncodeSecret(key2));
     r = CallRPC(std::string("signrawtransactionwithkey ")+notsigned+" [] "+prevout);
     BOOST_CHECK(r.get_obj().find_value("complete").get_bool() == false);
     r = CallRPC(std::string("signrawtransactionwithkey ")+notsigned+" ["+privkey1+","+privkey2+"] "+prevout);

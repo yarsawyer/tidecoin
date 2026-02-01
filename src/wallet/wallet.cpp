@@ -1906,7 +1906,10 @@ util::Result<void> CWallet::SetPQHDPolicy(std::optional<uint8_t> receive_scheme,
 
 int CWallet::GetTargetHeightForOutputs() const
 {
-    const std::optional<int> tip_height = chain().getHeight();
+    // The wallet can exist "offline" (e.g. tests or wallet tooling) without a
+    // chain interface attached. In that case, fall back to height 0.
+    if (!m_chain) return 0;
+    const std::optional<int> tip_height = m_chain->getHeight();
     if (!tip_height || *tip_height < 0) {
         return 0;
     }
@@ -3940,6 +3943,9 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
         const uint8_t scheme_prefix = internal ? policy.default_change_scheme : policy.default_receive_scheme;
         const uint256 seed_for_descriptor = internal ? policy.default_change_seed_id : policy.default_seed_id;
         for (OutputType t : OUTPUT_TYPES) {
+            // Don't create descriptors for output types that are not yet active under
+            // current consensus rules (e.g. witness v1 PQ outputs pre-auxpow).
+            if (t == OutputType::BECH32PQ && target_height < consensus.nAuxpowStartHeight) continue;
             WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_for_descriptor, scheme_prefix, t, internal, consensus, target_height);
             auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
             if (IsCrypted()) {

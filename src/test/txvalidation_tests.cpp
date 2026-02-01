@@ -64,7 +64,7 @@ BOOST_FIXTURE_TEST_CASE(tx_mempool_reject_coinbase, TestChain100Setup)
     BOOST_CHECK(result.m_state.GetResult() == TxValidationResult::TX_CONSENSUS);
 }
 
-BOOST_FIXTURE_TEST_CASE(tx_mempool_reject_witness_v1_pre_auxpow, TestChain100SetupStandard)
+BOOST_FIXTURE_TEST_CASE(tx_mempool_accept_witness_v1_auxpow_active, TestChain100SetupStandard)
 {
     LOCK(cs_main);
 
@@ -77,12 +77,12 @@ BOOST_FIXTURE_TEST_CASE(tx_mempool_reject_witness_v1_pre_auxpow, TestChain100Set
                                                            script_pubkey, /*output_amount=*/CAmount(1 * COIN),
                                                            /*submit=*/false);
 
+    const unsigned int initial_pool_size = m_node.mempool->size();
     const MempoolAcceptResult result = m_node.chainman->ProcessTransaction(MakeTransactionRef(tx));
 
-    BOOST_CHECK(result.m_result_type == MempoolAcceptResult::ResultType::INVALID);
-    BOOST_CHECK(result.m_state.IsInvalid());
-    BOOST_CHECK_EQUAL(result.m_state.GetResult(), TxValidationResult::TX_NOT_STANDARD);
-    BOOST_CHECK_EQUAL(result.m_state.GetRejectReason(), "witness-v1-pre-auxpow");
+    BOOST_CHECK(result.m_result_type == MempoolAcceptResult::ResultType::VALID);
+    BOOST_CHECK(result.m_state.IsValid());
+    BOOST_CHECK_EQUAL(m_node.mempool->size(), initial_pool_size + 1);
 }
 
 // Generate a number of random, nonexistent outpoints.

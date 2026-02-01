@@ -1256,7 +1256,30 @@ std::vector<CTxMemPool::txiter> CTxMemPool::GatherClusters(const std::vector<Txi
 
 std::optional<std::string> CTxMemPool::CheckConflictTopology(const setEntries& direct_conflicts)
 {
-    for (const auto& direct_conflict : direct_conflicts) {
+    enum class ViolationKind {
+        None,
+        AncestorsTooMany,
+        DescendantsTooMany,
+        BothAncestorDescendant,
+        NotOnlyParent,
+        NotOnlyChild,
+    };
+
+    struct Violation {
+        ViolationKind kind{ViolationKind::None};
+        bool fee_peak{false};
+        uint64_t ancestor_excess{0};
+        uint64_t descendant_excess{0};
+        CAmount modified_fee{0};
+        Txid txid;
+        std::string message;
+    };
+
+    auto make_violation = [](const txiter& direct_conflict) -> Violation {
+        Violation out;
+        out.modified_fee = direct_conflict->GetModifiedFee();
+        out.txid = direct_conflict->GetSharedTx()->GetHash();
+
         // Ancestor and descendant counts are inclusive of the tx itself.
         const auto ancestor_count{direct_conflict->GetCountWithAncestors()};
         const auto descendant_count{direct_conflict->GetCountWithDescendants()};
@@ -1268,11 +1291,29 @@ std::optional<std::string> CTxMemPool::CheckConflictTopology(const setEntries& d
         // 0 ancestor and 1 descendant
         // 0 ancestor and 0 descendant
         if (ancestor_count > 2) {
-            return strprintf("%s has %u ancestors, max 1 allowed", txid_string, ancestor_count - 1);
-        } else if (descendant_count > 2) {
-            return strprintf("%s has %u descendants, max 1 allowed", txid_string, descendant_count - 1);
-        } else if (has_ancestor && has_descendant) {
-            return strprintf("%s has both ancestor and descendant, exceeding cluster limit of 2", txid_string);
+            out.kind = ViolationKind::AncestorsTooMany;
+            out.ancestor_excess = ancestor_count - 1;
+            out.message = strprintf("%s has %u ancestors, max 1 allowed", txid_string, ancestor_count - 1);
+            return out;
+        }
+        if (descendant_count > 2) {
+            out.kind = ViolationKind::DescendantsTooMany;
+            out.descendant_excess = descendant_count - 1;
+            out.message = strprintf("%s has %u descendants, max 1 allowed", txid_string, descendant_count - 1);
+            return out;
+        }
+        if (has_ancestor && has_descendant) {
+            out.kind = ViolationKind::BothAncestorDescendant;
+            // Prefer the "middle" transaction if it is a strict fee peak in its 3-tx chain.
+            const auto& parents = direct_conflict->GetMemPoolParentsConst();
+            const auto& children = direct_conflict->GetMemPoolChildrenConst();
+            if (!parents.empty() && !children.empty()) {
+                const CAmount parent_fee = parents.begin()->get().GetModifiedFee();
+                const CAmount child_fee = children.begin()->get().GetModifiedFee();
+                out.fee_peak = out.modified_fee > parent_fee && out.modified_fee > child_fee;
+            }
+            out.message = strprintf("%s has both ancestor and descendant, exceeding cluster limit of 2", txid_string);
+            return out;
         }
         // Additionally enforce that:
         // If we have a child,  we are its only parent.
@@ -1280,17 +1321,56 @@ std::optional<std::string> CTxMemPool::CheckConflictTopology(const setEntries& d
         if (has_descendant) {
             const auto& our_child = direct_conflict->GetMemPoolChildrenConst().begin();
             if (our_child->get().GetCountWithAncestors() > 2) {
-                return strprintf("%s is not the only parent of child %s",
-                                 txid_string, our_child->get().GetSharedTx()->GetHash().ToString());
+                out.kind = ViolationKind::NotOnlyParent;
+                out.message = strprintf("%s is not the only parent of child %s",
+                                        txid_string, our_child->get().GetSharedTx()->GetHash().ToString());
+                return out;
             }
         } else if (has_ancestor) {
             const auto& our_parent = direct_conflict->GetMemPoolParentsConst().begin();
             if (our_parent->get().GetCountWithDescendants() > 2) {
-                return strprintf("%s is not the only child of parent %s",
-                                 txid_string, our_parent->get().GetSharedTx()->GetHash().ToString());
+                out.kind = ViolationKind::NotOnlyChild;
+                out.message = strprintf("%s is not the only child of parent %s",
+                                        txid_string, our_parent->get().GetSharedTx()->GetHash().ToString());
+                return out;
             }
         }
+        return out;
+    };
+
+    auto rank = [](const Violation& v) -> int {
+        if (v.kind == ViolationKind::BothAncestorDescendant && v.fee_peak) return 0;
+        if (v.kind == ViolationKind::DescendantsTooMany) return 1;
+        if (v.kind == ViolationKind::AncestorsTooMany) return 2;
+        if (v.kind == ViolationKind::BothAncestorDescendant) return 3;
+        if (v.kind == ViolationKind::NotOnlyParent) return 4;
+        if (v.kind == ViolationKind::NotOnlyChild) return 5;
+        return 6;
+    };
+
+    auto better = [&](const Violation& a, const Violation& b) -> bool {
+        const int ra = rank(a);
+        const int rb = rank(b);
+        if (ra != rb) return ra < rb;
+        if (a.kind == ViolationKind::DescendantsTooMany && a.descendant_excess != b.descendant_excess) {
+            return a.descendant_excess > b.descendant_excess;
+        }
+        if (a.kind == ViolationKind::AncestorsTooMany && a.ancestor_excess != b.ancestor_excess) {
+            return a.ancestor_excess > b.ancestor_excess;
+        }
+        if (a.modified_fee != b.modified_fee) return a.modified_fee > b.modified_fee;
+        return a.txid < b.txid;
+    };
+
+    std::optional<Violation> best;
+    for (const auto& direct_conflict : direct_conflicts) {
+        Violation current = make_violation(direct_conflict);
+        if (current.kind == ViolationKind::None) continue;
+        if (!best || better(current, *best)) {
+            best = std::move(current);
+        }
     }
+    if (best) return best->message;
     return std::nullopt;
 }
 

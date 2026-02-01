@@ -183,11 +183,12 @@ BOOST_FIXTURE_TEST_CASE(handle_missing_inputs, TestChain100Setup)
     // their parents.
     CKey wallet_key = GenerateRandomKey(pq::SchemeId::FALCON_512);
     CScript destination = GetScriptForDestination(PKHash(wallet_key.GetPubKey()));
+    const CAmount coinbase_value{m_coinbase_txns[0]->vout[0].nValue};
     // Amount for spending coinbase in a 1-in-1-out tx, at depth n, each time deducting 1000 from the amount as fees.
-    CAmount amount_depth_1{50 * COIN - 1000};
+    CAmount amount_depth_1{coinbase_value - 1000};
     CAmount amount_depth_2{amount_depth_1 - 1000};
     // Amount for spending coinbase in a 1-in-2-out tx, deducting 1000 in fees
-    CAmount amount_split_half{25 * COIN - 500};
+    CAmount amount_split_half{(coinbase_value - 1000) / 2};
     int test_chain_height{100};
 
     TxValidationState state_orphan;
@@ -199,7 +200,14 @@ BOOST_FIXTURE_TEST_CASE(handle_missing_inputs, TestChain100Setup)
     size_t coinbase_idx{0};
 
     for (int decisions = 0; decisions < (1 << 4); ++decisions) {
-        auto mtx_single_parent = CreateValidMempoolTransaction(m_coinbase_txns[coinbase_idx], /*input_vout=*/0, test_chain_height, coinbaseKey, destination, amount_depth_1, /*submit=*/false);
+        auto mtx_single_parent = CreateValidTransaction(/*input_transactions=*/{m_coinbase_txns[coinbase_idx]},
+                                                       /*inputs=*/{{m_coinbase_txns[coinbase_idx]->GetHash(), 0}},
+                                                       /*input_height=*/test_chain_height,
+                                                       /*input_signing_keys=*/{coinbaseKey},
+                                                       /*outputs=*/{{amount_depth_1, destination}},
+                                                       /*feerate=*/m_node.mempool->m_opts.min_relay_feerate,
+                                                       /*fee_output=*/0)
+                                      .first;
         auto single_parent = MakeTransactionRef(mtx_single_parent);
 
         auto mtx_orphan = CreateValidMempoolTransaction(single_parent, /*input_vout=*/0, test_chain_height, wallet_key, destination, amount_depth_2, /*submit=*/false);

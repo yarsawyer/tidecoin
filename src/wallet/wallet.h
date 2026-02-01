@@ -141,7 +141,9 @@ constexpr CAmount HIGH_TX_FEE_PER_KB{COIN / 100};
 //! -maxtxfee will warn if called with a higher fee than this amount (in satoshis)
 constexpr CAmount HIGH_MAX_TX_FEE{100 * HIGH_TX_FEE_PER_KB};
 //! Pre-calculated constants for input size estimation in *virtual size*
-static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
+// Tidecoin uses PQ pubkeys; witness sizes are larger than Bitcoin's legacy
+// 33-byte pubkeys, so the standard dummy nested P2WPKH input size differs.
+static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 308;
 
 class CCoinControl;
 

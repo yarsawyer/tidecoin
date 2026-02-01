@@ -38,7 +38,7 @@ BOOST_AUTO_TEST_CASE(parse_script)
         {"'17'", "023137"},
         {"ELSE", "67"},
         {"NOP10", "b9"},
-        {"CHECKSIGADD", "ba"},
+        {"SHA512", "b3"},
     };
     std::string all_in;
     std::string all_out;
@@ -48,6 +48,9 @@ BOOST_AUTO_TEST_CASE(parse_script)
         all_out += out;
     }
     BOOST_CHECK_EQUAL(HexStr(ParseScript(all_in)), all_out);
+
+    // OP_CHECKSIGADD is intentionally disabled in this codebase (taproot removed).
+    BOOST_CHECK_EXCEPTION(ParseScript("CHECKSIGADD"), std::runtime_error, HasReason("script parse error: unknown opcode"));
 
     BOOST_CHECK_EXCEPTION(ParseScript("11111111111111111111"), std::runtime_error, HasReason("script parse error: decimal numeric value only allowed in the range -0xFFFFFFFF...0xFFFFFFFF"));
     BOOST_CHECK_EXCEPTION(ParseScript("11111111111"), std::runtime_error, HasReason("script parse error: decimal numeric value only allowed in the range -0xFFFFFFFF...0xFFFFFFFF"));

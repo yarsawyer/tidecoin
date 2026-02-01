@@ -204,7 +204,7 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].threshold = 6048; // 75% of 8064
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 2016;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 8064;
 
         consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000000000000000000000001"};
         consensus.defaultAssumeValid = uint256{"b34a457c601ef8ce3294116e3296078797be7ded1b0d12515395db9ab5e93ab8"}; // 1683528
@@ -339,7 +339,18 @@ public:
         fDefaultConsistencyChecks = true;
         m_is_mockable_chain = true;
 
-        m_assumeutxo_data = {};
+        // AssumeUTXO data for the deterministic regtest chain produced by our unit-test
+        // harness (TestChain100Setup mines to height 110 with deterministic PQ coinbase).
+        //
+        // To regenerate:
+        //   ./build/bin/test_tidecoin --run_test=validation_chainstatemanager_tests/chainstatemanager_activate_snapshot --report_level=detailed -- --printtoconsole=1
+        // and use the printed "txoutset_hash" / "nchaintx" / "base_hash" values.
+        m_assumeutxo_data = {
+            {.height = 110,
+             .hash_serialized = AssumeutxoHash{uint256{"6cdd7e279d1552f1bee12232d1ab64465d9d34b8bc952da931419e33b5f2f8e5"}},
+             .m_chain_tx_count = 111,
+             .blockhash = consteval_ctor(uint256{"28c79d24d42b39e86e9cd981e3b08c940c0d1413225e4eb49d2911ed721a0b99"})},
+        };
 
         chainTxData = ChainTxData{};
 

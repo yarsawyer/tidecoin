@@ -12,6 +12,8 @@
 #include <util/chaintype.h>
 #include <validation.h>
 
+#include <algorithm>
+#include <limits>
 #include <string>
 
 #include <test/util/setup_common.h>
@@ -22,19 +24,45 @@ BOOST_FIXTURE_TEST_SUITE(validation_tests, TestingSetup)
 
 static void TestBlockSubsidyHalvings(const Consensus::Params& consensusParams)
 {
-    int maxHalvings = 64;
-    CAmount nInitialSubsidy = 50 * COIN;
+    // Tidecoin subsidy schedule:
+    // - Initial subsidy is 40 * COIN.
+    // - At each step, the subsidy quarters (right shift by 2).
+    // - The distance between steps doubles each time (cumulative height schedule).
+    //
+    // This test checks behavior at each subsidy transition boundary.
+    const CAmount initial_subsidy{40 * COIN};
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(/*nHeight=*/0, consensusParams), initial_subsidy);
 
-    CAmount nPreviousSubsidy = nInitialSubsidy * 2; // for height == 0
-    BOOST_CHECK_EQUAL(nPreviousSubsidy, nInitialSubsidy * 2);
-    for (int nHalvings = 0; nHalvings < maxHalvings; nHalvings++) {
-        int nHeight = nHalvings * consensusParams.nSubsidyHalvingInterval;
-        CAmount nSubsidy = GetBlockSubsidy(nHeight, consensusParams);
-        BOOST_CHECK(nSubsidy <= nInitialSubsidy);
-        BOOST_CHECK_EQUAL(nSubsidy, nPreviousSubsidy / 2);
-        nPreviousSubsidy = nSubsidy;
+    const int64_t interval0{consensusParams.nSubsidyHalvingInterval};
+    BOOST_CHECK(interval0 > 0);
+
+    CAmount prev_subsidy{initial_subsidy};
+    int64_t interval{interval0};
+    int64_t boundary_height{interval0};
+
+    // Iterate transitions until we either hit the int height limit or subsidy reaches 0.
+    for (int step = 0; step <= 64; ++step) {
+        if (boundary_height > std::numeric_limits<int>::max()) break;
+
+        const int boundary{static_cast<int>(boundary_height)};
+        const CAmount expected{prev_subsidy >> 2};
+        BOOST_TEST_CONTEXT("step=" << step << " boundary=" << boundary_height << " interval0=" << interval0) {
+            if (boundary > 0) {
+                BOOST_CHECK_EQUAL(GetBlockSubsidy(boundary - 1, consensusParams), prev_subsidy);
+            }
+
+            BOOST_CHECK_EQUAL(GetBlockSubsidy(boundary, consensusParams), expected);
+        }
+
+        prev_subsidy = expected;
+        if (prev_subsidy == 0) break;
+
+        // Next boundary increases by a doubled interval.
+        if (interval > (std::numeric_limits<int64_t>::max() / 2)) break;
+        interval *= 2;
+        if (boundary_height > (std::numeric_limits<int64_t>::max() - interval)) break;
+        boundary_height += interval;
     }
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(maxHalvings * consensusParams.nSubsidyHalvingInterval, consensusParams), 0);
 }
 
 static void TestBlockSubsidyHalvings(int nSubsidyHalvingInterval)
@@ -55,14 +83,42 @@ BOOST_AUTO_TEST_CASE(block_subsidy_test)
 BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    CAmount nSum = 0;
-    for (int nHeight = 0; nHeight < 14000000; nHeight += 1000) {
-        CAmount nSubsidy = GetBlockSubsidy(nHeight, chainParams->GetConsensus());
-        BOOST_CHECK(nSubsidy <= 50 * COIN);
-        nSum += nSubsidy * 1000;
-        BOOST_CHECK(MoneyRange(nSum));
+    // Exact total subsidy up to a fixed height, based on the Tidecoin subsidy schedule.
+    // Keeping this as a constant catches accidental changes to emission parameters.
+    constexpr int64_t max_height{14'000'000};
+    constexpr CAmount expected_total{CAmount{2059564062500000}};
+
+    const auto& consensus{chainParams->GetConsensus()};
+    BOOST_CHECK(consensus.nSubsidyHalvingInterval > 0);
+
+    CAmount sum{0};
+    CAmount subsidy{GetBlockSubsidy(/*nHeight=*/0, consensus)};
+
+    int64_t height{0};
+    int64_t interval{consensus.nSubsidyHalvingInterval};
+    int64_t next_change{interval};
+
+    while (height < max_height) {
+        const int64_t end{std::min<int64_t>(max_height, next_change)};
+        const int64_t blocks{end - height};
+        BOOST_CHECK(blocks >= 0);
+
+        BOOST_CHECK(subsidy <= 40 * COIN);
+        sum += subsidy * blocks;
+        BOOST_CHECK(MoneyRange(sum));
+
+        height = end;
+        if (height >= max_height) break;
+
+        // Move to next step: quarter subsidy and double interval.
+        subsidy >>= 2;
+        interval *= 2;
+        next_change += interval;
+
+        if (subsidy == 0) break;
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{2099999997690000});
+
+    BOOST_CHECK_EQUAL(sum, expected_total);
 }
 
 //! Test retrieval of valid assumeutxo values.
@@ -80,11 +136,11 @@ BOOST_AUTO_TEST_CASE(test_assumeutxo)
     }
 
     const auto out110 = *params->AssumeutxoForHeight(110);
-    BOOST_CHECK_EQUAL(out110.hash_serialized.ToString(), "b952555c8ab81fec46f3d4253b7af256d766ceb39fb7752b9d18cdf4a0141327");
+    BOOST_CHECK_EQUAL(out110.hash_serialized.ToString(), "6cdd7e279d1552f1bee12232d1ab64465d9d34b8bc952da931419e33b5f2f8e5");
     BOOST_CHECK_EQUAL(out110.m_chain_tx_count, 111U);
 
-    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256{"6affe030b7965ab538f820a56ef56c8149b7dc1d1c144af57113be080db7c397"});
-    BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "b952555c8ab81fec46f3d4253b7af256d766ceb39fb7752b9d18cdf4a0141327");
+    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256{"28c79d24d42b39e86e9cd981e3b08c940c0d1413225e4eb49d2911ed721a0b99"});
+    BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "6cdd7e279d1552f1bee12232d1ab64465d9d34b8bc952da931419e33b5f2f8e5");
     BOOST_CHECK_EQUAL(out110_2.m_chain_tx_count, 111U);
 }
 

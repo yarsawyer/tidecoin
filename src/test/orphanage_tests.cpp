@@ -8,6 +8,7 @@
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <pubkey.h>
+#include <pq/pq_api.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <test/util/random.h>
@@ -23,10 +24,22 @@ BOOST_FIXTURE_TEST_SUITE(orphanage_tests, TestingSetup)
 
 static void MakeNewKeyWithFastRandomContext(CKey& key, FastRandomContext& rand_ctx)
 {
-    std::vector<unsigned char> keydata;
-    keydata = rand_ctx.randbytes(32);
-    key.Set(keydata.data(), keydata.data() + keydata.size());
-    assert(key.IsValid());
+    std::array<uint8_t, 64> material{};
+    const auto bytes = rand_ctx.randbytes(material.size());
+    std::copy(bytes.begin(), bytes.end(), material.begin());
+    std::vector<uint8_t> pk_raw;
+    pq::SecureKeyBytes sk_raw;
+    BOOST_REQUIRE(pq::KeyGenFromSeed(/*pqhd_version=*/1,
+                                     pq::SchemeId::FALCON_512,
+                                     material,
+                                     pk_raw,
+                                     sk_raw));
+    CPrivKey sk_encoded;
+    BOOST_REQUIRE(pq::EncodeSecretKey(pq::kFalcon512Info,
+                                      std::span<const unsigned char>{sk_raw.data(), sk_raw.size()},
+                                      sk_encoded));
+    key.Set(sk_encoded.begin(), sk_encoded.end());
+    BOOST_REQUIRE(key.IsValid());
 }
 
 // Creates a transaction with 2 outputs. Spends all outpoints. If outpoints is empty, spends a random one.

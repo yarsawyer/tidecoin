@@ -197,43 +197,24 @@ BOOST_FIXTURE_TEST_CASE(checkinputs_test, Dersig100Setup)
     spend_tx.vout[3].nValue = 11*CENT;
     spend_tx.vout[3].scriptPubKey = CScript() << OP_CHECKSEQUENCEVERIFY << OP_DROP << ToByteVector(coinbaseKey.GetPubKey()) << OP_CHECKSIG;
 
-    // Sign, with a non-DER signature
+    // Sign.
     {
         std::vector<unsigned char> vchSig;
         uint256 hash = SignatureHash(p2pk_scriptPubKey, spend_tx, 0, SIGHASH_ALL, 0, SigVersion::BASE);
         BOOST_CHECK(coinbaseKey.Sign(hash, vchSig));
-        vchSig.push_back((unsigned char) 0); // padding byte makes this non-DER
         vchSig.push_back((unsigned char)SIGHASH_ALL);
         spend_tx.vin[0].scriptSig << vchSig;
     }
 
-    // Test that invalidity under a set of flags doesn't preclude validity
-    // under other (eg consensus) flags.
-    // spend_tx is invalid according to DERSIG
+    // This transaction should be valid under all script flag combinations. Don't add these checks
+    // to the cache, so we can test that block validation works fine in the absence of cached
+    // successes.
     {
         LOCK(cs_main);
-
-        TxValidationState state;
-        PrecomputedTransactionData ptd_spend_tx;
-
-        BOOST_CHECK(!CheckInputScripts(CTransaction(spend_tx), state, &m_node.chainman->ActiveChainstate().CoinsTip(), SCRIPT_VERIFY_P2SH | 0, true, true, ptd_spend_tx, m_node.chainman->m_validation_cache, nullptr));
-
-        // If we call again asking for scriptchecks (as happens in
-        // ConnectBlock), we should add a script check object for this -- we're
-        // not caching invalidity (if that changes, delete this test case).
-        std::vector<CScriptCheck> scriptchecks;
-        BOOST_CHECK(CheckInputScripts(CTransaction(spend_tx), state, &m_node.chainman->ActiveChainstate().CoinsTip(), SCRIPT_VERIFY_P2SH | 0, true, true, ptd_spend_tx, m_node.chainman->m_validation_cache, &scriptchecks));
-        BOOST_CHECK_EQUAL(scriptchecks.size(), 1U);
-
-        // Test that CheckInputScripts returns true iff DERSIG-enforcing flags are
-        // not present.  Don't add these checks to the cache, so that we can
-        // test later that block validation works fine in the absence of cached
-        // successes.
         ValidateCheckInputsForAllFlags(CTransaction(spend_tx), 0 | 0 | 0, false, m_node.chainman->ActiveChainstate().CoinsTip(), m_node.chainman->m_validation_cache);
     }
 
-    // And if we produce a block with this tx, it should be valid (DERSIG not
-    // enabled yet), even though there's no cache entry.
+    // And if we produce a block with this tx, it should be valid even though there's no cache entry.
     CBlock block;
 
     block = CreateAndProcessBlock({spend_tx}, p2pk_scriptPubKey);

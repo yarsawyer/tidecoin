@@ -319,13 +319,39 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     txFrom.vout[3].scriptPubKey = GetScriptForDestination(ScriptHash(oneAndTwo));
     txFrom.vout[3].nValue = 4000;
 
-    // vout[4] is max sigops:
-    CScript fifteenSigops; fifteenSigops << OP_1;
-    for (unsigned i = 0; i < MAX_P2SH_SIGOPS; i++)
-        fifteenSigops << ToByteVector(key[i%3].GetPubKey());
-    fifteenSigops << OP_15 << OP_CHECKMULTISIG;
-    BOOST_CHECK(keystore.AddCScript(fifteenSigops));
-    txFrom.vout[4].scriptPubKey = GetScriptForDestination(ScriptHash(fifteenSigops));
+    // vout[4] is "max sigops" subject to MAX_P2SH_SIGOPS *and* MAX_SCRIPT_ELEMENT_SIZE.
+    //
+    // With PQ pubkeys, the practical limit is often MAX_SCRIPT_ELEMENT_SIZE (8192 bytes), not
+    // MAX_P2SH_SIGOPS. Compute the largest 1-of-n redeemScript we can store as a single stack
+    // element and still count as standard P2SH.
+    CScript fifteenSigops;
+    unsigned int max_p2sh_multisig_keys{0};
+    {
+        CScript candidate;
+        candidate << OP_1;
+        for (unsigned i = 0; i < MAX_P2SH_SIGOPS; ++i) {
+            CScript tmp = candidate;
+            tmp << ToByteVector(key[i % 3].GetPubKey());
+            CScript tmp_final = tmp;
+            tmp_final << (max_p2sh_multisig_keys + 1) << OP_CHECKMULTISIG;
+            if (tmp_final.size() > MAX_SCRIPT_ELEMENT_SIZE) break;
+            candidate = std::move(tmp);
+            ++max_p2sh_multisig_keys;
+        }
+        BOOST_REQUIRE(max_p2sh_multisig_keys > 0);
+
+        CScript maxSigops;
+        maxSigops << OP_1;
+        for (unsigned i = 0; i < max_p2sh_multisig_keys; ++i) {
+            maxSigops << ToByteVector(key[i % 3].GetPubKey());
+        }
+        maxSigops << max_p2sh_multisig_keys << OP_CHECKMULTISIG;
+
+        BOOST_CHECK(keystore.AddCScript(maxSigops));
+        txFrom.vout[4].scriptPubKey = GetScriptForDestination(ScriptHash(maxSigops));
+        // Reuse maxSigops below when building the spending scriptSig.
+        fifteenSigops = std::move(maxSigops);
+    }
     txFrom.vout[4].nValue = 5000;
 
     // vout[5/6] are non-standard because they exceed MAX_P2SH_SIGOPS
@@ -363,8 +389,8 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     txTo.vin[4].scriptSig << std::vector<unsigned char>(fifteenSigops.begin(), fifteenSigops.end());
 
     BOOST_CHECK(::AreInputsStandard(CTransaction(txTo), coins));
-    // 22 P2SH sigops for all inputs (1 for vin[0], 6 for vin[3], 15 for vin[4]
-    BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txTo), coins), 22U);
+    // P2SH sigops for all inputs: 1 for vin[0], 6 for vin[3], and max_p2sh_multisig_keys for vin[4].
+    BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txTo), coins), 7U + max_p2sh_multisig_keys);
 
     CMutableTransaction coinbase_tx_mut;
     coinbase_tx_mut.vin.resize(1);

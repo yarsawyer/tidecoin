@@ -78,11 +78,14 @@ std::shared_ptr<CBlock> MinerTestingSetup::Block(const uint256& prev_hash)
     CMutableTransaction txCoinbase(*pblock->vtx[0]);
     txCoinbase.vout.resize(2);
     txCoinbase.vout[1].scriptPubKey = P2WSH_OP_TRUE;
-    txCoinbase.vout[1].nValue = txCoinbase.vout[0].nValue;
+    const int prev_height{WITH_LOCK(::cs_main, return m_node.chainman->m_blockman.LookupBlockIndex(prev_hash)->nHeight)};
+    const int assembled_height{WITH_LOCK(::cs_main, return m_node.chainman->ActiveChain().Height() + 1)};
+    const CAmount assembled_subsidy{GetBlockSubsidy(assembled_height, Params().GetConsensus())};
+    const CAmount fee_delta{txCoinbase.vout[0].nValue - assembled_subsidy};
+    txCoinbase.vout[1].nValue = GetBlockSubsidy(prev_height + 1, Params().GetConsensus()) + fee_delta;
     txCoinbase.vout[0].nValue = 0;
     txCoinbase.vin[0].scriptWitness.SetNull();
     // Always pad with OP_0 at the end to avoid bad-cb-length error
-    const int prev_height{WITH_LOCK(::cs_main, return m_node.chainman->m_blockman.LookupBlockIndex(prev_hash)->nHeight)};
     txCoinbase.vin[0].scriptSig = CScript{} << prev_height + 1 << OP_0;
     txCoinbase.nLockTime = static_cast<uint32_t>(prev_height);
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
@@ -97,7 +100,12 @@ std::shared_ptr<CBlock> MinerTestingSetup::FinalizeBlock(std::shared_ptr<CBlock>
 
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 
-    while (!CheckProofOfWork(pblock->GetPoWHash(), pblock->nBits, Params().GetConsensus())) {
+    const int height{prev_block ? prev_block->nHeight + 1 : 0};
+    if (prev_block) {
+        // Ensure difficulty matches the actual prev block, not the active chain tip.
+        pblock->nBits = GetNextWorkRequired(prev_block, pblock.get(), Params().GetConsensus());
+    }
+    while (!CheckProofOfWork(*pblock, Params().GetConsensus(), height)) {
         ++(pblock->nNonce);
     }
 

@@ -1946,11 +1946,16 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
     int halvings = 0;
-    int high = 0;
-    int interval = consensusParams.nSubsidyHalvingInterval;
+    // Use int64_t for the cumulative schedule math. With the doubling-interval
+    // subsidy schedule, the cumulative height can exceed 2^31 even when
+    // nHeight itself is still within int range (e.g. mainnet around ~1e9),
+    // and using int here would overflow and incorrectly compute extra steps.
+    int64_t high{0};
+    int64_t interval{consensusParams.nSubsidyHalvingInterval};
+    const int64_t height{nHeight};
     for (int i = 0; i <= 64; ++i) {
         high += interval;
-        if (nHeight >= high) {
+        if (height >= high) {
             ++halvings;
         } else {
             break;
