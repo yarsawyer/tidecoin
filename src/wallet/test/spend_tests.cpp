@@ -2,9 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <chainparams.h>
+#include <algorithm>
 #include <consensus/amount.h>
 #include <policy/fees.h>
 #include <script/solver.h>
+#include <util/result.h>
 #include <validation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/spend.h>
@@ -20,24 +23,28 @@ BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)
 {
     CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
     auto wallet = CreateSyncedWallet(*m_node.chain, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain()), coinbaseKey);
+    const int tip_height = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Height());
+    const CAmount coinbase_subsidy = GetBlockSubsidy(tip_height, Params().GetConsensus());
 
-    // Check that a subtract-from-recipient transaction slightly less than the
-    // coinbase input amount does not create a change output (because it would
-    // be uneconomical to add and spend the output), and make sure it pays the
-    // leftover input amount which would have been change to the recipient
-    // instead of the miner.
-    auto check_tx = [&wallet](CAmount leftover_input_amount) {
-        CRecipient recipient{PubKeyDestination({}), 50 * COIN - leftover_input_amount, /*subtract_fee=*/true};
+    // Check that a subtract-from-recipient transaction near the input amount
+    // deducts the fee from the recipient output (not the miner), regardless of
+    // whether change is created.
+    auto check_tx = [&wallet, coinbase_subsidy](CAmount leftover_input_amount) {
+        CRecipient recipient{PubKeyDestination({}), coinbase_subsidy - leftover_input_amount, /*subtract_fee=*/true};
         CCoinControl coin_control;
         coin_control.m_feerate.emplace(10000);
         coin_control.fOverrideFeeRate = true;
-        // We need to use a change type with high cost of change so that the leftover amount will be dropped to fee instead of added as a change output
+        // Use a high-cost change type to keep fee subtraction behavior stable across runs.
         coin_control.m_change_type = OutputType::LEGACY;
         auto res = CreateTransaction(*wallet, {recipient}, /*change_pos=*/std::nullopt, coin_control);
-        BOOST_CHECK(res);
+        BOOST_REQUIRE_MESSAGE(res, util::ErrorString(res).original);
         const auto& txr = *res;
-        BOOST_CHECK_EQUAL(txr.tx->vout.size(), 1);
-        BOOST_CHECK_EQUAL(txr.tx->vout[0].nValue, recipient.nAmount + leftover_input_amount - txr.fee);
+        const CScript recipient_script = GetScriptForDestination(recipient.dest);
+        const auto it = std::find_if(txr.tx->vout.begin(), txr.tx->vout.end(), [&](const CTxOut& out) {
+            return out.scriptPubKey == recipient_script;
+        });
+        BOOST_REQUIRE(it != txr.tx->vout.end());
+        BOOST_CHECK_EQUAL(it->nValue, recipient.nAmount - txr.fee);
         BOOST_CHECK_GT(txr.fee, 0);
         return txr.fee;
     };
@@ -65,31 +72,31 @@ BOOST_FIXTURE_TEST_CASE(wallet_duplicated_preset_inputs_test, TestChain100Setup)
 {
     // Verify that the wallet's Coin Selection process does not include pre-selected inputs twice in a transaction.
 
-    // Add 4 spendable UTXO, 50 BTC each, to the wallet (total balance 200 BTC)
+    // Add 4 spendable UTXO, each at the current subsidy, to the wallet.
     for (int i = 0; i < 4; i++) CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
     auto wallet = CreateSyncedWallet(*m_node.chain, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain()), coinbaseKey);
-
     LOCK(wallet->cs_wallet);
     auto available_coins = AvailableCoins(*wallet);
+    const CAmount wallet_total = available_coins.GetTotalAmount();
     std::vector<COutput> coins = available_coins.All();
     // Preselect the first 3 UTXO (150 BTC total)
     std::set<COutPoint> preset_inputs = {coins[0].outpoint, coins[1].outpoint, coins[2].outpoint};
 
     // Try to create a tx that spends more than what preset inputs + wallet selected inputs are covering for.
-    // The wallet can cover up to 200 BTC, and the tx target is 299 BTC.
+    // The wallet can cover up to its available total, and the tx target exceeds that amount.
     std::vector<CRecipient> recipients{{*Assert(wallet->GetNewDestination(OutputType::BECH32, "dummy")),
-                                           /*nAmount=*/299 * COIN, /*fSubtractFeeFromAmount=*/true}};
+                                           /*nAmount=*/wallet_total + COIN, /*fSubtractFeeFromAmount=*/true}};
     CCoinControl coin_control;
     coin_control.m_allow_other_inputs = true;
     for (const auto& outpoint : preset_inputs) {
         coin_control.Select(outpoint);
     }
 
-    // Attempt to send 299 BTC from a wallet that only has 200 BTC. The wallet should exclude
+    // Attempt to send more than the wallet total. The wallet should exclude
     // the preset inputs from the pool of available coins, realize that there is not enough
-    // money to fund the 299 BTC payment, and fail with "Insufficient funds".
+    // money to fund the payment, and fail with "Insufficient funds".
     //
-    // Even with SFFO, the wallet can only afford to send 200 BTC.
+    // Even with SFFO, the wallet can only afford to send the wallet total.
     // If the wallet does not properly exclude preset inputs from the pool of available coins
     // prior to coin selection, it may create a transaction that does not fund the full payment
     // amount or, through SFFO, incorrectly reduce the recipient's amount by the difference

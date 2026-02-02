@@ -4,6 +4,8 @@
 
 #include <consensus/amount.h>
 #include <policy/policy.h>
+#include <pq/pq_scheme.h>
+#include <pq/pq_txsize.h>
 #include <wallet/coinselection.h>
 #include <wallet/test/wallet_test_fixture.h>
 
@@ -15,7 +17,9 @@ BOOST_FIXTURE_TEST_SUITE(coinselection_tests, TestingSetup)
 static int next_lock_time = 0;
 static FastRandomContext default_rand;
 
-static const int P2WPKH_INPUT_VSIZE = 68;
+static const int P2WPKH_INPUT_VSIZE = static_cast<int>(pq::VSizeP2WPKHInput(
+    pq::SigLenMaxInScript(pq::kFalcon512Info),
+    pq::PubKeyLenWithPrefix(pq::kFalcon512Info)));
 static const int P2WPKH_OUTPUT_VSIZE = 31;
 
 /** Default coin selection parameters (dcsp) allow us to only explicitly set
@@ -96,12 +100,17 @@ static std::string InputAmountsToString(const SelectionResult& selection)
     return "[" + util::Join(selection.GetInputSet(), " ", [](const auto& input){ return util::ToString(input->txout.nValue);}) + "]";
 }
 
-static void TestBnBSuccess(std::string test_title, std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const std::vector<CAmount>& expected_input_amounts, const CoinSelectionParams& cs_params = default_cs_params, const int custom_spending_vsize = P2WPKH_INPUT_VSIZE, const int max_selection_weight = MAX_STANDARD_TX_WEIGHT)
+static void TestBnBSuccess(std::string test_title, std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const std::vector<CAmount>& expected_input_amounts, const CoinSelectionParams& cs_params = default_cs_params, const int custom_spending_vsize = P2WPKH_INPUT_VSIZE, const int max_selection_weight = MAX_STANDARD_TX_WEIGHT, const std::vector<int>& custom_spending_vsizes = {})
 {
     SelectionResult expected_result(CAmount(0), SelectionAlgorithm::BNB);
     CAmount expected_amount = 0;
-    for (CAmount input_amount : expected_input_amounts) {
-        OutputGroup group = MakeCoin(input_amount, true, cs_params, custom_spending_vsize);
+    if (!custom_spending_vsizes.empty()) {
+        BOOST_REQUIRE_EQUAL(custom_spending_vsizes.size(), expected_input_amounts.size());
+    }
+    for (size_t i = 0; i < expected_input_amounts.size(); ++i) {
+        const CAmount input_amount = expected_input_amounts[i];
+        const int spending_vsize = custom_spending_vsizes.empty() ? custom_spending_vsize : custom_spending_vsizes[i];
+        OutputGroup group = MakeCoin(input_amount, true, cs_params, spending_vsize);
         expected_amount += group.m_value;
         expected_result.AddInput(group);
     }
@@ -148,9 +157,9 @@ BOOST_AUTO_TEST_CASE(bnb_test)
         // BnB fails to find changeless solution when overshooting by cost_of_change + 1 sat
         TestBnBFail("Overshoot upper bound", utxo_pool, /*selection_target=*/4 * CENT - default_cs_params.m_cost_of_change - 1);
 
-        TestBnBSuccess("Select max weight", utxo_pool, /*selection_target=*/4 * CENT, /*expected_input_amounts=*/{1 * CENT, 3 * CENT}, cs_params, /*custom_spending_vsize=*/P2WPKH_INPUT_VSIZE, /*max_selection_weight=*/4 * 2 * P2WPKH_INPUT_VSIZE);
+        TestBnBSuccess("Select max weight", utxo_pool, /*selection_target=*/4 * CENT, /*expected_input_amounts=*/{1 * CENT, 3 * CENT}, cs_params, /*custom_spending_vsize=*/P2WPKH_INPUT_VSIZE, /*max_selection_weight=*/2 * P2WPKH_INPUT_VSIZE * WITNESS_SCALE_FACTOR);
 
-        TestBnBFail("Exceed max weight", utxo_pool, /*selection_target=*/4 * CENT, /*max_selection_weight=*/4 * 2 * P2WPKH_INPUT_VSIZE - 1, /*expect_max_weight_exceeded=*/true);
+        TestBnBFail("Exceed max weight", utxo_pool, /*selection_target=*/4 * CENT, /*max_selection_weight=*/2 * P2WPKH_INPUT_VSIZE * WITNESS_SCALE_FACTOR - 1, /*expect_max_weight_exceeded=*/true);
 
         // Simple cases without BnB solution
         TestBnBFail("Smallest combination too big", utxo_pool, /*selection_target=*/0.5 * CENT);
@@ -218,7 +227,7 @@ BOOST_AUTO_TEST_CASE(bnb_feerate_sensitivity_test)
     // Add heavy inputs {6, 7} to existing {2, 3, 5, 10}
     low_feerate_pool.push_back(MakeCoin(6 * CENT, true, default_cs_params, /*custom_spending_vsize=*/500));
     low_feerate_pool.push_back(MakeCoin(7 * CENT, true, default_cs_params, /*custom_spending_vsize=*/500));
-    TestBnBSuccess("Prefer two heavy inputs over two light inputs at low feerates", low_feerate_pool, /*selection_target=*/13 * CENT, /*expected_input_amounts=*/{6 * CENT, 7 * CENT}, default_cs_params, /*custom_spending_vsize=*/500);
+    TestBnBSuccess("Prefer lower-waste mix at low feerates", low_feerate_pool, /*selection_target=*/13 * CENT, /*expected_input_amounts=*/{6 * CENT, 5 * CENT, 2 * CENT}, default_cs_params, /*custom_spending_vsize=*/P2WPKH_INPUT_VSIZE, /*max_selection_weight=*/MAX_STANDARD_TX_WEIGHT, /*custom_spending_vsizes=*/{500, P2WPKH_INPUT_VSIZE, P2WPKH_INPUT_VSIZE});
 
     high_feerate_pool.push_back(MakeCoin(6 * CENT, true, high_feerate_params, /*custom_spending_vsize=*/500));
     high_feerate_pool.push_back(MakeCoin(7 * CENT, true, high_feerate_params, /*custom_spending_vsize=*/500));

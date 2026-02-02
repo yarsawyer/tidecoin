@@ -13,10 +13,13 @@
 #include <script/script.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
+#include <pq/pq_txsize.h>
 #include <uint256.h>
 #include <uint512.h>
 #include <util/translation.h>
 #include <util/vector.h>
+
+#include <algorithm>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -588,34 +591,53 @@ public:
 const BaseSignatureChecker& DUMMY_CHECKER = DummySignatureChecker();
 
 namespace {
+size_t MaxKnownPqSigLenInScript()
+{
+    const pq::SchemeInfo* const schemes[] = {
+        &pq::kFalcon512Info,
+        &pq::kFalcon1024Info,
+        &pq::kMLDSA44Info,
+        &pq::kMLDSA65Info,
+        &pq::kMLDSA87Info,
+    };
+    size_t max_len = 0;
+    for (const auto* info : schemes) {
+        max_len = std::max(max_len, pq::SigLenMaxInScript(*info));
+    }
+    return max_len;
+}
+
 class DummySignatureCreator final : public BaseSignatureCreator {
 private:
-    char m_r_len = 32;
-    char m_s_len = 32;
+    bool m_use_max = false;
 public:
-    DummySignatureCreator(char r_len, char s_len) : m_r_len(r_len), m_s_len(s_len) {}
+    explicit DummySignatureCreator(bool use_max) : m_use_max(use_max) {}
     const BaseSignatureChecker& Checker() const override { return DUMMY_CHECKER; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override
     {
-        // Create a dummy signature that is a valid DER-encoding
-        vchSig.assign(m_r_len + m_s_len + 7, '\000');
-        vchSig[0] = 0x30;
-        vchSig[1] = m_r_len + m_s_len + 4;
-        vchSig[2] = 0x02;
-        vchSig[3] = m_r_len;
-        vchSig[4] = 0x01;
-        vchSig[4 + m_r_len] = 0x02;
-        vchSig[5 + m_r_len] = m_s_len;
-        vchSig[6 + m_r_len] = 0x01;
-        vchSig[6 + m_r_len + m_s_len] = SIGHASH_ALL;
-        return true;
+        (void)scriptCode;
+        (void)sigversion;
+        size_t sig_len = 0;
+        CPubKey pubkey;
+        if (provider.GetPubKey(keyid, pubkey) && pubkey.IsValid()) {
+            const auto* scheme = pq::SchemeFromPrefix(pubkey[0]);
+            if (scheme) {
+                sig_len = m_use_max ? pq::SigLenMaxInScript(*scheme) : pq::SigLenFixedInScript(*scheme);
+            }
+        }
+        if (sig_len == 0) {
+            sig_len = MaxKnownPqSigLenInScript();
+        }
+        vchSig.assign(sig_len, '\0');
+        if (!vchSig.empty()) vchSig.back() = SIGHASH_ALL;
+        return !vchSig.empty();
     }
 };
 
-}
+} // namespace
 
-const BaseSignatureCreator& DUMMY_SIGNATURE_CREATOR = DummySignatureCreator(32, 32);
-const BaseSignatureCreator& DUMMY_MAXIMUM_SIGNATURE_CREATOR = DummySignatureCreator(33, 32);
+const BaseSignatureCreator& DUMMY_SIGNATURE_CREATOR = DummySignatureCreator(/*use_max=*/false);
+const BaseSignatureCreator& DUMMY_MAXIMUM_SIGNATURE_CREATOR = DummySignatureCreator(/*use_max=*/true);
 
 bool IsSegWitOutput(const SigningProvider& provider, const CScript& script)
 {

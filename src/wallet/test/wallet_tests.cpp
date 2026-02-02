@@ -15,6 +15,7 @@
 #include <node/blockstorage.h>
 #include <policy/policy.h>
 #include <pq/pq_scheme.h>
+#include <pq/pq_txsize.h>
 #include <rpc/server.h>
 #include <script/solver.h>
 #include <test/util/logging.h>
@@ -573,8 +574,14 @@ static size_t CalculateNestedKeyhashInputSize(bool use_max_sig)
 
 BOOST_FIXTURE_TEST_CASE(dummy_input_size_test, TestChain100Setup)
 {
-    BOOST_CHECK_EQUAL(CalculateNestedKeyhashInputSize(false), DUMMY_NESTED_P2WPKH_INPUT_SIZE);
-    BOOST_CHECK_EQUAL(CalculateNestedKeyhashInputSize(true), DUMMY_NESTED_P2WPKH_INPUT_SIZE);
+    const size_t pubkey_len = pq::PubKeyLenWithPrefix(pq::kFalcon512Info);
+    const size_t sig_len = pq::SigLenFixedInScript(pq::kFalcon512Info);
+    const size_t sig_max_len = pq::SigLenMaxInScript(pq::kFalcon512Info);
+    const size_t expected = static_cast<size_t>(pq::VSizeP2SH_P2WPKHInput(sig_len, pubkey_len));
+    const size_t expected_max = static_cast<size_t>(pq::VSizeP2SH_P2WPKHInput(sig_max_len, pubkey_len));
+
+    BOOST_CHECK_EQUAL(CalculateNestedKeyhashInputSize(false), expected);
+    BOOST_CHECK_EQUAL(CalculateNestedKeyhashInputSize(true), expected_max);
 }
 
 bool malformed_descriptor(std::ios_base::failure e)

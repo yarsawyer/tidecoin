@@ -17,6 +17,7 @@
 #include <primitives/transaction.h>
 #include <primitives/transaction_identifier.h>
 #include <pq/pq_scheme.h>
+#include <pq/pq_txsize.h>
 #include <script/script.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
@@ -58,6 +59,44 @@ static bool UseMaxSig(const std::optional<CTxIn>& txin, const CCoinControl* coin
     // Use max sig if watch only inputs were used or if this particular input is an external input
     // to ensure a sufficient fee is attained for the requested feerate.
     return coin_control && txin && coin_control->IsExternalSelected(txin->prevout);
+}
+
+static int FallbackNestedP2WPKHInputSize(const CWallet& wallet, const CCoinControl& coin_control)
+{
+    const int target_height = wallet.GetTargetHeightForOutputs();
+    const Consensus::Params& params = Params().GetConsensus();
+
+    std::optional<uint8_t> scheme_prefix;
+    if (coin_control.m_change_scheme_override) {
+        scheme_prefix = *coin_control.m_change_scheme_override;
+    } else if (const auto policy = wallet.GetPQHDPolicy()) {
+        if (policy->default_change_scheme != 0) {
+            scheme_prefix = policy->default_change_scheme;
+        }
+    }
+
+    const auto vsize_for_scheme = [](const pq::SchemeInfo& info) -> int {
+        const size_t sig_len = pq::SigLenMaxInScript(info);
+        const size_t pubkey_len = pq::PubKeyLenWithPrefix(info);
+        return static_cast<int>(pq::VSizeP2SH_P2WPKHInput(sig_len, pubkey_len));
+    };
+
+    if (scheme_prefix) {
+        if (const auto* info = pq::SchemeFromPrefix(*scheme_prefix)) {
+            return vsize_for_scheme(*info);
+        }
+    }
+
+    int max_vsize = 0;
+    for (const auto* info : {&pq::kFalcon512Info, &pq::kFalcon1024Info, &pq::kMLDSA44Info, &pq::kMLDSA65Info, &pq::kMLDSA87Info}) {
+        if (!pq::IsSchemeAllowedAtHeight(info->id, params, target_height)) continue;
+        max_vsize = std::max(max_vsize, vsize_for_scheme(*info));
+    }
+
+    if (max_vsize == 0) {
+        max_vsize = vsize_for_scheme(pq::kFalcon512Info);
+    }
+    return max_vsize;
 }
 
 /** Get the size of an input (in witness units) once it's signed.
@@ -1142,9 +1181,9 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     // Get size of spending the change output
     int change_spend_size = CalculateMaximumSignedInputSize(change_prototype_txout, &wallet, /*coin_control=*/nullptr);
     // If the wallet doesn't know how to sign change output, assume p2sh-p2wpkh
-    // as lower-bound to allow BnB to do its thing
+    // with a scheme-aware conservative size to allow BnB to do its thing.
     if (change_spend_size == -1) {
-        coin_selection_params.change_spend_size = DUMMY_NESTED_P2WPKH_INPUT_SIZE;
+        coin_selection_params.change_spend_size = FallbackNestedP2WPKHInputSize(wallet, coin_control);
     } else {
         coin_selection_params.change_spend_size = change_spend_size;
     }
