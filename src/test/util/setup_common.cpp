@@ -459,13 +459,80 @@ CBlock TestChain100Setup::CreateAndProcessBlock(
     return block;
 }
 
+namespace {
+
+// Falcon signatures are variable-length. Some unit tests compute feerates using vsize and can
+// become flaky if signatures jitter around fee/rounding boundaries. Normalize Falcon witness
+// signatures in test-generated transactions by:
+//  - re-signing until the raw signature fits the fixed-size encoding window (if needed), then
+//  - padding trailing zeros to the fixed-size length (while keeping the sighash byte last).
+//
+// This is test-only normalization; it does not change production signature behavior.
+static void NormalizeFalconWitnessSignatures(CMutableTransaction& tx,
+                                             const SigningProvider& keystore,
+                                             const std::map<COutPoint, Coin>& input_coins,
+                                             int nHashType,
+                                             std::map<int, bilingual_str>& input_errors)
+{
+    auto needs_shorter_falcon_sig = [&]() -> bool {
+        for (const auto& txin : tx.vin) {
+            const auto& w = txin.scriptWitness.stack;
+            // P2WPKH/P2SH-P2WPKH witness stack is [sig, pubkey].
+            if (w.size() != 2) continue;
+            if (w[0].size() <= 1 || w[1].empty()) continue; // needs sig+sighash and pubkey prefix
+
+            const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(w[1][0]);
+            if (scheme == nullptr) continue;
+            if (scheme->id != pq::SchemeId::FALCON_512 && scheme->id != pq::SchemeId::FALCON_1024) continue;
+
+            const size_t siglen_no_hashtype = w[0].size() - 1;
+            if (siglen_no_hashtype > scheme->sig_bytes_fixed) return true;
+        }
+        return false;
+    };
+
+    // If a Falcon signature is longer than the fixed-size encoding window, re-sign to find a
+    // shorter one (rejection sampling). This is rare, but avoids flakiness.
+    for (int attempt = 0; attempt < 200 && needs_shorter_falcon_sig(); ++attempt) {
+        for (auto& txin : tx.vin) {
+            txin.scriptSig.clear();
+            txin.scriptWitness.stack.clear();
+        }
+        input_errors.clear();
+        assert(SignTransaction(tx, &keystore, input_coins, nHashType, input_errors));
+    }
+
+    // Pad any short Falcon signatures up to the fixed length. Verify accepts this encoding.
+    for (auto& txin : tx.vin) {
+        auto& w = txin.scriptWitness.stack;
+        if (w.size() != 2) continue;
+        if (w[0].size() <= 1 || w[1].empty()) continue;
+
+        const pq::SchemeInfo* scheme = pq::SchemeFromPrefix(w[1][0]);
+        if (scheme == nullptr) continue;
+        if (scheme->id != pq::SchemeId::FALCON_512 && scheme->id != pq::SchemeId::FALCON_1024) continue;
+
+        const size_t siglen_no_hashtype = w[0].size() - 1;
+        if (siglen_no_hashtype > scheme->sig_bytes_fixed) continue; // couldn't shorten; leave as-is
+        if (siglen_no_hashtype == scheme->sig_bytes_fixed) continue;
+
+        const unsigned char sighash = w[0].back();
+        w[0].pop_back();
+        w[0].resize(scheme->sig_bytes_fixed, 0x00);
+        w[0].push_back(sighash);
+    }
+}
+
+} // namespace
+
 std::pair<CMutableTransaction, CAmount> TestChain100Setup::CreateValidTransaction(const std::vector<CTransactionRef>& input_transactions,
                                                                                   const std::vector<COutPoint>& inputs,
                                                                                   int input_height,
                                                                                   const std::vector<CKey>& input_signing_keys,
                                                                                   const std::vector<CTxOut>& outputs,
                                                                                   const std::optional<CFeeRate>& feerate,
-                                                                                  const std::optional<uint32_t>& fee_output)
+                                                                                  const std::optional<uint32_t>& fee_output,
+                                                                                  bool normalize_falcon_sigs)
 {
     CMutableTransaction mempool_txn;
     mempool_txn.vin.reserve(inputs.size());
@@ -500,6 +567,9 @@ std::pair<CMutableTransaction, CAmount> TestChain100Setup::CreateValidTransactio
     int nHashType = SIGHASH_ALL;
     std::map<int, bilingual_str> input_errors;
     assert(SignTransaction(mempool_txn, &keystore, input_coins, nHashType, input_errors));
+    if (normalize_falcon_sigs) {
+        NormalizeFalconWitnessSignatures(mempool_txn, keystore, input_coins, nHashType, input_errors);
+    }
     CAmount current_fee = inputs_amount - std::accumulate(outputs.begin(), outputs.end(), CAmount(0),
         [](const CAmount& acc, const CTxOut& out) {
         return acc + out.nValue;
@@ -517,6 +587,9 @@ std::pair<CMutableTransaction, CAmount> TestChain100Setup::CreateValidTransactio
             // Re-sign since an output has changed
             input_errors.clear();
             assert(SignTransaction(mempool_txn, &keystore, input_coins, nHashType, input_errors));
+            if (normalize_falcon_sigs) {
+                NormalizeFalconWitnessSignatures(mempool_txn, keystore, input_coins, nHashType, input_errors);
+            }
             current_fee = target_fee;
         }
     }
@@ -528,9 +601,12 @@ CMutableTransaction TestChain100Setup::CreateValidMempoolTransaction(const std::
                                                                      int input_height,
                                                                      const std::vector<CKey>& input_signing_keys,
                                                                      const std::vector<CTxOut>& outputs,
-                                                                     bool submit)
+                                                                     bool submit,
+                                                                     bool normalize_falcon_sigs)
 {
-    CMutableTransaction mempool_txn = CreateValidTransaction(input_transactions, inputs, input_height, input_signing_keys, outputs, std::nullopt, std::nullopt).first;
+    CMutableTransaction mempool_txn = CreateValidTransaction(input_transactions, inputs, input_height, input_signing_keys,
+                                                             outputs, std::nullopt, std::nullopt,
+                                                             normalize_falcon_sigs).first;
     // If submit=true, add transaction to the mempool.
     if (submit) {
         LOCK(cs_main);
@@ -546,7 +622,8 @@ CMutableTransaction TestChain100Setup::CreateValidMempoolTransaction(CTransactio
                                                                      CKey input_signing_key,
                                                                      CScript output_destination,
                                                                      CAmount output_amount,
-                                                                     bool submit)
+                                                                     bool submit,
+                                                                     bool normalize_falcon_sigs)
 {
     COutPoint input{input_transaction->GetHash(), input_vout};
     CTxOut output{output_amount, output_destination};
@@ -555,7 +632,8 @@ CMutableTransaction TestChain100Setup::CreateValidMempoolTransaction(CTransactio
                                          /*input_height=*/input_height,
                                          /*input_signing_keys=*/{input_signing_key},
                                          /*outputs=*/{output},
-                                         /*submit=*/submit);
+                                         /*submit=*/submit,
+                                         /*normalize_falcon_sigs=*/normalize_falcon_sigs);
 }
 
 std::vector<CTransactionRef> TestChain100Setup::PopulateMempool(FastRandomContext& det_rand, size_t num_transactions, bool submit)

@@ -32,6 +32,47 @@ struct TxPackageTest : TestChain100Setup {
     const CAmount coinbase_value;
 
     TxPackageTest() : coinbase_value(m_coinbase_txns[0]->vout[0].nValue) {}
+
+    // TxPackage tests do fee math on vsize and can become flaky with variable-length Falcon
+    // signatures. Normalize Falcon witness signatures in the transactions created by this
+    // fixture only (test harness remains unchanged for other test suites).
+    std::pair<CMutableTransaction, CAmount> CreateValidTransaction(const std::vector<CTransactionRef>& input_transactions,
+                                                                   const std::vector<COutPoint>& inputs,
+                                                                   int input_height,
+                                                                   const std::vector<CKey>& input_signing_keys,
+                                                                   const std::vector<CTxOut>& outputs,
+                                                                   const std::optional<CFeeRate>& feerate,
+                                                                   const std::optional<uint32_t>& fee_output)
+    {
+        return TestChain100Setup::CreateValidTransaction(input_transactions, inputs, input_height, input_signing_keys,
+                                                         outputs, feerate, fee_output,
+                                                         /*normalize_falcon_sigs=*/true);
+    }
+
+    CMutableTransaction CreateValidMempoolTransaction(const std::vector<CTransactionRef>& input_transactions,
+                                                      const std::vector<COutPoint>& inputs,
+                                                      int input_height,
+                                                      const std::vector<CKey>& input_signing_keys,
+                                                      const std::vector<CTxOut>& outputs,
+                                                      bool submit = true)
+    {
+        return TestChain100Setup::CreateValidMempoolTransaction(input_transactions, inputs, input_height, input_signing_keys,
+                                                                outputs, submit,
+                                                                /*normalize_falcon_sigs=*/true);
+    }
+
+    CMutableTransaction CreateValidMempoolTransaction(CTransactionRef input_transaction,
+                                                      uint32_t input_vout,
+                                                      int input_height,
+                                                      CKey input_signing_key,
+                                                      CScript output_destination,
+                                                      CAmount output_amount = CAmount(1 * COIN),
+                                                      bool submit = true)
+    {
+        return TestChain100Setup::CreateValidMempoolTransaction(input_transaction, input_vout, input_height, input_signing_key,
+                                                                output_destination, output_amount, submit,
+                                                                /*normalize_falcon_sigs=*/true);
+    }
 // Create placeholder transactions that have no meaning.
 inline CTransactionRef create_placeholder_tx(size_t num_inputs, size_t num_outputs)
 {
