@@ -150,12 +150,18 @@ BOOST_AUTO_TEST_CASE(script_assets_test)
     SignatureCache signature_cache{DEFAULT_SIGNATURE_CACHE_BYTES};
 
     const char* dir = std::getenv("DIR_UNIT_TEST_DATA");
-    BOOST_WARN_MESSAGE(dir != nullptr, "Variable DIR_UNIT_TEST_DATA unset, skipping script_assets_test");
-    if (dir == nullptr) return;
+    if (dir == nullptr) {
+        BOOST_TEST_MESSAGE("Variable DIR_UNIT_TEST_DATA unset, skipping script_assets_test");
+        BOOST_CHECK(true);
+        return;
+    }
     auto path = fs::path(dir) / "script_assets_test.json";
     bool exists = fs::exists(path);
-    BOOST_WARN_MESSAGE(exists, "File $DIR_UNIT_TEST_DATA/script_assets_test.json not found, skipping script_assets_test");
-    if (!exists) return;
+    if (!exists) {
+        BOOST_TEST_MESSAGE("File $DIR_UNIT_TEST_DATA/script_assets_test.json not found, skipping script_assets_test");
+        BOOST_CHECK(true);
+        return;
+    }
     std::ifstream file{path};
     BOOST_CHECK(file.is_open());
     file.seekg(0, std::ios::end);

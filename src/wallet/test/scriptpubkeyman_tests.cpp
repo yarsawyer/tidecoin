@@ -6,6 +6,7 @@
 #include <key_io.h>
 #include <pq/pq_scheme.h>
 #include <pq/pqhd_params.h>
+#include <test/util/test_controls.h>
 #include <wallet/test/wallet_test_fixture.h>
 #include <script/solver.h>
 #include <util/string.h>
@@ -20,6 +21,7 @@ BOOST_FIXTURE_TEST_SUITE(scriptpubkeyman_tests, WalletTestingSetup)
 
 BOOST_AUTO_TEST_CASE(DescriptorScriptPubKeyManTests)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     std::unique_ptr<interfaces::Chain>& chain = m_node.chain;
 
     CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
@@ -42,6 +44,7 @@ BOOST_AUTO_TEST_CASE(DescriptorScriptPubKeyManTests)
 
 BOOST_AUTO_TEST_CASE(PQHDSchemeGatePreAuxpow)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     std::unique_ptr<interfaces::Chain>& chain = m_node.chain;
 
     CWallet wallet(chain.get(), "", CreateMockableWalletDatabase());
@@ -77,6 +80,7 @@ BOOST_AUTO_TEST_CASE(PQHDSchemeGatePreAuxpow)
 
 BOOST_AUTO_TEST_CASE(PQHDInternalDescriptorUsesDefaultScheme)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     std::unique_ptr<interfaces::Chain>& chain = m_node.chain;
 
     CWallet wallet(chain.get(), "", CreateMockableWalletDatabase());

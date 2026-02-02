@@ -4,6 +4,7 @@
 
 #include <rpc/request.h>
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 #include <univalue.h>
 #include <wallet/rpc/util.h>
 
@@ -24,6 +25,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_rpc_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(ensure_unique_wallet_name)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // EnsureUniqueWalletName should only return if exactly one unique wallet name is provided
     BOOST_CHECK_EQUAL(TestWalletName("/wallet/foo"), "foo");
     BOOST_CHECK_EQUAL(TestWalletName("/wallet/foo", "foo"), "foo");

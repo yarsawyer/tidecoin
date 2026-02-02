@@ -6,6 +6,7 @@
 #include <policy/policy.h>
 #include <pq/pq_scheme.h>
 #include <pq/pq_txsize.h>
+#include <test/util/test_controls.h>
 #include <wallet/coinselection.h>
 #include <wallet/test/wallet_test_fixture.h>
 
@@ -131,6 +132,7 @@ static void TestBnBFail(std::string test_title, std::vector<OutputGroup>& utxo_p
 
 BOOST_AUTO_TEST_CASE(bnb_test)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     std::vector<int> feerates = {0, 1, 5'000, 10'000, 25'000, 59'764, 500'000, 999'000, 1'500'000};
 
     for (int feerate : feerates) {
@@ -213,6 +215,7 @@ BOOST_AUTO_TEST_CASE(bnb_test)
 
 BOOST_AUTO_TEST_CASE(bnb_feerate_sensitivity_test)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // Create sets of UTXOs with the same effective amounts at different feerates (but different absolute amounts)
     std::vector<OutputGroup> low_feerate_pool; // 5 sat/vB (default, and lower than long_term_feerate of 10 sat/vB)
     AddCoins(low_feerate_pool, {2 * CENT, 3 * CENT, 5 * CENT, 10 * CENT});

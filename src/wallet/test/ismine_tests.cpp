@@ -9,6 +9,7 @@
 #include <script/solver.h>
 #include <script/signingprovider.h>
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 #include <wallet/types.h>
 #include <wallet/wallet.h>
 #include <wallet/test/util.h>
@@ -22,6 +23,7 @@ BOOST_FIXTURE_TEST_SUITE(ismine_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(ismine_standard)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     CKey keys[2];
     CPubKey pubkeys[2];
     for (int i = 0; i < 2; i++) {

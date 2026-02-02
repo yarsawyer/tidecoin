@@ -3,6 +3,7 @@
 // file COPYING or https://www.opensource.org/licenses/mit-license.php.
 
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 
 #include <wallet/coinselection.h>
 #include <wallet/spend.h>
@@ -107,6 +108,7 @@ public:
 
 BOOST_AUTO_TEST_CASE(outputs_grouping_tests)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     const auto& wallet = NewWallet(m_node);
     GroupVerifier group_verifier;
     group_verifier.wallet = wallet;

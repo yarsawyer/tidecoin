@@ -191,8 +191,41 @@ BOOST_FIXTURE_TEST_SUITE(transaction_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(tx_valid)
 {
-    BOOST_TEST_MESSAGE("Skipping legacy tx_valid vectors (ECDSA-specific).");
-    return;
+    // The embedded tx_valid.json vectors are ECDSA-specific. In PQ builds, run a small
+    // sanity-check that exercises VerifyScript through the same CheckTxScripts harness.
+    if (CKey::SIZE != 32) {
+        BOOST_CHECK_MESSAGE(CheckMapFlagNames(), "mapFlagNames is missing a script verification flag");
+
+        CKey key;
+        key.MakeNewKey(pq::SchemeId::FALCON_512);
+        const CPubKey pubkey = key.GetPubKey();
+        const CScript scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+        const CAmount nValue{1 * COIN};
+
+        const CTransaction txCredit{BuildCreditingTransaction(scriptPubKey, nValue)};
+        CMutableTransaction txSpend = BuildSpendingTransaction(/*scriptSig=*/{}, /*scriptWitness=*/{}, txCredit);
+
+        // Produce a valid signature for the spend.
+        const uint256 hash = SignatureHash(scriptPubKey, txSpend, 0, SIGHASH_ALL, nValue, SigVersion::BASE);
+        std::vector<unsigned char> sig;
+        key.Sign(hash, sig, /*grind=*/false);
+        sig.push_back(static_cast<unsigned char>(SIGHASH_ALL));
+        txSpend.vin[0].scriptSig = CScript() << sig;
+
+        const CTransaction tx(txSpend);
+        PrecomputedTransactionData txdata(tx);
+
+        std::map<COutPoint, CScript> prev_scripts;
+        std::map<COutPoint, int64_t> prev_values;
+        prev_scripts.emplace(tx.vin[0].prevout, scriptPubKey);
+        prev_values.emplace(tx.vin[0].prevout, nValue);
+
+        // Verify with a representative flags set.
+        const unsigned int flags = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_PQ_STRICT;
+        BOOST_CHECK_MESSAGE(CheckTxScripts(tx, prev_scripts, prev_values, flags, txdata, "PQ tx_valid", /*expect_valid=*/true),
+                            "PQ tx_valid unexpectedly failed");
+        return;
+    }
     BOOST_CHECK_MESSAGE(CheckMapFlagNames(), "mapFlagNames is missing a script verification flag");
     // Read tests from test/data/tx_valid.json
     UniValue tests = read_json(json_tests::tx_valid);
@@ -282,8 +315,38 @@ BOOST_AUTO_TEST_CASE(tx_valid)
 
 BOOST_AUTO_TEST_CASE(tx_invalid)
 {
-    BOOST_TEST_MESSAGE("Skipping legacy tx_invalid vectors (ECDSA-specific).");
-    return;
+    // The embedded tx_invalid.json vectors are ECDSA-specific. In PQ builds, run a small
+    // negative test (tampered signature) using the same CheckTxScripts harness.
+    if (CKey::SIZE != 32) {
+        CKey key;
+        key.MakeNewKey(pq::SchemeId::FALCON_512);
+        const CPubKey pubkey = key.GetPubKey();
+        const CScript scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+        const CAmount nValue{1 * COIN};
+
+        const CTransaction txCredit{BuildCreditingTransaction(scriptPubKey, nValue)};
+        CMutableTransaction txSpend = BuildSpendingTransaction(/*scriptSig=*/{}, /*scriptWitness=*/{}, txCredit);
+
+        const uint256 hash = SignatureHash(scriptPubKey, txSpend, 0, SIGHASH_ALL, nValue, SigVersion::BASE);
+        std::vector<unsigned char> sig;
+        key.Sign(hash, sig, /*grind=*/false);
+        sig.push_back(static_cast<unsigned char>(SIGHASH_ALL));
+        if (!sig.empty()) sig[0] ^= 0x01;
+        txSpend.vin[0].scriptSig = CScript() << sig;
+
+        const CTransaction tx(txSpend);
+        PrecomputedTransactionData txdata(tx);
+
+        std::map<COutPoint, CScript> prev_scripts;
+        std::map<COutPoint, int64_t> prev_values;
+        prev_scripts.emplace(tx.vin[0].prevout, scriptPubKey);
+        prev_values.emplace(tx.vin[0].prevout, nValue);
+
+        const unsigned int flags = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_PQ_STRICT;
+        BOOST_CHECK_MESSAGE(CheckTxScripts(tx, prev_scripts, prev_values, flags, txdata, "PQ tx_invalid", /*expect_valid=*/false),
+                            "PQ tx_invalid unexpectedly passed");
+        return;
+    }
     // Read tests from test/data/tx_invalid.json
     UniValue tests = read_json(json_tests::tx_invalid);
 

@@ -4,6 +4,9 @@
 
 #include <key.h>
 #include <node/types.h>
+#include <addresstype.h>
+#include <script/script.h>
+#include <test/util/test_controls.h>
 #include <util/strencodings.h>
 #include <wallet/wallet.h>
 
@@ -18,7 +21,7 @@ BOOST_FIXTURE_TEST_SUITE(psbt_wallet_tests, WalletTestingSetup)
 
 BOOST_AUTO_TEST_CASE(psbt_updater_test)
 {
-    if (CKey::SIZE != 32) return;
+    REQUIRE_WALLET_TESTS_ENABLED();
     LOCK(m_wallet.cs_wallet);
     m_wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
 
@@ -49,6 +52,33 @@ BOOST_AUTO_TEST_CASE(psbt_updater_test)
     const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, false, true);
     BOOST_REQUIRE(err);
     BOOST_CHECK(*err == common::PSBTError::UNSUPPORTED);
+}
+
+BOOST_AUTO_TEST_CASE(psbt_fill_and_sign_pq_p2wpkh)
+{
+    REQUIRE_WALLET_TESTS_ENABLED();
+    LOCK(m_wallet.cs_wallet);
+    m_wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    m_wallet.SetupDescriptorScriptPubKeyMans();
+
+    // Create a wallet-owned destination and a corresponding P2WPKH scriptPubKey.
+    const CTxDestination dest = *Assert(m_wallet.GetNewDestination(OutputType::BECH32, ""));
+    const CScript script_pub_key = GetScriptForDestination(dest);
+
+    // Spend a dummy UTXO paying to our wallet. Provide the input value via witness_utxo so
+    // the wallet can produce a segwit signature.
+    CMutableTransaction mtx;
+    mtx.vin.emplace_back(CTxIn{Txid::FromUint256(uint256::ONE), 0});
+    mtx.vout.emplace_back(CTxOut{1, CScript() << OP_TRUE});
+    PartiallySignedTransaction psbtx{mtx};
+    psbtx.inputs.at(0).witness_utxo = CTxOut{1 * COIN, script_pub_key};
+
+    bool complete{false};
+    const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true, /*bip32derivs=*/false);
+    BOOST_REQUIRE(!err);
+    BOOST_CHECK(complete);
+    BOOST_CHECK(psbtx.inputs.at(0).final_script_sig.empty());
+    BOOST_CHECK_EQUAL(psbtx.inputs.at(0).final_script_witness.stack.size(), 2U);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

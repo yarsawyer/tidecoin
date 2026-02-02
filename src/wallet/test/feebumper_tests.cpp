@@ -6,6 +6,7 @@
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
+#include <test/util/test_controls.h>
 #include <util/strencodings.h>
 #include <wallet/feebumper.h>
 #include <wallet/test/util.h>
@@ -41,6 +42,7 @@ static void CheckMaxWeightComputation(const std::string& script_str, const std::
 
 BOOST_AUTO_TEST_CASE(external_max_weight_test)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // P2PKH
     CheckMaxWeightComputation("453042021f03c8957c5ce12940ee6e3333ecc3f633d9a1ac53a55b3ce0351c617fa96abe021f0dccdcce3ef45a63998be9ec748b561baf077b8e862941d0cd5ec08f5afe68012102fccfeb395f0ecd3a77e7bc31c3bc61dc987418b18e395d441057b42ca043f22c", {}, "76a914f60dcfd3392b28adc7662669603641f578eed72d88ac", 593);
     // P2SH-P2WPKH

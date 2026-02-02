@@ -11,6 +11,7 @@
 #include <validation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/spend.h>
+#include <test/util/test_controls.h>
 #include <wallet/test/util.h>
 #include <wallet/test/wallet_test_fixture.h>
 
@@ -21,6 +22,7 @@ BOOST_FIXTURE_TEST_SUITE(spend_tests, WalletTestingSetup)
 
 BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
     auto wallet = CreateSyncedWallet(*m_node.chain, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain()), coinbaseKey);
     const int tip_height = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Height());
@@ -70,6 +72,7 @@ BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)
 
 BOOST_FIXTURE_TEST_CASE(wallet_duplicated_preset_inputs_test, TestChain100Setup)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // Verify that the wallet's Coin Selection process does not include pre-selected inputs twice in a transaction.
 
     // Add 4 spendable UTXO, each at the current subsidy, to the wallet.

@@ -8,6 +8,7 @@
 #include <noui.h>
 #include <test/util/logging.h>
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 #include <wallet/test/init_test_fixture.h>
 
 namespace wallet {
@@ -15,6 +16,7 @@ BOOST_FIXTURE_TEST_SUITE(init_tests, InitWalletDirTestingSetup)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_default)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["default"]);
     bool result = m_wallet_loader->verify();
     BOOST_CHECK(result == true);
@@ -25,6 +27,7 @@ BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_default)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_custom)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["custom"]);
     bool result = m_wallet_loader->verify();
     BOOST_CHECK(result == true);
@@ -35,6 +38,7 @@ BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_custom)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_does_not_exist)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["nonexistent"]);
     {
         ASSERT_DEBUG_LOG("does not exist");
@@ -45,6 +49,7 @@ BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_does_not_exist)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_is_not_directory)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["file"]);
     {
         ASSERT_DEBUG_LOG("is not a directory");
@@ -55,6 +60,7 @@ BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_is_not_directory)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_is_not_relative)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["relative"]);
     {
         ASSERT_DEBUG_LOG("is a relative path");
@@ -65,6 +71,7 @@ BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_is_not_relative)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_no_trailing)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["trailing"]);
     bool result = m_wallet_loader->verify();
     BOOST_CHECK(result == true);
@@ -75,6 +82,7 @@ BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_no_trailing)
 
 BOOST_AUTO_TEST_CASE(walletinit_verify_walletdir_no_trailing2)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     SetWalletDir(m_walletdir_path_cases["trailing2"]);
     bool result = m_wallet_loader->verify();
     BOOST_CHECK(result == true);

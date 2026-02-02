@@ -381,8 +381,47 @@ BOOST_FIXTURE_TEST_SUITE(script_tests, ScriptTest)
 
 BOOST_AUTO_TEST_CASE(script_build)
 {
+    // Upstream script_build tests are focused on 32-byte ECDSA keys (DER encoding, strictenc, etc).
+    // In PQ builds, run a reduced set of coverage-equivalent script checks using PQ keys/signatures.
     if (CKey::SIZE != 32) {
-        BOOST_TEST_MESSAGE("Skipping legacy ECDSA script tests (CKey::SIZE != 32).");
+        CKey key0, key1, key2;
+        key0.MakeNewKey(pq::SchemeId::FALCON_512);
+        key1.MakeNewKey(pq::SchemeId::FALCON_512);
+        key2.MakeNewKey(pq::SchemeId::FALCON_512);
+
+        const CPubKey pubkey0 = key0.GetPubKey();
+        const CPubKey pubkey1 = key1.GetPubKey();
+        const CPubKey pubkey2 = key2.GetPubKey();
+
+        std::vector<TestBuilder> tests;
+
+        // P2PK
+        tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                    "PQ P2PK", 0).PushSig(key0));
+        tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                    "PQ P2PK, bad sig", 0).PushSig(key0).DamagePush(10).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+
+        // P2PKH
+        tests.push_back(TestBuilder(CScript() << OP_DUP << OP_HASH160 << ToByteVector(pubkey1.GetID()) << OP_EQUALVERIFY << OP_CHECKSIG,
+                                    "PQ P2PKH", 0).PushSig(key1).Push(pubkey1));
+        tests.push_back(TestBuilder(CScript() << OP_DUP << OP_HASH160 << ToByteVector(pubkey2.GetID()) << OP_EQUALVERIFY << OP_CHECKSIG,
+                                    "PQ P2PKH, bad pubkey", 0).PushSig(key2).Push(pubkey2).DamagePush(5).ScriptError(SCRIPT_ERR_EQUALVERIFY));
+
+        // P2SH(P2PK)
+        tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                    "PQ P2SH(P2PK)", SCRIPT_VERIFY_P2SH, true).PushSig(key0).PushRedeem());
+        tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                    "PQ P2SH(P2PK), bad redeemscript", SCRIPT_VERIFY_P2SH, true).PushSig(key0).PushRedeem().DamagePush(10).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+
+        // Multisig (small enough to remain feasible under MAX_SCRIPT_ELEMENT_SIZE=8192).
+        tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                    "PQ 2-of-3", 0).Num(0).PushSig(key0).PushSig(key1));
+        tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                    "PQ 2-of-3, 1 sig", 0).Num(0).PushSig(key0).Num(0).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+
+        for (TestBuilder& test : tests) {
+            test.Test(*this);
+        }
         return;
     }
     const KeyData keys;
@@ -742,7 +781,40 @@ BOOST_AUTO_TEST_CASE(script_build)
 BOOST_AUTO_TEST_CASE(script_json_test)
 {
     if (CKey::SIZE != 32) {
-        BOOST_TEST_MESSAGE("Skipping legacy ECDSA script JSON tests (CKey::SIZE != 32).");
+        // The embedded script_tests.json vectors are ECDSA-specific. Provide a small PQ-native
+        // set of "JSON-like" coverage here so the test suite still exercises VerifyScript.
+        CKey key;
+        key.MakeNewKey(pq::SchemeId::FALCON_512);
+        const CPubKey pubkey = key.GetPubKey();
+
+        // P2PK success.
+        {
+            const CScript scriptPubKey{CScript() << ToByteVector(pubkey) << OP_CHECKSIG};
+            const CAmount nValue{1 * COIN};
+            const CTransaction txCredit{BuildCreditingTransaction(scriptPubKey, nValue)};
+            CMutableTransaction txSpend = BuildSpendingTransaction(CScript{}, CScriptWitness{}, txCredit);
+            const uint256 hash = SignatureHash(scriptPubKey, txSpend, 0, SIGHASH_ALL, nValue, SigVersion::BASE);
+            std::vector<unsigned char> sig;
+            key.Sign(hash, sig, /*grind=*/false);
+            sig.push_back(static_cast<unsigned char>(SIGHASH_ALL));
+            const CScript scriptSig{CScript() << sig};
+            DoTest(scriptPubKey, scriptSig, /*scriptWitness=*/{}, SCRIPT_VERIFY_P2SH, "PQ script_json_test P2PK", SCRIPT_ERR_OK, nValue);
+        }
+
+        // P2PK failure (bitflip in signature).
+        {
+            const CScript scriptPubKey{CScript() << ToByteVector(pubkey) << OP_CHECKSIG};
+            const CAmount nValue{1 * COIN};
+            const CTransaction txCredit{BuildCreditingTransaction(scriptPubKey, nValue)};
+            CMutableTransaction txSpend = BuildSpendingTransaction(CScript{}, CScriptWitness{}, txCredit);
+            const uint256 hash = SignatureHash(scriptPubKey, txSpend, 0, SIGHASH_ALL, nValue, SigVersion::BASE);
+            std::vector<unsigned char> sig;
+            key.Sign(hash, sig, /*grind=*/false);
+            sig.push_back(static_cast<unsigned char>(SIGHASH_ALL));
+            if (!sig.empty()) sig[0] ^= 0x01;
+            const CScript scriptSig{CScript() << sig};
+            DoTest(scriptPubKey, scriptSig, /*scriptWitness=*/{}, SCRIPT_VERIFY_P2SH, "PQ script_json_test P2PK badsig", SCRIPT_ERR_EVAL_FALSE, nValue);
+        }
         return;
     }
     // Read tests from test/data/script_tests.json

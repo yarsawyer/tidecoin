@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/translation.h>
@@ -74,6 +75,7 @@ static std::vector<std::unique_ptr<WalletDatabase>> TestDatabases(const fs::path
 
 BOOST_AUTO_TEST_CASE(db_cursor_prefix_range_test)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // Test each supported db
     for (const auto& database : TestDatabases(m_path_root)) {
         std::vector<std::string> prefixes = {"", "FIRST", "SECOND", "P\xfe\xff", "P\xff\x01", "\xff\xff"};
@@ -121,6 +123,7 @@ BOOST_AUTO_TEST_CASE(db_cursor_prefix_range_test)
 // truly empty prefixes or prefixes that begin with \xff
 BOOST_AUTO_TEST_CASE(db_cursor_prefix_byte_test)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     const MockableData::value_type
         e{StringData(""), StringData("e")},
         p{StringData("prefix"), StringData("p")},
@@ -148,6 +151,7 @@ BOOST_AUTO_TEST_CASE(db_cursor_prefix_byte_test)
 
 BOOST_AUTO_TEST_CASE(db_availability_after_write_error)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // Ensures the database remains accessible without deadlocking after a write error.
     // To simulate the behavior, record overwrites are disallowed, and the test verifies
     // that the database remains active after failing to store an existing record.
@@ -173,6 +177,7 @@ BOOST_AUTO_TEST_CASE(db_availability_after_write_error)
 // Keys are in the form of std::pair<TYPE, ENTRY_ID>
 BOOST_AUTO_TEST_CASE(erase_prefix)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     const std::string key = "key";
     const std::string key2 = "key2";
     const std::string value = "value";
@@ -224,6 +229,7 @@ public:
 
 BOOST_AUTO_TEST_CASE(txn_close_failure_dangling_txn)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // Verifies that there is no active dangling, to-be-reversed db txn
     // after the batch object that initiated it is destroyed.
     DatabaseOptions options;
@@ -257,6 +263,7 @@ BOOST_AUTO_TEST_CASE(txn_close_failure_dangling_txn)
 
 BOOST_AUTO_TEST_CASE(concurrent_txn_dont_interfere)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     std::string key = "key";
     std::string value = "value";
     std::string value2 = "value_2";

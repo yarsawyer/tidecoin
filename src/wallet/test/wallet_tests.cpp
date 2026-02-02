@@ -21,6 +21,7 @@
 #include <test/util/logging.h>
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 #include <util/translation.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -76,6 +77,7 @@ static void AddKey(CWallet& wallet, const CKey& key)
 
 BOOST_FIXTURE_TEST_CASE(update_non_range_descriptor, TestingSetup)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     {
         LOCK(wallet.cs_wallet);
@@ -97,6 +99,7 @@ BOOST_FIXTURE_TEST_CASE(update_non_range_descriptor, TestingSetup)
 
 BOOST_FIXTURE_TEST_CASE(pqhd_policy_clamps_pre_auxpow, WalletTestingSetup)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     LOCK(m_wallet.cs_wallet);
     const int target_height = m_wallet.GetTargetHeightForOutputs();
     const Consensus::Params& params = Params().GetConsensus();
@@ -121,6 +124,7 @@ BOOST_FIXTURE_TEST_CASE(pqhd_policy_clamps_pre_auxpow, WalletTestingSetup)
 
 BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // Cap last block file size, and mine new block in a new block file.
     CBlockIndex* oldTip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
     WITH_LOCK(::cs_main, m_node.chainman->m_blockman.GetBlockFileInfo(oldTip->GetBlockPos().nFile)->nSize = MAX_BLOCKFILE_SIZE);
@@ -250,6 +254,7 @@ BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
 // concurrently, ensuring no race conditions occur during either process.
 BOOST_FIXTURE_TEST_CASE(write_wallet_settings_concurrently, TestingSetup)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     auto chain = m_node.chain.get();
     const auto NUM_WALLETS{5};
 
@@ -309,6 +314,7 @@ static int64_t AddTx(ChainstateManager& chainman, CWallet& wallet, uint32_t lock
 // expanded to cover more corner cases of smart time logic.
 BOOST_AUTO_TEST_CASE(ComputeTimeSmart)
 {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // New transaction should use clock time if lower than block time.
     BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 1, 100, 120), 100);
 

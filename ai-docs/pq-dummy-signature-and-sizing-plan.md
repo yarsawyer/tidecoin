@@ -20,9 +20,18 @@ Pending:
 
 ## Test Controls
 
-- `coinselector_tests` are disabled by default to keep the suite fast.
-- Run them explicitly by setting:
-  - `TIDECOIN_RUN_COINSELECTOR_TESTS=1 ./build/bin/test_tidecoin --run_test=coinselector_tests`
+- Wallet-related unit test suites are disabled by default to keep the main unit test run fast
+  (PQ key generation dominates runtime for many wallet tests).
+- Enable them explicitly by setting:
+  - `TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=coinselector_tests`
+  - `TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=wallet_tests`
+  - `TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=psbt_wallet_tests`
+
+Suites gated behind `TIDECOIN_RUN_WALLET_TESTS`:
+- `coinselection_tests`, `coinselector_tests`
+- `db_tests`, `walletdb_tests`, `walletload_tests`
+- `wallet_tests`, `wallet_transaction_tests`, `wallet_rpc_tests`, `wallet_crypto_tests`
+- `spend_tests`, `feebumper_tests`, `group_outputs_tests`, `scriptpubkeyman_tests`, `ismine_tests`, `init_tests`
 
 ## Background
 

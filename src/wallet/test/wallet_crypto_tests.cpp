@@ -4,6 +4,7 @@
 
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
+#include <test/util/test_controls.h>
 #include <util/strencodings.h>
 #include <wallet/crypter.h>
 
@@ -50,9 +51,20 @@ static void TestDecrypt(const CCrypter& crypt, const std::span<const unsigned ch
                         const std::span<const unsigned char> correct_plaintext = {})
 {
     CKeyingMaterial decrypted;
-    crypt.Decrypt(ciphertext, decrypted);
+    const bool ok = crypt.Decrypt(ciphertext, decrypted);
     if (!correct_plaintext.empty()) {
+        BOOST_CHECK(ok);
         BOOST_CHECK_EQUAL_COLLECTIONS(decrypted.begin(), decrypted.end(), correct_plaintext.begin(), correct_plaintext.end());
+    } else {
+        // For historical "corner case" ciphertexts we do not require decrypt to succeed,
+        // but if it does, encryption must round-trip deterministically with the same key/IV.
+        if (ok) {
+            std::vector<unsigned char> reenc;
+            BOOST_CHECK(crypt.Encrypt(decrypted, reenc));
+            BOOST_CHECK_EQUAL_COLLECTIONS(reenc.begin(), reenc.end(), ciphertext.begin(), ciphertext.end());
+        } else {
+            BOOST_CHECK(!ok);
+        }
     }
 }
 
@@ -81,6 +93,7 @@ static void TestEncrypt(const CCrypter& crypt, const std::span<const unsigned ch
 };
 
 BOOST_AUTO_TEST_CASE(passphrase) {
+    REQUIRE_WALLET_TESTS_ENABLED();
     // These are expensive.
 
     TestCrypter::TestPassphrase("0000deadbeef0000"_hex_u8, "test", CMasterKey::DEFAULT_DERIVE_ITERATIONS,
@@ -97,6 +110,7 @@ BOOST_AUTO_TEST_CASE(passphrase) {
 }
 
 BOOST_AUTO_TEST_CASE(encrypt) {
+    REQUIRE_WALLET_TESTS_ENABLED();
     constexpr std::array<uint8_t, WALLET_CRYPTO_SALT_SIZE> salt{"0000deadbeef0000"_hex_u8};
     CCrypter crypt;
     crypt.SetKeyFromPassphrase("passphrase", salt, CMasterKey::DEFAULT_DERIVE_ITERATIONS, 0);
@@ -111,6 +125,7 @@ BOOST_AUTO_TEST_CASE(encrypt) {
 }
 
 BOOST_AUTO_TEST_CASE(decrypt) {
+    REQUIRE_WALLET_TESTS_ENABLED();
     constexpr std::array<uint8_t, WALLET_CRYPTO_SALT_SIZE> salt{"0000deadbeef0000"_hex_u8};
     CCrypter crypt;
     crypt.SetKeyFromPassphrase("passphrase", salt, CMasterKey::DEFAULT_DERIVE_ITERATIONS, 0);
