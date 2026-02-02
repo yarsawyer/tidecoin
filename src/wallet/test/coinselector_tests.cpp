@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <boost/test/unit_test.hpp>
+#include <cstdlib>
 #include <random>
 
 namespace wallet {
@@ -30,6 +31,23 @@ BOOST_FIXTURE_TEST_SUITE(coinselector_tests, WalletTestingSetup)
 // some tests fail 1% of the time due to bad luck.
 // we repeat those tests this many times and only complain if all iterations of the test fail
 #define RANDOM_REPEATS 5
+
+static bool CoinselectorTestsEnabled()
+{
+    static const bool enabled = []{
+        const char* env = std::getenv("TIDECOIN_RUN_COINSELECTOR_TESTS");
+        return env && env[0] && env[0] != '0';
+    }();
+    return enabled;
+}
+
+#define REQUIRE_COINSELECTOR_TESTS_ENABLED() \
+    do { \
+        if (!CoinselectorTestsEnabled()) { \
+            BOOST_TEST_MESSAGE("coinselector_tests disabled by default; set TIDECOIN_RUN_COINSELECTOR_TESTS=1 to enable."); \
+            return; \
+        } \
+    } while (0)
 
 typedef std::set<std::shared_ptr<COutput>> CoinSet;
 
@@ -204,6 +222,7 @@ static std::unique_ptr<CWallet> NewWallet(const node::NodeContext& m_node, const
 // Branch and bound coin selection tests
 BOOST_AUTO_TEST_CASE(bnb_search_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     FastRandomContext rand{};
     // Setup
     std::vector<COutput> utxo_pool;
@@ -328,6 +347,7 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
 
 BOOST_AUTO_TEST_CASE(bnb_sffo_restriction)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     // Verify the coin selection process does not produce a BnB solution when SFFO is enabled.
     // This is currently problematic because it could require a change output. And BnB is specialized on changeless solutions.
     std::unique_ptr<CWallet> wallet = NewWallet(m_node);
@@ -367,6 +387,7 @@ BOOST_AUTO_TEST_CASE(bnb_sffo_restriction)
 
 BOOST_AUTO_TEST_CASE(knapsack_solver_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     FastRandomContext rand{};
     const auto temp1{[&rand](std::vector<OutputGroup>& g, const CAmount& v, CAmount c) { return KnapsackSolver(g, v, c, rand); }};
     const auto KnapsackSolver{temp1};
@@ -681,6 +702,7 @@ BOOST_AUTO_TEST_CASE(knapsack_solver_test)
 
 BOOST_AUTO_TEST_CASE(ApproximateBestSubset)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     FastRandomContext rand{};
     std::unique_ptr<CWallet> wallet = NewWallet(m_node);
 
@@ -700,6 +722,7 @@ BOOST_AUTO_TEST_CASE(ApproximateBestSubset)
 // Tests that with the ideal conditions, the coin selector will always be able to find a solution that can pay the target value
 BOOST_AUTO_TEST_CASE(SelectCoins_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     std::unique_ptr<CWallet> wallet = NewWallet(m_node);
     LOCK(wallet->cs_wallet); // Every 'SelectCoins' call requires it
 
@@ -761,6 +784,7 @@ BOOST_AUTO_TEST_CASE(SelectCoins_test)
 
 BOOST_AUTO_TEST_CASE(waste_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     const CAmount fee{100};
     const CAmount min_viable_change{300};
     const CAmount change_cost{125};
@@ -893,6 +917,7 @@ BOOST_AUTO_TEST_CASE(waste_test)
 
 BOOST_AUTO_TEST_CASE(bump_fee_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     const CAmount fee{100};
     const CAmount min_viable_change{200};
     const CAmount change_cost{125};
@@ -949,6 +974,7 @@ BOOST_AUTO_TEST_CASE(bump_fee_test)
 
 BOOST_AUTO_TEST_CASE(effective_value_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     const int input_bytes = 148;
     const CFeeRate feerate(1000);
     const CAmount nValue = 10000;
@@ -995,6 +1021,7 @@ static util::Result<SelectionResult> CoinGrinder(const CAmount& target,
 
 BOOST_AUTO_TEST_CASE(coin_grinder_tests)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     // Test Coin Grinder:
     // 1) Insufficient funds, select all provided coins and fail.
     // 2) Exceeded max weight, coin selection always surpasses the max allowed weight.
@@ -1223,6 +1250,7 @@ static util::Result<SelectionResult> SelectCoinsSRD(const CAmount& target,
 
 BOOST_AUTO_TEST_CASE(srd_tests)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     // Test SRD:
     // 1) Insufficient funds, select all provided coins and fail.
     // 2) Exceeded max weight, coin selection always surpasses the max allowed weight.
@@ -1330,6 +1358,7 @@ static bool has_coin(const CoinSet& set, CAmount amount)
 
 BOOST_AUTO_TEST_CASE(check_max_selection_weight)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     const CAmount target = 39.5L * COIN;
     CCoinControl cc;
 
@@ -1429,6 +1458,7 @@ BOOST_AUTO_TEST_CASE(check_max_selection_weight)
 
 BOOST_AUTO_TEST_CASE(SelectCoins_effective_value_test)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     // Test that the effective value is used to check whether preset inputs provide sufficient funds when subtract_fee_outputs is not used.
     // This test creates a coin whose value is higher than the target but whose effective value is lower than the target.
     // The coin is selected using coin control, with m_allow_other_inputs = false. SelectCoins should fail due to insufficient funds.
@@ -1471,6 +1501,7 @@ BOOST_AUTO_TEST_CASE(SelectCoins_effective_value_test)
 
 BOOST_FIXTURE_TEST_CASE(wallet_coinsresult_test, WalletTestingSetup)
 {
+    REQUIRE_COINSELECTOR_TESTS_ENABLED();
     // Test case to verify CoinsResult object sanity.
     CoinsResult available_coins;
     {

@@ -247,7 +247,8 @@ CKey DecodeSecret(const std::string& str)
             }
             if (!key.IsValid()) {
                 size_t payload_len = payload_len_full;
-                if (payload_len > 0 && data.back() == 1) {
+                const bool has_scheme_prefix = payload_len_full > 0 && pq::SchemeFromPrefix(data[payload_off]) != nullptr;
+                if (!has_scheme_prefix && payload_len > 0 && data.back() == 1) {
                     --payload_len;
                 }
                 if (payload_len > 0) {

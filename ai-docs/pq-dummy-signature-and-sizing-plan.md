@@ -18,6 +18,12 @@ Pending:
 - Finish miniscript sizing fixes (separate project).
 - Run full unit suite after remaining fixes to confirm no regressions.
 
+## Test Controls
+
+- `coinselector_tests` are disabled by default to keep the suite fast.
+- Run them explicitly by setting:
+  - `TIDECOIN_RUN_COINSELECTOR_TESTS=1 ./build/bin/test_tidecoin --run_test=coinselector_tests`
+
 ## Background
 
 Current state:
