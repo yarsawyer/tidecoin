@@ -205,19 +205,23 @@ class TestNode():
                 addr = self.getnewaddress(address_type="bech32")
                 key = self.dumpprivkey(addr)
             except JSONRPCException as e:
-                # No wallet loaded: fall back to deterministic PQ test keys.
-                if "No wallet is loaded" not in str(e):
-                    raise
-                if "-disablewallet" not in self.args:
-                    self.createwallet(wallet_name="test_framework", load_on_startup=True)
-                    addr = self.getnewaddress(address_type="bech32")
-                    try:
+                msg = str(e)
+                # If the node wallet can't give us a spendable key (no wallet loaded, watch-only,
+                # locked, or private keys disabled), fall back to deterministic PQ test keys.
+                if "No wallet is loaded" in msg:
+                    if "-disablewallet" not in self.args:
+                        self.createwallet(wallet_name="test_framework", load_on_startup=True)
+                        addr = self.getnewaddress(address_type="bech32")
                         key = self.dumpprivkey(addr)
-                    except JSONRPCException as e2:
-                        if "Private key not available" not in str(e2):
-                            raise
-                        key = ""
-                else:
+                    else:
+                        from .wallet_util import generate_keypair_at_index
+                        from .segwit_addr import encode_segwit_address
+                        from .script import hash160
+                        key, pubkey = generate_keypair_at_index(self.index)
+                        hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
+                        hrp = hrp_map.get(self.chain, "rtbc")
+                        addr = encode_segwit_address(hrp, 0, hash160(pubkey))
+                elif "Private key not available" in msg:
                     from .wallet_util import generate_keypair_at_index
                     from .segwit_addr import encode_segwit_address
                     from .script import hash160
@@ -225,6 +229,8 @@ class TestNode():
                     hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
                     hrp = hrp_map.get(self.chain, "rtbc")
                     addr = encode_segwit_address(hrp, 0, hash160(pubkey))
+                else:
+                    raise
             self._deterministic_priv_key = self.AddressKeyPair(addr, key)
         return self._deterministic_priv_key
 

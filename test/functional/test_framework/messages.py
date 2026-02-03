@@ -66,6 +66,13 @@ MSG_WITNESS_FLAG = 1 << 30
 MSG_TYPE_MASK = 0xffffffff >> 2
 MSG_WITNESS_TX = MSG_TX | MSG_WITNESS_FLAG
 
+# AuxPoW block version helpers (match src/primitives/pureheader.h).
+VERSION_AUXPOW = (1 << 8)
+VERSION_START_BIT = 16
+MASK_AUXPOW_CHAINID_SHIFTED = 0x001f << VERSION_START_BIT
+# Tidecoin's AuxPoW chain id (src/kernel/chainparams.cpp).
+CHAIN_ID = 8
+
 FILTER_TYPE_BASIC = 0
 
 WITNESS_SCALE_FACTOR = 4
@@ -705,9 +712,54 @@ class CTransaction:
             % (self.version, repr(self.vin), repr(self.vout), repr(self.wit), self.nLockTime)
 
 
+class CAuxPow:
+    """
+    AuxPoW data structure as serialized on the wire/disk for Tidecoin blocks.
+
+    Matches src/auxpow.h (CAuxPow::SERIALIZE_METHODS). The MerkleTx hashBlock
+    and coinbase index are serialized but ignored by validation, so we keep
+    them as local values on deserialize for test assertions.
+    """
+
+    __slots__ = ("coinbase_tx", "hashBlock", "vMerkleBranch", "vChainMerkleBranch", "nChainIndex", "parent_block")
+
+    def __init__(self):
+        self.coinbase_tx = CTransaction()
+        # Serialized but ignored by validation (see src/auxpow.h). Nodes
+        # typically re-serialize it as 0.
+        self.hashBlock = 0
+        self.vMerkleBranch = []
+        self.vChainMerkleBranch = []
+        self.nChainIndex = 0
+        self.parent_block = CBlockHeader()
+
+    def serialize(self):
+        r = b""
+        r += self.coinbase_tx.serialize_with_witness()
+        # Match core behaviour: always serialize hashBlock as 0.
+        r += ser_uint256(0)
+        r += ser_uint256_vector(self.vMerkleBranch)
+        r += (0).to_bytes(4, "little", signed=True)  # nIndex (always 0, ignored)
+        r += ser_uint256_vector(self.vChainMerkleBranch)
+        r += int(self.nChainIndex).to_bytes(4, "little", signed=True)
+        r += self.parent_block._serialize_header()  # parent is a pure header
+        return r
+
+    def deserialize(self, f):
+        self.coinbase_tx = CTransaction()
+        self.coinbase_tx.deserialize(f)
+        self.hashBlock = deser_uint256(f)
+        self.vMerkleBranch = deser_uint256_vector(f)
+        _n_index = int.from_bytes(f.read(4), "little", signed=True)
+        self.vChainMerkleBranch = deser_uint256_vector(f)
+        self.nChainIndex = int.from_bytes(f.read(4), "little", signed=True)
+        self.parent_block = CBlockHeader()
+        self.parent_block.deserialize(f)
+
+
 class CBlockHeader:
     __slots__ = ("hashMerkleRoot", "hashPrevBlock", "nBits", "nNonce",
-                 "nTime", "nVersion")
+                 "nTime", "nVersion", "auxpow")
 
     def __init__(self, header=None):
         if header is None:
@@ -719,6 +771,7 @@ class CBlockHeader:
             self.nTime = header.nTime
             self.nBits = header.nBits
             self.nNonce = header.nNonce
+            self.auxpow = copy.deepcopy(header.auxpow) if getattr(header, "auxpow", None) else None
 
     def set_null(self):
         self.nVersion = 4
@@ -727,6 +780,7 @@ class CBlockHeader:
         self.nTime = 0
         self.nBits = 0
         self.nNonce = 0
+        self.auxpow = None
 
     def deserialize(self, f):
         self.nVersion = int.from_bytes(f.read(4), "little", signed=True)
@@ -735,9 +789,18 @@ class CBlockHeader:
         self.nTime = int.from_bytes(f.read(4), "little")
         self.nBits = int.from_bytes(f.read(4), "little")
         self.nNonce = int.from_bytes(f.read(4), "little")
+        self.auxpow = None
+        if self.is_auxpow():
+            self.auxpow = CAuxPow()
+            self.auxpow.deserialize(f)
 
     def serialize(self):
-        return self._serialize_header()
+        r = self._serialize_header()
+        if self.is_auxpow():
+            if self.auxpow is None:
+                raise ValueError("AuxPoW flag set but no auxpow data present")
+            r += self.auxpow.serialize()
+        return r
 
     def _serialize_header(self):
         r = b""
@@ -758,6 +821,25 @@ class CBlockHeader:
     def hash_int(self):
         """Return block header hash as integer."""
         return uint256_from_str(hash256(self._serialize_header()))
+
+    def is_auxpow(self):
+        return (self.nVersion & VERSION_AUXPOW) != 0
+
+    def get_chain_id(self):
+        if not self.is_auxpow():
+            return 0
+        return (self.nVersion & MASK_AUXPOW_CHAINID_SHIFTED) >> VERSION_START_BIT
+
+    def set_auxpow_version(self, flag, chain_id=CHAIN_ID):
+        """Set/clear AuxPoW flag and encode chain id into version bits."""
+        if flag:
+            self.nVersion |= VERSION_AUXPOW
+            self.nVersion &= ~MASK_AUXPOW_CHAINID_SHIFTED
+            self.nVersion |= (int(chain_id) & 0x1F) << VERSION_START_BIT
+        else:
+            self.nVersion &= ~VERSION_AUXPOW
+            self.nVersion &= ~MASK_AUXPOW_CHAINID_SHIFTED
+            self.auxpow = None
 
     def __repr__(self):
         return "CBlockHeader(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x)" \

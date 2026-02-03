@@ -1012,7 +1012,18 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
     }
 
     const auto block_hash{block.GetHash()};
-    if (expected_height) {
+    // AuxPoW blocks are validated against the parent header's scrypt PoW, not
+    // against the (unmined) Tidecoin header's PoW hash.
+    if (block.IsAuxpow()) {
+        if (!block.auxpow) {
+            LogError("AuxPoW flag set but auxpow data missing at %s while reading block", pos.ToString());
+            return false;
+        }
+        if (!CheckProofOfWork(block.auxpow->getParentBlockHash(), block.nBits, GetConsensus())) {
+            LogError("Errors in auxpow parent PoW at %s while reading block", pos.ToString());
+            return false;
+        }
+    } else if (expected_height) {
         if (!CheckProofOfWork(block, GetConsensus(), *expected_height)) {
             LogError("Errors in block header at %s while reading block", pos.ToString());
             return false;
