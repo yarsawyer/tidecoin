@@ -543,6 +543,8 @@ std::shared_ptr<CWallet> RestoreWallet(WalletContext& context, const fs::path& b
 
     const fs::path wallet_path = fsbridge::AbsPathJoin(GetWalletDir(), fs::u8path(wallet_name));
     auto wallet_file = wallet_path / "wallet.dat";
+    const bool wallet_path_existed = fs::exists(wallet_path);
+    bool wallet_path_created = false;
     std::shared_ptr<CWallet> wallet;
 
     try {
@@ -557,6 +559,7 @@ std::shared_ptr<CWallet> RestoreWallet(WalletContext& context, const fs::path& b
             status = DatabaseStatus::FAILED_ALREADY_EXISTS;
             return nullptr;
         }
+        wallet_path_created = true;
 
         fs::copy_file(backup_file, wallet_file, fs::copy_options::none);
 
@@ -569,9 +572,15 @@ std::shared_ptr<CWallet> RestoreWallet(WalletContext& context, const fs::path& b
         error += Untranslated(strprintf("Unexpected exception: %s", e.what()));
     }
 
-    // Remove created wallet path only when loading fails
+    // Remove created wallet file/dir only when loading fails
     if (load_after_restore && !wallet) {
-        fs::remove_all(wallet_path);
+        std::error_code ec;
+        fs::remove(wallet_file, ec);
+        if (wallet_path_created && !wallet_path_existed) {
+            if (fs::is_empty(wallet_path, ec)) {
+                fs::remove(wallet_path, ec);
+            }
+        }
     }
 
     return wallet;
@@ -4708,6 +4717,7 @@ util::Result<MigrationResult> MigrateLegacyToDescriptor(std::shared_ptr<CWallet>
     // both before and after loading. This ensures the set is complete even if one of the wallets
     // fails to load.
     std::set<fs::path> wallet_dirs;
+    std::set<fs::path> wallet_files;
     if (success) {
         Assume(!res.wallet); // We will set it here.
         // Check if the local wallet is empty after migration
@@ -4724,6 +4734,9 @@ util::Result<MigrationResult> MigrateLegacyToDescriptor(std::shared_ptr<CWallet>
                 std::shared_ptr<CWallet>& wallet = *wallet_ptr;
                 // Save db path and load wallet
                 wallet_dirs.insert(fs::PathFromString(wallet->GetDatabase().Filename()).parent_path());
+                for (const auto& path : wallet->GetDatabase().Files()) {
+                    wallet_files.insert(path);
+                }
                 assert(wallet.use_count() == 1);
                 std::string wallet_name = wallet->GetName();
                 wallet.reset();
@@ -4745,9 +4758,12 @@ util::Result<MigrationResult> MigrateLegacyToDescriptor(std::shared_ptr<CWallet>
         if (res.watchonly_wallet) created_wallets.push_back(std::move(res.watchonly_wallet));
         if (res.solvables_wallet) created_wallets.push_back(std::move(res.solvables_wallet));
 
-        // Get the directories to remove after unloading
+        // Get the files/dirs to remove after unloading
         for (std::shared_ptr<CWallet>& w : created_wallets) {
             wallet_dirs.emplace(fs::PathFromString(w->GetDatabase().Filename()).parent_path());
+            for (const auto& path : w->GetDatabase().Files()) {
+                wallet_files.insert(path);
+            }
         }
 
         // Unload the wallets
@@ -4766,9 +4782,15 @@ util::Result<MigrationResult> MigrateLegacyToDescriptor(std::shared_ptr<CWallet>
             }
         }
 
-        // Delete the wallet directories
+        // Delete the wallet files, then remove empty directories
+        std::error_code ec;
+        for (const fs::path& path : wallet_files) {
+            fs::remove(path, ec);
+        }
         for (const fs::path& dir : wallet_dirs) {
-            fs::remove_all(dir);
+            if (fs::is_empty(dir, ec)) {
+                fs::remove(dir, ec);
+            }
         }
 
         // Restore the backup

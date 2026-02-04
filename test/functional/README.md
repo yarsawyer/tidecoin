@@ -164,6 +164,9 @@ Test-only secp256k1 elliptic curve implementation
 
 #### [blocktools.py](test_framework/blocktools.py)
 Helper functions for creating blocks and transactions.
+On Tidecoin regtest, AuxPoW activates at height 0 and PoW switches to scrypt, but AuxPoW is optional.
+`create_block()` defaults to non-AuxPoW blocks and will solve using scrypt when auxpow is active.
+Pass `use_auxpow=True` to attach AuxPoW, or `auxpow_active=False` to force legacy PoW solving in tests.
 
 ### Benchmarking with perf
 

@@ -822,6 +822,12 @@ class CBlockHeader:
         """Return block header hash as integer."""
         return uint256_from_str(hash256(self._serialize_header()))
 
+    def scrypt_pow_int(self):
+        """Return scrypt_1024_1_1_256 PoW hash as integer (little-endian)."""
+        data = self._serialize_header()
+        digest = hashlib.scrypt(data, salt=data, n=1024, r=1, p=1, dklen=32)
+        return int.from_bytes(digest, "little")
+
     def is_auxpow(self):
         return (self.nVersion & VERSION_AUXPOW) != 0
 
@@ -911,6 +917,11 @@ class CBlock(CBlockHeader):
     def solve(self):
         target = uint256_from_compact(self.nBits)
         while self.hash_int > target:
+            self.nNonce += 1
+
+    def solve_scrypt(self):
+        target = uint256_from_compact(self.nBits)
+        while self.scrypt_pow_int() > target:
             self.nNonce += 1
 
     # Calculate the block weight using witness and non-witness

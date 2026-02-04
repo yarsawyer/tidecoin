@@ -534,6 +534,7 @@ def main():
     run_tests(
         test_list=test_list,
         build_dir=config["environment"]["BUILDDIR"],
+        src_dir=config["environment"]["SRCDIR"],
         tmpdir=tmpdir,
         jobs=args.jobs,
         enable_coverage=args.coverage,
@@ -544,7 +545,7 @@ def main():
         results_filepath=results_filepath,
     )
 
-def run_tests(*, test_list, build_dir, tmpdir, jobs=1, enable_coverage=False, args=None, combined_logs_len=0, failfast=False, use_term_control, results_filepath=None):
+def run_tests(*, test_list, build_dir, src_dir, tmpdir, jobs=1, enable_coverage=False, args=None, combined_logs_len=0, failfast=False, use_term_control, results_filepath=None):
     args = args or []
 
     # Warn if bitcoind is already running
@@ -568,6 +569,12 @@ def run_tests(*, test_list, build_dir, tmpdir, jobs=1, enable_coverage=False, ar
               f"Running the test suite with fewer than {min_space // (1024 * 1024)} MB of free space might cause tests to fail.")
 
     tests_dir = f"{build_dir}/test/functional/"
+    missing_scripts = [script for script in ALL_SCRIPTS if not os.path.exists(os.path.join(tests_dir, script.split()[0]))]
+    if missing_scripts:
+        src_tests_dir = os.path.join(src_dir, "test/functional/")
+        if os.path.exists(src_tests_dir):
+            print(f"{BOLD[1]}WARNING:{BOLD[0]} Missing {len(missing_scripts)} test script(s) in build dir; using source tree tests instead.")
+            tests_dir = src_tests_dir
     # This allows `test_runner.py` to work from an out-of-source build directory using a symlink,
     # a hard link or a copy on any platform. See https://github.com/bitcoin/bitcoin/pull/27561.
     sys.path.append(tests_dir)
@@ -814,7 +821,7 @@ class TestResult():
 def check_script_prefixes():
     """Check that test scripts start with one of the allowed name prefixes."""
 
-    good_prefixes_re = re.compile("^(example|feature|interface|mempool|mining|p2p|rpc|wallet|tool)_")
+    good_prefixes_re = re.compile("^(example|feature|interface|mempool|mining|p2p|rpc|wallet|tool|auxpow)_")
     bad_script_names = [script for script in ALL_SCRIPTS if good_prefixes_re.match(script) is None]
 
     if bad_script_names:

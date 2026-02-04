@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -191,8 +192,13 @@ bool CreateFromDump(const ArgsManager& args, const std::string& name, const fs::
     ReadDatabaseArgs(args, options);
     options.require_create = true;
     options.require_format = DatabaseFormat::SQLITE;
+    const bool wallet_path_existed = fs::exists(wallet_path);
     std::unique_ptr<WalletDatabase> database = MakeDatabase(wallet_path, options, status, error);
     if (!database) return false;
+    std::set<fs::path> created_files;
+    for (const auto& path : database->Files()) {
+        created_files.insert(path);
+    }
 
     // dummy chain interface
     bool ret = true;
@@ -202,85 +208,93 @@ bool CreateFromDump(const ArgsManager& args, const std::string& name, const fs::
         DBErrors load_wallet_ret = wallet->LoadWallet();
         if (load_wallet_ret != DBErrors::LOAD_OK) {
             error = strprintf(_("Error creating %s"), name);
-            return false;
+            ret = false;
         }
 
-        // Get the database handle
-        WalletDatabase& db = wallet->GetDatabase();
-        std::unique_ptr<DatabaseBatch> batch = db.MakeBatch();
-        batch->TxnBegin();
+        if (ret) {
+            // Get the database handle
+            WalletDatabase& db = wallet->GetDatabase();
+            std::unique_ptr<DatabaseBatch> batch = db.MakeBatch();
+            batch->TxnBegin();
 
-        // Read the records from the dump file and write them to the database
-        while (dump_file.good()) {
-            std::string key;
-            std::getline(dump_file, key, ',');
-            std::string value;
-            std::getline(dump_file, value, '\n');
+            // Read the records from the dump file and write them to the database
+            while (dump_file.good()) {
+                std::string key;
+                std::getline(dump_file, key, ',');
+                std::string value;
+                std::getline(dump_file, value, '\n');
 
-            if (key == "checksum") {
-                std::vector<unsigned char> parsed_checksum = ParseHex(value);
-                if (parsed_checksum.size() != checksum.size()) {
-                    error = Untranslated("Error: Checksum is not the correct size");
+                if (key == "checksum") {
+                    std::vector<unsigned char> parsed_checksum = ParseHex(value);
+                    if (parsed_checksum.size() != checksum.size()) {
+                        error = Untranslated("Error: Checksum is not the correct size");
+                        ret = false;
+                        break;
+                    }
+                    std::copy(parsed_checksum.begin(), parsed_checksum.end(), checksum.begin());
+                    break;
+                }
+
+                std::string line = strprintf("%s,%s\n", key, value);
+                hasher << std::span{line};
+
+                if (key.empty() || value.empty()) {
+                    continue;
+                }
+
+                if (!IsHex(key)) {
+                    error = strprintf(_("Error: Got key that was not hex: %s"), key);
                     ret = false;
                     break;
                 }
-                std::copy(parsed_checksum.begin(), parsed_checksum.end(), checksum.begin());
-                break;
+                if (!IsHex(value)) {
+                    error = strprintf(_("Error: Got value that was not hex: %s"), value);
+                    ret = false;
+                    break;
+                }
+
+                std::vector<unsigned char> k = ParseHex(key);
+                std::vector<unsigned char> v = ParseHex(value);
+                if (!batch->Write(std::span{k}, std::span{v})) {
+                    error = strprintf(_("Error: Unable to write record to new wallet"));
+                    ret = false;
+                    break;
+                }
             }
 
-            std::string line = strprintf("%s,%s\n", key, value);
-            hasher << std::span{line};
-
-            if (key.empty() || value.empty()) {
-                continue;
+            if (ret) {
+                uint256 comp_checksum = hasher.GetHash();
+                if (checksum.IsNull()) {
+                    error = _("Error: Missing checksum");
+                    ret = false;
+                } else if (checksum != comp_checksum) {
+                    error = strprintf(_("Error: Dumpfile checksum does not match. Computed %s, expected %s"), HexStr(comp_checksum), HexStr(checksum));
+                    ret = false;
+                }
             }
 
-            if (!IsHex(key)) {
-                error = strprintf(_("Error: Got key that was not hex: %s"), key);
-                ret = false;
-                break;
-            }
-            if (!IsHex(value)) {
-                error = strprintf(_("Error: Got value that was not hex: %s"), value);
-                ret = false;
-                break;
+            if (ret) {
+                batch->TxnCommit();
+            } else {
+                batch->TxnAbort();
             }
 
-            std::vector<unsigned char> k = ParseHex(key);
-            std::vector<unsigned char> v = ParseHex(value);
-            if (!batch->Write(std::span{k}, std::span{v})) {
-                error = strprintf(_("Error: Unable to write record to new wallet"));
-                ret = false;
-                break;
-            }
+            batch.reset();
         }
-
-        if (ret) {
-            uint256 comp_checksum = hasher.GetHash();
-            if (checksum.IsNull()) {
-                error = _("Error: Missing checksum");
-                ret = false;
-            } else if (checksum != comp_checksum) {
-                error = strprintf(_("Error: Dumpfile checksum does not match. Computed %s, expected %s"), HexStr(comp_checksum), HexStr(checksum));
-                ret = false;
-            }
-        }
-
-        if (ret) {
-            batch->TxnCommit();
-        } else {
-            batch->TxnAbort();
-        }
-
-        batch.reset();
 
         dump_file.close();
     }
     wallet.reset(); // The pointer deleter will close the wallet for us.
 
-    // Remove the wallet dir if we have a failure
+    // Remove created files (and empty dir) if we have a failure
     if (!ret) {
-        fs::remove_all(wallet_path);
+        std::error_code ec;
+        for (const auto& path : created_files) {
+            fs::remove(path, ec);
+        }
+        if (!wallet_path_existed && fs::is_empty(wallet_path, ec)) {
+            fs::remove(wallet_path, ec);
+        }
     }
 
     return ret;

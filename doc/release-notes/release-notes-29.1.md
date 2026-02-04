@@ -90,6 +90,7 @@ function signature instead of just the function name. (#32604)
 
 - #31757 wallet: fix crash on double block disconnection
 - #32553 wallet: Fix logging of wallet version
+- wallet: On migration/restore failure, only remove files created during the attempt, avoiding deletion of existing wallet directories.
 
 ### P2P
 
@@ -226,4 +227,3 @@ Thanks to everyone who directly contributed to this release:
 
 As well as to everyone that helped with translations on
 [Transifex](https://explore.transifex.com/bitcoin/bitcoin/).
-

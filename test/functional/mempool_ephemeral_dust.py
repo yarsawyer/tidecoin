@@ -4,13 +4,17 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 from decimal import Decimal
+import math
 
 from test_framework.messages import (
     COIN,
     CTxOut,
 )
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.mempool_util import assert_mempool_contents
+from test_framework.mempool_util import (
+    DEFAULT_MIN_RELAY_TX_FEE,
+    assert_mempool_contents,
+)
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -216,7 +220,9 @@ class EphemeralDustTest(BitcoinTestFramework):
 
         res = self.nodes[0].submitpackage([dusty_tx["hex"], sweep_tx["hex"]])
         assert_equal(res["package_msg"], "transaction failed")
-        assert_equal(res["tx-results"][dusty_tx["wtxid"]]["error"], "min relay fee not met, 0 < 15")
+        min_relay_fee = DEFAULT_MIN_RELAY_TX_FEE
+        min_fee = math.ceil(dusty_tx["tx"].get_vsize() * min_relay_fee / 1000)
+        assert_equal(res["tx-results"][dusty_tx["wtxid"]]["error"], f"min relay fee not met, 0 < {min_fee}")
 
         assert_equal(self.nodes[0].getrawmempool(), [])
 

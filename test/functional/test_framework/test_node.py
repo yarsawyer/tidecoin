@@ -221,7 +221,7 @@ class TestNode():
                         hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
                         hrp = hrp_map.get(self.chain, "rtbc")
                         addr = encode_segwit_address(hrp, 0, hash160(pubkey))
-                elif "Private key not available" in msg:
+                elif "Private key not available" in msg or "Method not found" in msg:
                     from .wallet_util import generate_keypair_at_index
                     from .segwit_addr import encode_segwit_address
                     from .script import hash160

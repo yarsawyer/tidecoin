@@ -33,7 +33,7 @@ class PackageRBFTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         # Required for fill_mempool()
         self.extra_args = [[
-            "-maxmempool=5",
+            "-maxmempool=9",
         ]] * self.num_nodes
 
     def assert_mempool_contents(self, expected=None):

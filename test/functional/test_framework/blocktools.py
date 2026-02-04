@@ -17,6 +17,8 @@ from .address import (
 )
 from .messages import (
     CBlock,
+    CAuxPow,
+    CHAIN_ID,
     COIN,
     COutPoint,
     CTransaction,
@@ -31,6 +33,8 @@ from .messages import (
     WITNESS_SCALE_FACTOR,
     MAX_SEQUENCE_NONFINAL,
 )
+from .auxpow_testing import computeAuxpow
+from io import BytesIO
 from .script import (
     CScript,
     CScriptNum,
@@ -69,9 +73,13 @@ MIN_BLOCKS_TO_KEEP = 288
 
 REGTEST_RETARGET_PERIOD = 150
 
-REGTEST_N_BITS = 0x207fffff  # difficulty retargeting is disabled in REGTEST chainparams"
-REGTEST_TARGET = 0x7fffff0000000000000000000000000000000000000000000000000000000000
+# Tidecoin regtest powLimit compact (see src/kernel/chainparams.cpp).
+REGTEST_N_BITS = 0x200f0f0f
+REGTEST_TARGET = uint256_from_compact(REGTEST_N_BITS)
 assert_equal(uint256_from_compact(REGTEST_N_BITS), REGTEST_TARGET)
+
+# Tidecoin regtest AuxPoW activation height (see src/kernel/chainparams.cpp).
+REGTEST_AUXPOW_START_HEIGHT = 0
 
 DIFF_1_N_BITS = 0x1d00ffff
 DIFF_1_TARGET = 0x00000000ffff0000000000000000000000000000000000000000000000000000
@@ -81,13 +89,34 @@ DIFF_4_N_BITS = 0x1c3fffc0
 DIFF_4_TARGET = int(DIFF_1_TARGET / 4)
 assert_equal(uint256_from_compact(DIFF_4_N_BITS), DIFF_4_TARGET)
 
+TIDECOIN_SUBSIDY_INTERVAL = 20
+TIDECOIN_INITIAL_SUBSIDY = 40
+
+def _tidecoin_subsidy(height, interval):
+    """Compute Tidecoin subsidy with doubling interval and quartering per step."""
+    subsidy = TIDECOIN_INITIAL_SUBSIDY * COIN
+    if height < 0 or subsidy <= 0:
+        return 0
+    step_interval = interval
+    boundary = interval
+    for _ in range(65):
+        if height < boundary:
+            break
+        subsidy >>= 2
+        if subsidy == 0:
+            break
+        step_interval *= 2
+        boundary += step_interval
+    return subsidy
+
 def nbits_str(nbits):
     return f"{nbits:08x}"
 
 def target_str(target):
     return f"{target:064x}"
 
-def create_block(hashprev=None, coinbase=None, ntime=None, *, version=None, tmpl=None, txlist=None):
+def create_block(hashprev=None, coinbase=None, ntime=None, *, version=None, tmpl=None, txlist=None,
+                 use_auxpow=False, chain_id=CHAIN_ID, auxpow_active=None):
     """Create a block (with regtest difficulty)."""
     block = CBlock()
     if tmpl is None:
@@ -108,7 +137,25 @@ def create_block(hashprev=None, coinbase=None, ntime=None, *, version=None, tmpl
                 tx = tx_from_hex(tx)
             block.vtx.append(tx)
     block.hashMerkleRoot = block.calc_merkle_root()
+    if use_auxpow:
+        _apply_auxpow(block, chain_id)
+    else:
+        height = tmpl.get("height")
+        if auxpow_active is None:
+            auxpow_active = height is None or height >= REGTEST_AUXPOW_START_HEIGHT
+        if auxpow_active:
+            block.solve_scrypt()
+        else:
+            block.solve()
     return block
+
+def _apply_auxpow(block, chain_id):
+    """Attach a valid AuxPoW for the given block header using scrypt parent PoW."""
+    block.set_auxpow_version(True, chain_id)
+    target = b"%064x" % uint256_from_compact(block.nBits)
+    auxpow_hex = computeAuxpow(block.hash_hex, target, True)
+    block.auxpow = CAuxPow()
+    block.auxpow.deserialize(BytesIO(bytes.fromhex(auxpow_hex)))
 
 def get_witness_script(witness_root, witness_nonce):
     witness_commitment = hash256(ser_uint256(witness_root) + ser_uint256(witness_nonce))
@@ -141,7 +188,7 @@ def script_BIP34_coinbase_height(height):
     return CScript([CScriptNum(height)])
 
 
-def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_script=None, fees=0, nValue=50, halving_period=REGTEST_RETARGET_PERIOD):
+def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_script=None, fees=0, nValue=TIDECOIN_INITIAL_SUBSIDY, halving_period=TIDECOIN_SUBSIDY_INTERVAL):
     """Create a coinbase transaction.
 
     If pubkey is passed in, the coinbase output will be a P2PK output;
@@ -154,10 +201,9 @@ def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_scr
     coinbase.vin.append(CTxIn(COutPoint(0, 0xffffffff), script_BIP34_coinbase_height(height), MAX_SEQUENCE_NONFINAL))
     coinbaseoutput = CTxOut()
     coinbaseoutput.nValue = nValue * COIN
-    if nValue == 50:
-        halvings = int(height / halving_period)
-        coinbaseoutput.nValue >>= halvings
-        coinbaseoutput.nValue += fees
+    # Tidecoin subsidy schedule: quarters each step, doubling interval.
+    if nValue == TIDECOIN_INITIAL_SUBSIDY:
+        coinbaseoutput.nValue = _tidecoin_subsidy(height, halving_period) + fees
     if pubkey is not None:
         coinbaseoutput.scriptPubKey = key_to_p2pk_script(pubkey)
     elif script_pubkey is not None:

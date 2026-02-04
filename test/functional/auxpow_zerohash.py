@@ -93,7 +93,7 @@ class AuxpowZeroHashTest(BitcoinTestFramework):
         coinbase = create_coinbase(height)
         coinbase.vout[0].nValue = tmpl["coinbasevalue"]
 
-        block = create_block(tip, coinbase, ntime, tmpl=tmpl)
+        block = create_block(tip, coinbase, ntime, tmpl=tmpl, use_auxpow=False)
         block.set_auxpow_version(True)
         blkHash = block.hash_hex
 

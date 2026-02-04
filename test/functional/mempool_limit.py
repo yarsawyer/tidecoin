@@ -29,7 +29,7 @@ class MempoolLimitTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         self.num_nodes = 1
         self.extra_args = [[
-            "-maxmempool=5",
+            "-maxmempool=9",
         ]]
 
     def test_rbf_carveout_disallowed(self):
@@ -330,9 +330,9 @@ class MempoolLimitTest(BitcoinTestFramework):
         for wtxid in [tx_parent_just_below["wtxid"], tx_child_just_above["wtxid"]]:
             assert_equal(res["tx-results"][wtxid]["error"], "mempool full")
 
-        self.log.info('Test passing a value below the minimum (5 MB) to -maxmempool throws an error')
+        self.log.info('Test passing a value below the minimum (9 MB) to -maxmempool throws an error')
         self.stop_node(0)
-        self.nodes[0].assert_start_raises_init_error(["-maxmempool=4"], "Error: -maxmempool must be at least 5 MB")
+        self.nodes[0].assert_start_raises_init_error(["-maxmempool=8"], "Error: -maxmempool must be at least 9 MB")
 
         self.test_mid_package_eviction_success()
         self.test_mid_package_replacement()

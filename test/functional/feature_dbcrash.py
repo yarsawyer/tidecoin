@@ -51,10 +51,10 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
         self.rpc_timeout = 480
         self.supports_cli = False
 
-        # Set -maxmempool=0 to turn off mempool memory sharing with dbcache
+        # Use the minimum allowed mempool size on Tidecoin.
         self.base_args = [
             "-limitdescendantsize=0",
-            "-maxmempool=0",
+            "-maxmempool=9",
             "-dbbatchsize=200000",
         ]
 

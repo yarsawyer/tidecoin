@@ -371,7 +371,7 @@ class MiniWallet:
         assert fee >= 0
         # calculate fee
         if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
-            vsize = Decimal(96)  # anyone-can-spend (Tidecoin vsize)
+            vsize = Decimal(96)  # anyone-can-spend vsize (no signatures)
             if target_vsize and not fee:  # respect fee_rate if target vsize is passed
                 fee = get_fee(target_vsize, fee_rate)
             send_value = utxo_to_spend["value"] - (fee or (fee_rate * vsize / 1000))
