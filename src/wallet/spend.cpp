@@ -444,6 +444,11 @@ CoinsResult AvailableCoins(const CWallet& wallet,
                     if (wtx.tx->version != TRUC_VERSION) continue;
                     // this unconfirmed v3 transaction already has a child
                     if (wtx.truc_child_in_mempool.has_value()) continue;
+                    // Skip unconfirmed TRUC coins that already have unconfirmed ancestors.
+                    size_t ancestors = 0;
+                    size_t descendants = 0;
+                    wallet.chain().getTransactionAncestry(wtx.tx->GetHash(), ancestors, descendants);
+                    if (ancestors > 1) continue;
                 } else {
                     if (wtx.tx->version == TRUC_VERSION) continue;
                     Assume(!wtx.truc_child_in_mempool.has_value());
