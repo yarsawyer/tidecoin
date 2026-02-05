@@ -702,6 +702,7 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
         {
             std::string reason;
             std::string debug;
+            block.hashMerkleRoot = uint256::ZERO;
             BOOST_REQUIRE(!mining->checkBlock(block, {.check_pow = false}, reason, debug));
             BOOST_REQUIRE_EQUAL(reason, "bad-txnmrklroot");
             BOOST_REQUIRE_EQUAL(debug, "hashMerkleRoot mismatch");

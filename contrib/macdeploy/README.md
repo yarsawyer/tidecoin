@@ -51,8 +51,8 @@ path to `Xcode.app` (extracted in the previous stage) as the first argument.
 ./contrib/macdeploy/gen-sdk '/path/to/Xcode.app'
 ```
 
-The generated archive should be: `Xcode-15.0-15A240d-extracted-SDK-with-libcxx-headers.tar.gz`.
-The `sha256sum` should be `c0c2e7bb92c1fee0c4e9f3a485e4530786732d6c6dd9e9f418c282aa6892f55d`.
+The generated archive should be: `Xcode-15.0-15A240d-extracted-SDK-with-libcxx-headers.tar`.
+The `sha256sum` should be `95b00dc41fa090747dc0a7907a5031a2fcb2d7f95c9584ba6bccdb99b6e3d498`.
 
 ## Deterministic macOS App Notes
 

@@ -16,6 +16,7 @@ $(package)_patches += qtbase_avoid_native_float16.patch
 $(package)_patches += qtbase_avoid_qmain.patch
 $(package)_patches += qtbase_platformsupport.patch
 $(package)_patches += qtbase_plugins_cocoa.patch
+$(package)_patches += qtbase_plugins_windows11style.patch
 $(package)_patches += qtbase_skip_tools.patch
 $(package)_patches += rcc_hardcode_timestamp.patch
 $(package)_patches += qttools_skip_dependencies.patch
