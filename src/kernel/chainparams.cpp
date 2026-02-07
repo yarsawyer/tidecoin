@@ -297,7 +297,7 @@ public:
         pchMessageStart[2] = 0x3f;
         pchMessageStart[3] = 0xda;
         nDefaultPort = 18778;
-        nPruneAfterHeight = 1000;
+        nPruneAfterHeight = opts.fastprune ? 100 : 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 

@@ -12,7 +12,6 @@ from test_framework.messages import (
     CInv,
     MAX_HEADERS_RESULTS,
     MAX_INV_SIZE,
-    MAX_PROTOCOL_MESSAGE_LENGTH,
     MSG_TX,
     from_hex,
     msg_getdata,
@@ -21,6 +20,7 @@ from test_framework.messages import (
     msg_ping,
     msg_version,
     ser_string,
+    uint256_from_compact,
 )
 from test_framework.p2p import (
     P2PDataStore,
@@ -31,7 +31,9 @@ from test_framework.util import (
     assert_equal,
 )
 
-VALID_DATA_LIMIT = MAX_PROTOCOL_MESSAGE_LENGTH - 5  # Account for the 5-byte length prefix
+# Tidecoin core accepts up to 8 MB protocol messages (src/net.h).
+TIDECOIN_MAX_PROTOCOL_MESSAGE_LENGTH = 8 * 1000 * 1000
+VALID_DATA_LIMIT = TIDECOIN_MAX_PROTOCOL_MESSAGE_LENGTH - 5  # Account for the 5-byte length prefix
 
 
 class msg_unrecognized:
@@ -142,12 +144,14 @@ class InvalidMessagesTest(BitcoinTestFramework):
     def test_size(self):
         self.log.info("Test message with oversized payload disconnects peer")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
+        oversized_payload_size = VALID_DATA_LIMIT + 1
+        msg = msg_unrecognized(str_data="d" * oversized_payload_size)
+        oversized_msg_size = len(msg.serialize())
         error_msg = (
-            ['V2 transport error: packet too large (4000014 bytes)'] if self.options.v2transport
-            else ['Header error: Size too large (badmsg, 4000001 bytes)']
+            [f'V2 transport error: packet too large ({oversized_msg_size + 13} bytes)'] if self.options.v2transport
+            else [f'Header error: Size too large (badmsg, {oversized_msg_size} bytes)']
         )
         with self.nodes[0].assert_debug_log(error_msg):
-            msg = msg_unrecognized(str_data="d" * (VALID_DATA_LIMIT + 1))
             msg = conn.build_message(msg)
             conn.send_raw_message(msg)
             conn.wait_for_disconnect(timeout=1)
@@ -288,7 +292,8 @@ class InvalidMessagesTest(BitcoinTestFramework):
         blockheader.hashPrevBlock = int(blockheader_tip_hash, 16)
         blockheader.nTime = int(time.time())
         blockheader.nBits = blockheader_tip.nBits
-        while not blockheader.hash_hex.startswith('0'):
+        target = uint256_from_compact(blockheader.nBits)
+        while blockheader.scrypt_pow_int() > target:
             blockheader.nNonce += 1
         peer = self.nodes[0].add_p2p_connection(P2PInterface())
         peer.send_and_ping(msg_headers([blockheader]))
@@ -298,7 +303,7 @@ class InvalidMessagesTest(BitcoinTestFramework):
         assert_equal(chaintips[0]['hash'], blockheader.hash_hex)
 
         # invalidate PoW
-        while not blockheader.hash_hex.startswith('f'):
+        while blockheader.scrypt_pow_int() <= target:
             blockheader.nNonce += 1
         with self.nodes[0].assert_debug_log(['Misbehaving', 'header with invalid proof of work']):
             peer.send_without_ping(msg_headers([blockheader]))
@@ -331,9 +336,9 @@ class InvalidMessagesTest(BitcoinTestFramework):
         conn = self.nodes[0].add_p2p_connection(P2PDataStore(), supports_v2_p2p=False)
         conn2 = self.nodes[0].add_p2p_connection(P2PDataStore(), supports_v2_p2p=False)
         msg_at_size = msg_unrecognized(str_data="b" * VALID_DATA_LIMIT)
-        assert len(msg_at_size.serialize()) == MAX_PROTOCOL_MESSAGE_LENGTH
+        assert len(msg_at_size.serialize()) == TIDECOIN_MAX_PROTOCOL_MESSAGE_LENGTH
 
-        self.log.info("(a) Send 80 messages, each of maximum valid data size (4MB)")
+        self.log.info("(a) Send 80 messages, each of maximum valid data size")
         for _ in range(80):
             conn.send_without_ping(msg_at_size)
 

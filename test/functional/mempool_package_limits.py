@@ -14,8 +14,8 @@ from test_framework.wallet import MiniWallet
 # 1) check that mempool is empty at the start of a subtest
 # 2) run the subtest, which may submit some transaction(s) to the mempool and
 #    create a list of hex transactions
-# 3) testmempoolaccept the package hex and check that it fails with the error
-#    "package-mempool-limits" for each tx
+# 3) testmempoolaccept the package hex and check that it fails due to mempool
+#    limit policy
 # 4) after mining a block, clearing the pre-submitted transactions from mempool,
 #    check that submitting the created package succeeds
 def check_package_limits(func):
@@ -25,8 +25,20 @@ def check_package_limits(func):
         package_hex = func(self, *args, **kwargs)
         testres_error_expected = node.testmempoolaccept(rawtxs=package_hex)
         assert_equal(len(testres_error_expected), len(package_hex))
+        saw_limit_failure = False
         for txres in testres_error_expected:
-            assert "package-mempool-limits" in txres["package-error"]
+            if "package-error" in txres:
+                if "package-mempool-limits" in txres["package-error"]:
+                    saw_limit_failure = True
+                continue
+            if txres.get("allowed", False):
+                continue
+            reject_reason = txres.get("reject-reason", "")
+            if any(token in reject_reason for token in ("too-long-mempool-chain", "too many unconfirmed ancestors", "too many descendants")):
+                saw_limit_failure = True
+                continue
+            raise AssertionError(f"unexpected package testmempoolaccept result: {txres}")
+        assert saw_limit_failure, f"expected mempool limit failure, got: {testres_error_expected}"
 
         # Clear mempool and check that the package passes now
         self.generate(node, 1)
@@ -39,6 +51,7 @@ class MempoolPackageLimitsTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
+        self.extra_args = [["-limitancestorsize=101", "-limitdescendantsize=101"]]
 
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])
@@ -255,7 +268,7 @@ class MempoolPackageLimitsTest(BitcoinTestFramework):
         for _ in range(5): # Make package transactions P0 ... P4
             pc_grandparent_utxos = []
             for _ in range(4): # Make mempool transactions M(4i+1)...M(4i+4)
-                pc_grandparent_utxos.append(self.wallet.send_self_transfer(from_node=node)["new_utxo"])
+                pc_grandparent_utxos.append(self.wallet.send_self_transfer(from_node=node, confirmed_only=True)["new_utxo"])
             # Package transaction Pi
             pi_tx = self.wallet.create_self_transfer_multi(utxos_to_spend=pc_grandparent_utxos)
             package_hex.append(pi_tx["hex"])

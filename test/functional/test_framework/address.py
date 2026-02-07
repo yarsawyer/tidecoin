@@ -43,6 +43,25 @@ class AddressType(enum.Enum):
 
 b58chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
+# PQ public keys are serialized with a 1-byte scheme prefix.
+_PQ_SCHEME_PREFIXES = {
+    0x07,  # Falcon-512
+    0x08,  # Falcon-1024
+    0x09,  # ML-DSA-44
+    0x0A,  # ML-DSA-65
+    0x0B,  # ML-DSA-87
+}
+
+# Tidecoin base58 prefixes from src/kernel/chainparams.cpp
+_BASE58_PREFIXES = {
+    "main": {"p2pkh": 33, "p2sh": 70, "p2sh2": 65},
+    "test": {"p2pkh": 92, "p2sh": 132, "p2sh2": 127},
+    "regtest": {"p2pkh": 117, "p2sh": 186, "p2sh2": 122},
+}
+
+_P2PKH_VERSIONS = {v["p2pkh"] for v in _BASE58_PREFIXES.values()}
+_P2SH_VERSIONS = {v["p2sh"] for v in _BASE58_PREFIXES.values()} | {v["p2sh2"] for v in _BASE58_PREFIXES.values()}
+
 
 def get_chain_bech32_hrp(chain):
     """Return the bech32 HRP for the given chain."""
@@ -108,44 +127,57 @@ def base58_to_byte(s):
     return res[1:-4], int(res[0])
 
 
-def keyhash_to_p2pkh(hash, main=False):
+def _select_chain(chain, main):
+    if chain is None:
+        return "main" if main else "regtest"
+    assert chain in _BASE58_PREFIXES
+    return chain
+
+def keyhash_to_p2pkh(hash, main=False, chain=None):
     assert len(hash) == 20
-    version = 0 if main else 111
+    chain = _select_chain(chain, main)
+    version = _BASE58_PREFIXES[chain]["p2pkh"]
     return byte_to_base58(hash, version)
 
-def scripthash_to_p2sh(hash, main=False):
+def scripthash_to_p2sh(hash, main=False, chain=None):
     assert len(hash) == 20
-    version = 5 if main else 196
+    chain = _select_chain(chain, main)
+    # Use SCRIPT_ADDRESS2, which is the primary script prefix in Tidecoin.
+    version = _BASE58_PREFIXES[chain]["p2sh2"]
     return byte_to_base58(hash, version)
 
-def key_to_p2pkh(key, main=False):
+def key_to_p2pkh(key, main=False, chain=None):
     key = check_key(key)
-    return keyhash_to_p2pkh(hash160(key), main)
+    return keyhash_to_p2pkh(hash160(key), main, chain)
 
-def script_to_p2sh(script, main=False):
+def script_to_p2sh(script, main=False, chain=None):
     script = check_script(script)
-    return scripthash_to_p2sh(hash160(script), main)
+    return scripthash_to_p2sh(hash160(script), main, chain)
 
-def key_to_p2sh_p2wpkh(key, main=False):
+def key_to_p2sh_p2wpkh(key, main=False, chain=None):
     key = check_key(key)
     p2shscript = CScript([OP_0, hash160(key)])
-    return script_to_p2sh(p2shscript, main)
+    return script_to_p2sh(p2shscript, main, chain)
 
-def program_to_witness(version, program, main=False):
+def program_to_witness(version, program, main=False, chain=None):
     if (type(program) is str):
         program = bytes.fromhex(program)
     assert version == 0
     assert 2 <= len(program) <= 40
     assert version > 0 or len(program) in [20, 32]
-    return encode_segwit_address("bc" if main else "bcrt", version, program)
+    if chain is not None:
+        hrp = get_chain_bech32_hrp(chain)
+    else:
+        hrp = "tbc" if main else "rtbc"
+    return encode_segwit_address(hrp, version, program)
 
 def script_to_p2wsh(script, main=False):
     script = check_script(script)
     return program_to_witness(0, sha256(script), main)
 
-def key_to_p2wpkh(key, main=False):
+def key_to_p2wpkh(key, main=False, chain=None):
     key = check_key(key)
-    return program_to_witness(0, hash160(key), main)
+    return program_to_witness(0, hash160(key), main, chain)
 
 def script_to_p2sh_p2wsh(script, main=False):
     script = check_script(script)
@@ -153,11 +185,16 @@ def script_to_p2sh_p2wsh(script, main=False):
     return script_to_p2sh(p2shscript, main)
 
 def check_key(key):
-    if (type(key) is str):
+    if type(key) is str:
         key = bytes.fromhex(key)  # Assuming this is hex string
-    if (type(key) is bytes and (len(key) == 33 or len(key) == 65)):
-        return key
-    assert False
+    if not isinstance(key, bytes):
+        assert False
+    if len(key) < 2:
+        assert False
+    # Tidecoin requires PQ keys with a valid scheme prefix.
+    if key[0] not in _PQ_SCHEME_PREFIXES:
+        assert False
+    return key
 
 def check_script(script):
     if (type(script) is str):
@@ -183,9 +220,9 @@ def address_to_scriptpubkey(address):
     if version is not None:
         return program_to_witness_script(version, payload) # testnet segwit scriptpubkey
     payload, version = base58_to_byte(address)
-    if version == 111:  # testnet pubkey hash
+    if version in _P2PKH_VERSIONS:
         return keyhash_to_p2pkh_script(payload)
-    elif version == 196:  # testnet script hash
+    elif version in _P2SH_VERSIONS:
         return scripthash_to_p2sh_script(payload)
     # TODO: also support other address formats
     else:

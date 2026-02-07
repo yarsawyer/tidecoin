@@ -85,19 +85,26 @@ class ScanblocksTest(BitcoinTestFramework):
         assert blockhash in node.scanblocks(
             "start", [{"desc": f"pkh({parent_pub.hex()})"}], height)['relevant_blocks']
 
-        # check that false-positives are included in the result now; note that
-        # finding a false-positive at runtime would take too long, hence we simply
-        # use a pre-calculated one that collides with the regtest genesis block's
-        # coinbase output and verify that their BIP158 ranged hashes match
+        # Check that false positives are included in results. The upstream
+        # hardcoded vector collides specifically for Bitcoin regtest genesis.
+        # Find a deterministic collision against this chain's genesis filter key.
         genesis_blockhash = node.getblockhash(0)
         genesis_spks = bip158_relevant_scriptpubkeys(node, genesis_blockhash)
         assert_equal(len(genesis_spks), 1)
         genesis_coinbase_spk = list(genesis_spks)[0]
-        false_positive_spk = bytes.fromhex("001400000000000000000000000000000000000cadcb")
 
         genesis_coinbase_hash = bip158_basic_element_hash(genesis_coinbase_spk, 1, genesis_blockhash)
-        false_positive_hash = bip158_basic_element_hash(false_positive_spk, 1, genesis_blockhash)
-        assert_equal(genesis_coinbase_hash, false_positive_hash)
+        false_positive_spk = None
+        # BIP158 basic filters operate on scriptPubKey bytes, so iterate over
+        # canonical P2WPKH scripts and find a hash collision in this chain.
+        for i in range(1, 5_000_000):
+            candidate_spk = b"\x00\x14" + i.to_bytes(20, byteorder="big")
+            if candidate_spk == genesis_coinbase_spk:
+                continue
+            if bip158_basic_element_hash(candidate_spk, 1, genesis_blockhash) == genesis_coinbase_hash:
+                false_positive_spk = candidate_spk
+                break
+        assert false_positive_spk is not None
 
         assert genesis_blockhash in node.scanblocks(
             "start", [{"desc": f"raw({genesis_coinbase_spk.hex()})"}], 0, 0)['relevant_blocks']

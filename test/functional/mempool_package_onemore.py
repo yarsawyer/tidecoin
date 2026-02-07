@@ -52,8 +52,12 @@ class MempoolPackagesTest(BitcoinTestFramework):
         assert_raises_rpc_error(-26, "too-long-mempool-chain, too many descendants", self.chain_tx, [chain[1]])
         # ...even if it chains on to two parent transactions with one in the chain.
         assert_raises_rpc_error(-26, "too-long-mempool-chain, too many descendants", self.chain_tx, [chain[0], second_chain])
-        # ...especially if its > 40k weight
-        assert_raises_rpc_error(-26, "too-long-mempool-chain, too many descendants", self.chain_tx, [chain[0]], num_outputs=350)
+        # ...especially if it's too large for descendant carveout.
+        # Tidecoin uses a larger carveout size limit (see EXTRA_DESCENDANT_TX_SIZE_LIMIT).
+        oversize_outputs = 350
+        while self.wallet.create_self_transfer_multi(utxos_to_spend=[chain[0]], num_outputs=oversize_outputs)["tx"].get_vsize() <= 40_000:
+            oversize_outputs += 100
+        assert_raises_rpc_error(-26, "too-long-mempool-chain, too many descendants", self.chain_tx, [chain[0]], num_outputs=oversize_outputs)
         # ...even if it's submitted with other transactions
         replaceable_tx = self.wallet.create_self_transfer_multi(utxos_to_spend=[chain[0]])
         txns = [replaceable_tx["tx"], self.wallet.create_self_transfer_multi(utxos_to_spend=replaceable_tx["new_utxos"])["tx"]]
@@ -70,7 +74,7 @@ class MempoolPackagesTest(BitcoinTestFramework):
         # Ensure an individual transaction with single direct conflict can RBF the chain which used our carve-out rule
         replacement_tx = replaceable_tx["tx"]
         replacement_tx.vout[0].nValue -= 1000000
-        self.nodes[0].sendrawtransaction(replacement_tx.serialize().hex())
+        self.nodes[0].sendrawtransaction(replacement_tx.serialize().hex(), maxfeerate=0)
 
         # Finally, check that we added two transactions
         assert_equal(len(self.nodes[0].getrawmempool()), DEFAULT_ANCESTOR_LIMIT + 3)

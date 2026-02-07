@@ -3,10 +3,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test datacarrier functionality"""
-from test_framework.messages import (
-    CTxOut,
-    MAX_OP_RETURN_RELAY,
-)
+from test_framework.blocktools import MAX_STANDARD_TX_WEIGHT
+from test_framework.messages import CTxOut
 from test_framework.script import (
     CScript,
     OP_RETURN,
@@ -23,6 +21,7 @@ from random import randbytes
 
 # The historical maximum, now used to test coverage
 CUSTOM_DATACARRIER_ARG = 83
+MAX_OP_RETURN_RELAY = MAX_STANDARD_TX_WEIGHT // 4
 
 class DataCarrierTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -51,8 +50,8 @@ class DataCarrierTest(BitcoinTestFramework):
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])
 
-        # Test that bare multisig is allowed by default. Do it here rather than create a new test for it.
-        assert_equal(self.nodes[0].getmempoolinfo()["permitbaremultisig"], True)
+        # Tidecoin defaults to disallowing bare multisig policy relay.
+        assert_equal(self.nodes[0].getmempoolinfo()["permitbaremultisig"], False)
 
         assert_equal(self.nodes[0].getmempoolinfo()["maxdatacarriersize"], MAX_OP_RETURN_RELAY)
         assert_equal(self.nodes[1].getmempoolinfo()["maxdatacarriersize"], 0)

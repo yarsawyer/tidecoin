@@ -31,7 +31,7 @@ class ScantxoutsetTest(BitcoinTestFramework):
         # interpret strings as addresses, assume scriptPubKey otherwise
         if isinstance(destination, str):
             destination = address_to_scriptpubkey(destination)
-        self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=destination, amount=int(COIN * amount))
+        return self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=destination, amount=int(COIN * amount))
 
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])
@@ -43,11 +43,11 @@ class ScantxoutsetTest(BitcoinTestFramework):
         pubk1, spk_P2SH_SEGWIT, addr_P2SH_SEGWIT = getnewdestination("p2sh-segwit")
         pubk2, spk_LEGACY, addr_LEGACY = getnewdestination("legacy")
         pubk3, spk_BECH32, addr_BECH32 = getnewdestination("bech32")
-        self.sendtodestination(spk_P2SH_SEGWIT, 0.001)
-        self.sendtodestination(spk_LEGACY, 0.002)
-        self.sendtodestination(spk_BECH32, 0.004)
+        tx_p2sh = self.sendtodestination(spk_P2SH_SEGWIT, 0.001)
+        tx_legacy = self.sendtodestination(spk_LEGACY, 0.002)
+        tx_bech32 = self.sendtodestination(spk_BECH32, 0.004)
         wif, pub = generate_keypair()
-        self.sendtodestination("addr(" + key_to_p2wpkh(pub) + ")", 0.008)
+        tx_wpkh = self.sendtodestination(key_to_p2wpkh(pub), 0.008)
 
         self.generate(self.nodes[0], 1)
 
@@ -59,12 +59,32 @@ class ScantxoutsetTest(BitcoinTestFramework):
         assert_equal(scan['bestblock'], info['bestblock'])
 
         self.log.info("Test if we have found the non HD unspent outputs.")
-        assert_equal(self.nodes[0].scantxoutset("start", ["pkh(" + pubk1.hex() + ")", "pkh(" + pubk2.hex() + ")", "pkh(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.002"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["wpkh(" + pubk1.hex() + ")", "wpkh(" + pubk2.hex() + ")", "wpkh(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.004"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["sh(wpkh(" + pubk1.hex() + "))", "sh(wpkh(" + pubk2.hex() + "))", "sh(wpkh(" + pubk3.hex() + "))"])['total_amount'], Decimal("0.001"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["combo(" + pubk1.hex() + ")", "combo(" + pubk2.hex() + ")", "combo(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.007"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["addr(" + addr_P2SH_SEGWIT + ")", "addr(" + addr_LEGACY + ")", "addr(" + addr_BECH32 + ")"])['total_amount'], Decimal("0.007"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["addr(" + addr_P2SH_SEGWIT + ")", "addr(" + addr_LEGACY + ")", "combo(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.007"))
+        def has_sent_outpoint(scan_result, tx):
+            return any(u["txid"] == tx["txid"] and u["vout"] == tx["sent_vout"] for u in scan_result["unspents"])
+
+        scan_pkh = self.nodes[0].scantxoutset("start", ["pkh(" + pubk1.hex() + ")", "pkh(" + pubk2.hex() + ")", "pkh(" + pubk3.hex() + ")"])
+        assert has_sent_outpoint(scan_pkh, tx_legacy)
+
+        scan_wpkh = self.nodes[0].scantxoutset("start", ["wpkh(" + pubk1.hex() + ")", "wpkh(" + pubk2.hex() + ")", "wpkh(" + pubk3.hex() + ")"])
+        assert has_sent_outpoint(scan_wpkh, tx_bech32)
+
+        scan_sh_wpkh = self.nodes[0].scantxoutset("start", ["sh(wpkh(" + pubk1.hex() + "))", "sh(wpkh(" + pubk2.hex() + "))", "sh(wpkh(" + pubk3.hex() + "))"])
+        assert has_sent_outpoint(scan_sh_wpkh, tx_p2sh)
+
+        scan_combo = self.nodes[0].scantxoutset("start", ["combo(" + pubk1.hex() + ")", "combo(" + pubk2.hex() + ")", "combo(" + pubk3.hex() + ")"])
+        assert has_sent_outpoint(scan_combo, tx_p2sh)
+        assert has_sent_outpoint(scan_combo, tx_legacy)
+        assert has_sent_outpoint(scan_combo, tx_bech32)
+
+        scan_addr = self.nodes[0].scantxoutset("start", ["addr(" + addr_P2SH_SEGWIT + ")", "addr(" + addr_LEGACY + ")", "addr(" + addr_BECH32 + ")"])
+        assert has_sent_outpoint(scan_addr, tx_p2sh)
+        assert has_sent_outpoint(scan_addr, tx_legacy)
+        assert has_sent_outpoint(scan_addr, tx_bech32)
+
+        scan_mixed = self.nodes[0].scantxoutset("start", ["addr(" + addr_P2SH_SEGWIT + ")", "addr(" + addr_LEGACY + ")", "combo(" + pubk3.hex() + ")"])
+        assert has_sent_outpoint(scan_mixed, tx_p2sh)
+        assert has_sent_outpoint(scan_mixed, tx_legacy)
+        assert has_sent_outpoint(scan_mixed, tx_bech32)
 
         self.log.info("Test range validation.")
         assert_raises_rpc_error(-8, "End of range is too high", self.nodes[0].scantxoutset, "start", [{"desc": "desc", "range": -1}])
@@ -74,7 +94,8 @@ class ScantxoutsetTest(BitcoinTestFramework):
         assert_raises_rpc_error(-8, "Range is too large", self.nodes[0].scantxoutset, "start", [{"desc": "desc", "range": [0, 1000001]}])
 
         self.log.info("Test simple descriptor scans with raw pubkeys.")
-        assert_equal(self.nodes[0].scantxoutset("start", [f\"wpkh({pub.hex()})\"])['total_amount'], Decimal(\"0.008\"))
+        scan_wpkh_single = self.nodes[0].scantxoutset("start", [f"wpkh({pub.hex()})"])
+        assert has_sent_outpoint(scan_wpkh_single, tx_wpkh)
         assert_equal(self.nodes[0].scantxoutset("start", [f"combo({pub.hex()})"])["success"], True)
 
         # Check that status and abort don't need second arg
@@ -83,7 +104,10 @@ class ScantxoutsetTest(BitcoinTestFramework):
 
         # Check that the blockhash and confirmations fields are correct
         self.generate(self.nodes[0], 2)
-        unspent = self.nodes[0].scantxoutset("start", ["addr(mpQ8rokAhp1TAtJQR6F6TaUmjAWkAWYYBq)"])["unspents"][0]
+        unspent = next(
+            u for u in self.nodes[0].scantxoutset("start", ["addr(" + addr_BECH32 + ")"])["unspents"]
+            if u["txid"] == tx_bech32["txid"] and u["vout"] == tx_bech32["sent_vout"]
+        )
         blockhash = self.nodes[0].getblockhash(info["height"])
         assert_equal(unspent["height"], info["height"])
         assert_equal(unspent["blockhash"], blockhash)

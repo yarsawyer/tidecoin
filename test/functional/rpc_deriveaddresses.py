@@ -33,7 +33,7 @@ class DeriveaddressesTest(BitcoinTestFramework):
 
         combo_descriptor = descsum_create(f"combo({priv_wif})")
         assert_equal(self.nodes[0].deriveaddresses(combo_descriptor),
-                     [key_to_p2wpkh(pubkey), key_to_p2pkh(pubkey), key_to_p2sh_p2wpkh(pubkey)])
+                     [key_to_p2pkh(pubkey), key_to_p2wpkh(pubkey), key_to_p2sh_p2wpkh(pubkey)])
 
         # P2PK does not have a valid address
         assert_raises_rpc_error(-5, "Descriptor does not have a corresponding address",

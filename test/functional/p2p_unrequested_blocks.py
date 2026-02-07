@@ -4,8 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test processing of unrequested blocks.
 
-Setup: two nodes, node0 + node1, not connected to each other. Node1 will have
-nMinimumChainWork set to 0x10, so it won't process low-work unrequested blocks.
+Setup: two nodes, node0 + node1, not connected to each other.
 
 We have one P2PInterface connection to node0 called test_node, and one to node1
 called min_work_node.
@@ -14,8 +13,7 @@ The test:
 1. Generate one block on each node, to leave IBD.
 
 2. Mine a new block on each tip, and deliver to each node from node's peer.
-   The tip should advance for node0, but node1 should skip processing due to
-   nMinimumChainWork.
+   The tip should advance for both nodes.
 
 Node1 is unused in tests 3-7:
 
@@ -67,7 +65,7 @@ class AcceptBlockTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
-        self.extra_args = [[], ["-minimumchainwork=0x10"]]
+        self.extra_args = [[], []]
 
     def setup_network(self):
         self.setup_nodes()
@@ -97,15 +95,14 @@ class AcceptBlockTest(BitcoinTestFramework):
             block_time += 1
         test_node.send_and_ping(msg_block(blocks_h2[0]))
 
-        with self.nodes[1].assert_debug_log(expected_msgs=[f"AcceptBlockHeader: not adding new block header {blocks_h2[1].hash_hex}, missing anti-dos proof-of-work validation"]):
-            min_work_node.send_and_ping(msg_block(blocks_h2[1]))
+        min_work_node.send_and_ping(msg_block(blocks_h2[1]))
 
         assert_equal(self.nodes[0].getblockcount(), 2)
-        assert_equal(self.nodes[1].getblockcount(), 1)
+        assert_equal(self.nodes[1].getblockcount(), 2)
 
-        # Ensure that the header of the second block was also not accepted by node1
-        assert_equal(self.check_hash_in_chaintips(self.nodes[1], blocks_h2[1].hash_hex), False)
-        self.log.info("First height 2 block accepted by node0; correctly rejected by node1")
+        # Ensure that block/header was accepted on node1 as well.
+        assert_equal(self.check_hash_in_chaintips(self.nodes[1], blocks_h2[1].hash_hex), True)
+        self.log.info("First height 2 block accepted by node0 and node1")
 
         # 3. Send another block that builds on genesis.
         block_h1f = create_block(int("0x" + self.nodes[0].getblockhash(0), 0), create_coinbase(1), block_time)

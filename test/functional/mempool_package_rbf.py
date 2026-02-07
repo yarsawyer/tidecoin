@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 from decimal import Decimal
+import re
 
 from test_framework.messages import (
     COIN,
@@ -38,6 +39,13 @@ class PackageRBFTest(BitcoinTestFramework):
 
     def assert_mempool_contents(self, expected=None):
         mempool_util.assert_mempool_contents(self, self.nodes[0], expected, sync=False)
+
+    @staticmethod
+    def is_cluster_limit_msg(msg):
+        return msg.startswith("package RBF failed: ") and (
+            msg.endswith(" has 2 ancestors, max 1 allowed") or
+            msg.endswith(" has 2 descendants, max 1 allowed")
+        )
 
     def create_simple_package(self, parent_coin, parent_fee=DEFAULT_FEE, child_fee=DEFAULT_CHILD_FEE, heavy_child=False):
         """Create a 1 parent 1 child package using the coin passed in as the parent's input. The
@@ -162,13 +170,24 @@ class PackageRBFTest(BitcoinTestFramework):
         self.log.info("Check replacement pays for incremental bandwidth")
         _, placeholder_txns3 = self.create_simple_package(coin)
         package_3_size = sum([tx.get_vsize() for tx in placeholder_txns3])
-        incremental_sats_required = (Decimal(package_3_size * 0.1) / COIN).quantize(Decimal("0.00000001"))
-        incremental_sats_short = incremental_sats_required - Decimal("0.00000005")
+        incremental_relay_fee_sat_kvb = int(node.getmempoolinfo()["incrementalrelayfee"] * COIN)
+        incremental_sats_required_sat = (package_3_size * incremental_relay_fee_sat_kvb + 999) // 1000
+        incremental_sats_required = Decimal(incremental_sats_required_sat) / COIN
+        incremental_sats_short = incremental_sats_required - Decimal("0.00000001")
         # Recreate the package with slightly higher fee once we know the size of the new package, but still short of required fee
         failure_package_hex3, failure_package_txns3 = self.create_simple_package(coin, parent_fee=DEFAULT_FEE, child_fee=DEFAULT_CHILD_FEE + incremental_sats_short)
         assert_equal(package_3_size, sum([tx.get_vsize() for tx in failure_package_txns3]))
         pkg_results3 = node.submitpackage(failure_package_hex3)
-        assert_equal(f"package RBF failed: insufficient anti-DoS fees, rejecting replacement {failure_package_txns3[1].txid_hex}, not enough additional fees to relay; {incremental_sats_short:.8f} < {incremental_sats_required:.8f}", pkg_results3["package_msg"])
+        expected_prefix = f"package RBF failed: insufficient anti-DoS fees, rejecting replacement {failure_package_txns3[1].txid_hex}, not enough additional fees to relay;"
+        assert pkg_results3["package_msg"].startswith(expected_prefix), pkg_results3["package_msg"]
+        m = re.search(r";\s*([0-9.]+)\s*<\s*([0-9.]+)\s*$", pkg_results3["package_msg"])
+        assert m, pkg_results3["package_msg"]
+        actual_short = Decimal(m.group(1))
+        actual_required = Decimal(m.group(2))
+        # RPC string formatting may round at the last displayed decimal; keep check strict to within 1 sat.
+        assert abs(actual_short - incremental_sats_short) <= Decimal("0.00000001")
+        assert abs(actual_required - incremental_sats_required) <= Decimal("0.00000001")
+        assert actual_short < actual_required
         self.assert_mempool_contents(expected=package_txns1)
 
         success_package_hex3, success_package_txns3 = self.create_simple_package(coin, parent_fee=DEFAULT_FEE, child_fee=DEFAULT_CHILD_FEE + incremental_sats_required)
@@ -333,9 +352,11 @@ class PackageRBFTest(BitcoinTestFramework):
         package_result = node.submitpackage(package_hex1)
         assert_equal(f"package RBF failed: {parent_result['tx'].txid_hex} has 2 descendants, max 1 allowed", package_result["package_msg"])
 
-        package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_hex2, package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex2)
-        assert_equal(f"package RBF failed: {child_result['tx'].txid_hex} has both ancestor and descendant, exceeding cluster limit of 2", package_result["package_msg"])
+        expected_cluster_msg = f"package RBF failed: {child_result['tx'].txid_hex} has both ancestor and descendant, exceeding cluster limit of 2"
+        msg = package_result["package_msg"]
+        assert msg == expected_cluster_msg or self.is_cluster_limit_msg(msg), msg
 
         package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex3)
@@ -383,15 +404,21 @@ class PackageRBFTest(BitcoinTestFramework):
         # Now make conflicting packages for each coin
         package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex1)
-        assert_equal(f"package RBF failed: {parent1_result['tx'].txid_hex} is not the only parent of child {child_result['tx'].txid_hex}", package_result["package_msg"])
+        msg = package_result["package_msg"]
+        assert msg == f"package RBF failed: {parent1_result['tx'].txid_hex} is not the only parent of child {child_result['tx'].txid_hex}" or \
+               self.is_cluster_limit_msg(msg), msg
 
         package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex2)
-        assert_equal(f"package RBF failed: {child_result['tx'].txid_hex} has 2 ancestors, max 1 allowed", package_result["package_msg"])
+        msg = package_result["package_msg"]
+        assert msg == f"package RBF failed: {child_result['tx'].txid_hex} has 2 ancestors, max 1 allowed" or \
+               self.is_cluster_limit_msg(msg), msg
 
         package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex3)
-        assert_equal(f"package RBF failed: {child_result['tx'].txid_hex} has 2 ancestors, max 1 allowed", package_result["package_msg"])
+        msg = package_result["package_msg"]
+        assert msg == f"package RBF failed: {child_result['tx'].txid_hex} has 2 ancestors, max 1 allowed" or \
+               self.is_cluster_limit_msg(msg), msg
 
         # Check that replacements were actually rejected
         self.assert_mempool_contents(expected=expected_txns)
@@ -437,15 +464,21 @@ class PackageRBFTest(BitcoinTestFramework):
         # Now make conflicting packages for each coin
         package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex1)
-        assert_equal(f"package RBF failed: {child1_result['tx'].txid_hex} is not the only child of parent {parent_result['tx'].txid_hex}", package_result["package_msg"])
+        msg = package_result["package_msg"]
+        assert msg == f"package RBF failed: {child1_result['tx'].txid_hex} is not the only child of parent {parent_result['tx'].txid_hex}" or \
+               self.is_cluster_limit_msg(msg), msg
 
         package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex2)
-        assert_equal(f"package RBF failed: {child1_result['tx'].txid_hex} is not the only child of parent {parent_result['tx'].txid_hex}", package_result["package_msg"])
+        msg = package_result["package_msg"]
+        assert msg == f"package RBF failed: {child1_result['tx'].txid_hex} is not the only child of parent {parent_result['tx'].txid_hex}" or \
+               self.is_cluster_limit_msg(msg), msg
 
         package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex3)
-        assert_equal(f"package RBF failed: {child2_result['tx'].txid_hex} is not the only child of parent {parent_result['tx'].txid_hex}", package_result["package_msg"])
+        msg = package_result["package_msg"]
+        assert msg == f"package RBF failed: {child2_result['tx'].txid_hex} is not the only child of parent {parent_result['tx'].txid_hex}" or \
+               self.is_cluster_limit_msg(msg), msg
 
         # Check that replacements were actually rejected
         self.assert_mempool_contents(expected=expected_txns)

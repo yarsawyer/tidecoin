@@ -89,33 +89,68 @@ std::string SighashToStr(unsigned char sighash_type)
     return it->second;
 }
 
-
-// TODO EXPAND TO ML-DSA
 namespace {
 constexpr size_t kFalconNonceLen = 40;
 constexpr unsigned char kFalcon512SigHeader = pq::kFalcon512SigHeader;
 constexpr unsigned char kFalcon1024SigHeader = pq::kFalcon1024SigHeader;
 
-bool LooksLikeFalconSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
+bool HasKnownSighashByte(const std::vector<unsigned char>& sig_with_hashtype)
 {
-    if (sig_with_hashtype.size() <= kFalconNonceLen + 1) {
+    if (sig_with_hashtype.size() <= 1) {
         return false;
     }
     const unsigned char hash_type = sig_with_hashtype.back();
-    if (mapSigHashTypes.find(hash_type) == mapSigHashTypes.end()) {
+    return mapSigHashTypes.find(hash_type) != mapSigHashTypes.end();
+}
+
+bool LooksLikeDERSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
+{
+    // Matches Bitcoin's DER signature shape check (excluding strict-value checks).
+    // The last byte is the sighash type and is excluded from DER length checks.
+    const size_t total_size = sig_with_hashtype.size();
+    if (total_size < 10 || total_size > 74) return false;
+    const size_t der_len = total_size - 1;
+
+    if (sig_with_hashtype[0] != 0x30) return false;
+    if (sig_with_hashtype[1] != der_len - 2) return false;
+    if (sig_with_hashtype[2] != 0x02) return false;
+
+    const size_t len_r = sig_with_hashtype[3];
+    if (4 + len_r >= der_len) return false;
+    if (sig_with_hashtype[4 + len_r] != 0x02) return false;
+
+    const size_t len_s = sig_with_hashtype[5 + len_r];
+    return len_r + len_s + 6 == der_len;
+}
+
+bool LooksLikePQSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
+{
+    if (!HasKnownSighashByte(sig_with_hashtype)) {
         return false;
     }
     const size_t sig_len = sig_with_hashtype.size() - 1;
-    if (sig_len < 1 + kFalconNonceLen) {
-        return false;
-    }
+
+    // Falcon signatures are variable length and carry a format header byte.
     if (sig_with_hashtype[0] == kFalcon512SigHeader) {
+        if (sig_len < 1 + kFalconNonceLen) return false;
         return sig_len <= pq::kFalcon512Info.sig_bytes_max;
     }
     if (sig_with_hashtype[0] == kFalcon1024SigHeader) {
+        if (sig_len < 1 + kFalconNonceLen) return false;
         return sig_len <= pq::kFalcon1024Info.sig_bytes_max;
     }
-    return false;
+
+    // ML-DSA signatures are fixed-size and do not carry a dedicated header byte.
+    return sig_len == pq::kMLDSA44Info.sig_bytes_fixed ||
+           sig_len == pq::kMLDSA65Info.sig_bytes_fixed ||
+           sig_len == pq::kMLDSA87Info.sig_bytes_fixed;
+}
+
+bool LooksLikeSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
+{
+    if (!HasKnownSighashByte(sig_with_hashtype)) return false;
+    return LooksLikeDERSignatureWithSighash(sig_with_hashtype) ||
+           LooksLikePQSignatureWithSighash(sig_with_hashtype);
 }
 } // namespace
 
@@ -148,7 +183,7 @@ std::string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDeco
                 if (fAttemptSighashDecode && !script.IsUnspendable()) {
                     std::string strSigHashDecode;
                     // goal: only attempt to decode a defined sighash type from data that looks like a signature within a scriptSig.
-                    if (LooksLikeFalconSignatureWithSighash(vch)) {
+                    if (LooksLikeSignatureWithSighash(vch)) {
                         const unsigned char chSigHashType = vch.back();
                         const auto it = mapSigHashTypes.find(chSigHashType);
                         if (it != mapSigHashTypes.end()) {

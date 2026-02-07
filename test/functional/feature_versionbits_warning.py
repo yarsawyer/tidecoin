@@ -18,7 +18,7 @@ from test_framework.test_framework import BitcoinTestFramework
 VB_PERIOD = 144           # versionbits period length for regtest
 VB_THRESHOLD = 108        # versionbits activation threshold for regtest
 VB_TOP_BITS = 0x20000000
-VB_UNKNOWN_BIT = 27       # Choose a bit unassigned to any deployment
+VB_UNKNOWN_BIT = 15       # Choose a bit unassigned to any deployment and valid for Tidecoin's version checks
 VB_UNKNOWN_VERSION = VB_TOP_BITS | (1 << VB_UNKNOWN_BIT)
 
 WARN_UNKNOWN_RULES_ACTIVE = f"Unknown new rules activated (versionbit {VB_UNKNOWN_BIT})"
@@ -80,24 +80,24 @@ class VersionBitsWarningTest(BitcoinTestFramework):
         self.send_blocks_with_version(peer, VB_THRESHOLD, VB_UNKNOWN_VERSION)
         self.generatetoaddress(node, VB_PERIOD - VB_THRESHOLD, node_deterministic_address)
 
-        self.log.info("Check that there is a warning if previous VB_BLOCKS have >=VB_THRESHOLD blocks with unknown versionbits version.")
-        # Mine a period worth of expected blocks so the generic block-version warning
-        # is cleared. This will move the versionbit state to ACTIVE.
+        self.log.info("Check that no versionbits warning is raised even after >=VB_THRESHOLD blocks with unknown version bits in Tidecoin.")
+        # Mine a period worth of expected blocks so any transient block-version warning would be cleared.
         self.generatetoaddress(node, VB_PERIOD, node_deterministic_address)
 
-        # Stop-start the node. This is required because bitcoind will only warn once about unknown versions or unknown rules activating.
+        # Stop-start the node. Bitcoin Core warns only once per process lifetime;
+        # Tidecoin should not emit this warning.
         self.restart_node(0)
 
-        # Generating one block guarantees that we'll get out of IBD
+        # Ensure the node leaves IBD.
         self.generatetoaddress(node, 1, node_deterministic_address)
         self.wait_until(lambda: not node.getblockchaininfo()['initialblockdownload'])
-        # Generating one more block will be enough to generate an error.
+        # Mine one more block; Tidecoin should still expose no warning.
         self.generatetoaddress(node, 1, node_deterministic_address)
-        # Check that get*info() shows the versionbits unknown rules warning
-        assert WARN_UNKNOWN_RULES_ACTIVE in ",".join(node.getmininginfo()["warnings"])
-        assert WARN_UNKNOWN_RULES_ACTIVE in ",".join(node.getnetworkinfo()["warnings"])
-        # Check that the alert file shows the versionbits unknown rules warning
-        self.wait_until(lambda: self.versionbits_in_alert_file())
+        # Check that get*info() does not report the versionbits unknown rules warning.
+        assert WARN_UNKNOWN_RULES_ACTIVE not in ",".join(node.getmininginfo()["warnings"])
+        assert WARN_UNKNOWN_RULES_ACTIVE not in ",".join(node.getnetworkinfo()["warnings"])
+        # Check that the alert file remains free of the warning.
+        assert not self.versionbits_in_alert_file()
 
 if __name__ == '__main__':
     VersionBitsWarningTest(__file__).main()

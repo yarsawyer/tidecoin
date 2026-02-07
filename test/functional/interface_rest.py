@@ -341,8 +341,10 @@ class RESTTest (BitcoinTestFramework):
         # Check that there are exactly 3 transactions in the TX memory pool before generating the block
         json_obj = self.test_rest_request("/mempool/info")
         assert_equal(json_obj['size'], 3)
-        # the size of the memory pool should be greater than 3x ~100 bytes
-        assert_greater_than(json_obj['bytes'], 300)
+        # Keep a coarse lower bound on aggregate mempool bytes. Transactions are
+        # usually around ~100 bytes each, but may be somewhat smaller with
+        # Tidecoin's OP_TRUE-style test spends.
+        assert_greater_than(json_obj['bytes'], json_obj['size'] * 90)
 
         mempool_info = self.nodes[0].getmempoolinfo()
         # pop unstable unbroadcastcount before check

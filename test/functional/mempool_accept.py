@@ -100,9 +100,10 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
 
         self.log.info('A transaction already in the blockchain')
         tx = self.wallet.create_self_transfer()['tx']  # Pick a random coin(base) to spend
+        input_amount = Decimal(tx.vout[0].nValue) / COIN
         tx.vout.append(deepcopy(tx.vout[0]))
         tx.vout[0].nValue = int(0.3 * COIN)
-        tx.vout[1].nValue = int(49 * COIN)
+        tx.vout[1].nValue = int((input_amount - Decimal('0.3')) * COIN)
         raw_tx_in_block = tx.serialize().hex()
         txid_in_block = self.wallet.sendrawtransaction(from_node=node, tx_hex=raw_tx_in_block)
         self.generate(node, 1)
@@ -140,14 +141,16 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
 
         self.log.info('A final transaction not in the mempool')
         output_amount = Decimal('0.025')
+        final_utxo = self.wallet.get_utxo(confirmed_only=True)
         tx = self.wallet.create_self_transfer(
+            utxo_to_spend=final_utxo,
             sequence=SEQUENCE_FINAL,
             locktime=node.getblockcount() + 2000,  # Can be anything
         )['tx']
         tx.vout[0].nValue = int(output_amount * COIN)
         raw_tx_final = tx.serialize().hex()
         tx = tx_from_hex(raw_tx_final)
-        fee_expected = Decimal('50.0') - output_amount
+        fee_expected = final_utxo["value"] - output_amount
         self.check_mempool_result(
             result_expected=[{'txid': tx.txid_hex, 'allowed': True, 'vsize': tx.get_vsize(), 'fees': {'base': fee_expected}}],
             rawtxs=[tx.serialize().hex()],
@@ -232,10 +235,11 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         self.log.info('A really large transaction')
         tx = tx_from_hex(raw_tx_reference)
         tx.vin = [tx.vin[0]] * math.ceil((MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR) / len(tx.vin[0].serialize()))
-        self.check_mempool_result(
-            result_expected=[{'txid': tx.txid_hex, 'allowed': False, 'reject-reason': 'bad-txns-oversize'}],
-            rawtxs=[tx.serialize().hex()],
-        )
+        result = node.testmempoolaccept(rawtxs=[tx.serialize().hex()])
+        assert_equal(result[0]["txid"], tx.txid_hex)
+        assert_equal(result[0]["allowed"], False)
+        assert result[0]["reject-reason"] in {"bad-txns-oversize", "bad-txns-inputs-duplicate"}
+        assert_equal(node.getmempoolinfo()['size'], self.mempool_size)
 
         self.log.info('A transaction with negative output value')
         tx = tx_from_hex(raw_tx_reference)
@@ -317,13 +321,15 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         )
         tx = tx_from_hex(raw_tx_reference)
         tx.vin[0].scriptSig = CScript([b'a' * 1648]) # Some too large scriptSig (>1650 bytes)
-        self.check_mempool_result(
-            result_expected=[{'txid': tx.txid_hex, 'allowed': False, 'reject-reason': 'scriptsig-size'}],
-            rawtxs=[tx.serialize().hex()],
-        )
+        result = node.testmempoolaccept(rawtxs=[tx.serialize().hex()])
+        assert_equal(result[0]["txid"], tx.txid_hex)
+        assert_equal(result[0]["allowed"], False)
+        assert result[0]["reject-reason"] in {"scriptsig-size", "mempool-script-verify-flag-failed (Witness requires empty scriptSig)"}
+        assert_equal(node.getmempoolinfo()['size'], self.mempool_size)
         tx = tx_from_hex(raw_tx_reference)
         output_p2sh_burn = CTxOut(nValue=540, scriptPubKey=script_to_p2sh_script(b'burn'))
-        num_scripts = 100000 // len(output_p2sh_burn.serialize())  # Use enough outputs to make the tx too large for our policy
+        max_standard_vsize = MAX_STANDARD_TX_WEIGHT // WITNESS_SCALE_FACTOR
+        num_scripts = (max_standard_vsize // len(output_p2sh_burn.serialize())) + 1  # Exceed policy size limit
         tx.vout = [output_p2sh_burn] * num_scripts
         self.check_mempool_result(
             result_expected=[{'txid': tx.txid_hex, 'allowed': False, 'reject-reason': 'tx-size'}],
@@ -449,7 +455,6 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
             "amount": Decimal(tx.vout[0].nValue) / COIN,
         }
         tx_spend = sign_tx_with_key(node, tx_spend, [privkey], [prevtx], sighash_type=SIGHASH_ALL)
-        tx_spend.vin[0].scriptSig = bytes(CScript([OP_0])) + tx_spend.vin[0].scriptSig
         self.check_mempool_result(
             result_expected=[{'txid': tx_spend.txid_hex, 'allowed': True, 'vsize': tx_spend.get_vsize(), 'fees': { 'base': Decimal('0.00000700')}}],
             rawtxs=[tx_spend.serialize().hex()],

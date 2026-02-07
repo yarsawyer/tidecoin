@@ -33,7 +33,8 @@ import time
 # Constants from net_processing
 HEADERS_DOWNLOAD_TIMEOUT_BASE_SEC = 15 * 60
 HEADERS_DOWNLOAD_TIMEOUT_PER_HEADER_MS = 1
-POW_TARGET_SPACING_SEC = 10 * 60
+# Tidecoin uses 60s target spacing on regtest; timeout scaling depends on this value.
+POW_TARGET_SPACING_SEC = 60
 
 
 def calculate_headers_timeout(best_header_time, current_time):

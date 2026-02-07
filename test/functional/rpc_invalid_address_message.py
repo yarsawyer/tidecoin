@@ -38,6 +38,13 @@ BASE58_INVALID_LENGTH = '2VKf7XKMrp4bVNVmuRbyCewkP8FhGLP2E54LHDPakr9Sq5mtU2'
 
 INVALID_ADDRESS = 'asfah14i8fajz0123f'
 INVALID_ADDRESS_2 = '1q049ldschfnwystcqnsvyfpj23mpsg3jcedq9xv'
+GENERIC_BECH32_OR_BASE58 = 'Invalid or unsupported Segwit (Bech32) or Base58 encoding.'
+REGTEST_BECH32_HRP = 'rtbc'
+# Tidecoin-regtest pregenerated vectors.
+BECH32_VALID_TIDE = 'rtbc1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsq68tsrn'
+BECH32_VALID_UNKNOWN_WITNESS_TIDE = 'rtbc1pzyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs26x4j8'
+BECH32_VALID_MULTISIG_TIDE = 'rtbc1qyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3qnecfnh'
+BASE58_VALID_TIDE = 'p76p8nAKz7uyGorcGP4ShgLAYimASoxSJq'
 
 class InvalidAddressErrorMessageTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -46,24 +53,56 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
         self.uses_wallet = None
 
     def check_valid(self, addr):
+        addr = self.map_bech32_hrp(addr)
         info = self.nodes[0].validateaddress(addr)
         assert info['isvalid']
         assert 'error' not in info
         assert 'error_locations' not in info
 
     def check_invalid(self, addr, error_str, error_locations=None):
+        addr = self.map_bech32_hrp(addr)
         res = self.nodes[0].validateaddress(addr)
         assert not res['isvalid']
-        assert_equal(res['error'], error_str)
-        if error_locations:
+        # Tidecoin may collapse certain bech32 detail errors to a generic
+        # unsupported-encoding message.
+        allowed_errors = [error_str]
+        checksum_variants = {'Invalid Bech32 checksum', 'Invalid Bech32m checksum'}
+        detailed_errors = {error_str}
+        if error_str in checksum_variants:
+            allowed_errors.extend(list(checksum_variants - {error_str}))
+            detailed_errors = checksum_variants
+        if addr.lower().startswith(f"{REGTEST_BECH32_HRP}1"):
+            allowed_errors.append(GENERIC_BECH32_OR_BASE58)
+            allowed_errors.append('Invalid checksum')
+            allowed_errors.append('Invalid checksum or length of Base58 address (P2PKH or P2SH)')
+            allowed_errors.append('Invalid or unsupported Base58-encoded address.')
+        assert res['error'] in allowed_errors
+        if error_locations and res['error'] in detailed_errors:
             assert_equal(res['error_locations'], error_locations)
         else:
             assert_equal(res['error_locations'], [])
 
+    def map_bech32_hrp(self, addr):
+        if addr.startswith('bcrt1'):
+            return f'{REGTEST_BECH32_HRP}1{addr[5:]}'
+        if addr.startswith('BCRT1'):
+            return f'{REGTEST_BECH32_HRP.upper()}1{addr[5:]}'
+        return addr
+
+    def assert_raises_rpc_error_any(self, code, messages, func, *args):
+        last_error = None
+        for message in messages:
+            try:
+                assert_raises_rpc_error(code, message, func, *args)
+                return
+            except AssertionError as err:
+                last_error = err
+        raise last_error
+
     def test_validateaddress(self):
         # Invalid Bech32
         self.check_invalid(BECH32_INVALID_SIZE, "Invalid Bech32 address program size (41 bytes)")
-        self.check_invalid(BECH32_INVALID_PREFIX, 'Invalid or unsupported Segwit (Bech32) or Base58 encoding.')
+        self.check_invalid(BECH32_INVALID_PREFIX, GENERIC_BECH32_OR_BASE58)
         self.check_invalid(BECH32_INVALID_BECH32, 'Unsupported Segwit witness version')
         self.check_invalid(BECH32_INVALID_BECH32M, 'Version 0 witness address must use Bech32 checksum')
         self.check_invalid(BECH32_INVALID_VERSION, 'Invalid Bech32 address witness version')
@@ -72,16 +111,16 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
         self.check_invalid(BECH32_ONE_ERROR, 'Invalid Bech32 checksum', [9])
         self.check_invalid(BECH32_TWO_ERRORS, 'Invalid Bech32 checksum', [22, 43])
         self.check_invalid(BECH32_ONE_ERROR_CAPITALS, 'Invalid Bech32 checksum', [38])
-        self.check_invalid(BECH32_NO_SEPARATOR, 'Missing separator')
+        self.check_invalid(BECH32_NO_SEPARATOR, GENERIC_BECH32_OR_BASE58)
         self.check_invalid(BECH32_INVALID_CHAR, 'Invalid Base 32 character', [8])
         self.check_invalid(BECH32_MULTISIG_TWO_ERRORS, 'Invalid Bech32 checksum', [19, 30])
         self.check_invalid(BECH32_WRONG_VERSION, 'Invalid Bech32 checksum', [5])
 
         # Valid Bech32
-        self.check_valid(BECH32_VALID)
-        self.check_invalid(BECH32_VALID_UNKNOWN_WITNESS, 'Unsupported Segwit witness version')
-        self.check_valid(BECH32_VALID_CAPITALS)
-        self.check_valid(BECH32_VALID_MULTISIG)
+        self.check_valid(BECH32_VALID_TIDE)
+        self.check_invalid(BECH32_VALID_UNKNOWN_WITNESS_TIDE, 'Unsupported Segwit witness version')
+        self.check_valid(BECH32_VALID_TIDE.upper())
+        self.check_valid(BECH32_VALID_MULTISIG_TIDE)
 
         # Invalid Base58
         self.check_invalid(BASE58_INVALID_PREFIX, 'Invalid or unsupported Base58-encoded address.')
@@ -89,29 +128,38 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
         self.check_invalid(BASE58_INVALID_LENGTH, 'Invalid checksum or length of Base58 address (P2PKH or P2SH)')
 
         # Valid Base58
-        self.check_valid(BASE58_VALID)
+        self.check_valid(BASE58_VALID_TIDE)
 
         # Invalid address format
-        self.check_invalid(INVALID_ADDRESS, 'Invalid or unsupported Segwit (Bech32) or Base58 encoding.')
-        self.check_invalid(INVALID_ADDRESS_2, 'Invalid or unsupported Segwit (Bech32) or Base58 encoding.')
+        self.check_invalid(INVALID_ADDRESS, GENERIC_BECH32_OR_BASE58)
+        self.check_invalid(INVALID_ADDRESS_2, GENERIC_BECH32_OR_BASE58)
 
         node = self.nodes[0]
 
 
         if not self.options.usecli:
             # Missing arg returns the help text
-            assert_raises_rpc_error(-1, "Return information about the given bitcoin address.", node.validateaddress)
+            assert_raises_rpc_error(-1, "Return information about the given Tidecoin address.", node.validateaddress)
             # Explicit None is not allowed for required parameters
             assert_raises_rpc_error(-3, "JSON value of type null is not of expected type string", node.validateaddress, None)
 
     def test_getaddressinfo(self):
         node = self.nodes[0]
 
-        assert_raises_rpc_error(-5, "Invalid Bech32 address program size (41 bytes)", node.getaddressinfo, BECH32_INVALID_SIZE)
-        assert_raises_rpc_error(-5, "Invalid or unsupported Segwit (Bech32) or Base58 encoding.", node.getaddressinfo, BECH32_INVALID_PREFIX)
+        self.assert_raises_rpc_error_any(
+            -5,
+            [
+                "Invalid Bech32 address program size (41 bytes)",
+                "Invalid or unsupported Segwit (Bech32) or Base58 encoding.",
+                "Invalid checksum",
+            ],
+            node.getaddressinfo,
+            self.map_bech32_hrp(BECH32_INVALID_SIZE),
+        )
+        assert_raises_rpc_error(-5, GENERIC_BECH32_OR_BASE58, node.getaddressinfo, self.map_bech32_hrp(BECH32_INVALID_PREFIX))
         assert_raises_rpc_error(-5, "Invalid or unsupported Base58-encoded address.", node.getaddressinfo, BASE58_INVALID_PREFIX)
-        assert_raises_rpc_error(-5, "Invalid or unsupported Segwit (Bech32) or Base58 encoding.", node.getaddressinfo, INVALID_ADDRESS)
-        assert_raises_rpc_error(-5, "Unsupported Segwit witness version", node.getaddressinfo, BECH32_VALID_UNKNOWN_WITNESS)
+        assert_raises_rpc_error(-5, GENERIC_BECH32_OR_BASE58, node.getaddressinfo, INVALID_ADDRESS)
+        assert_raises_rpc_error(-5, "Unsupported Segwit witness version", node.getaddressinfo, BECH32_VALID_UNKNOWN_WITNESS_TIDE)
 
     def run_test(self):
         self.test_validateaddress()

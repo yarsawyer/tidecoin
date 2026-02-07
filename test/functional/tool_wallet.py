@@ -65,9 +65,8 @@ class ToolWalletTest(BitcoinTestFramework):
         result = 'unchanged' if new == old else 'increased!'
         self.log.debug('Wallet file timestamp {}'.format(result))
 
-    def get_expected_info_output(self, name="", transactions=0, keypool=2, address=0, imported_privs=0):
+    def get_expected_info_output(self, name="", transactions=0, keypool=8, address=0, imported_privs=0):
         wallet_name = self.default_wallet_name if name == "" else name
-        output_types = 3  # p2pkh, p2sh, segwit
         return textwrap.dedent('''\
             Wallet info
             ===========
@@ -75,11 +74,10 @@ class ToolWalletTest(BitcoinTestFramework):
             Format: sqlite
             Descriptors: yes
             Encrypted: no
-            HD (hd seed available): yes
             Keypool Size: %d
             Transactions: %d
             Address Book: %d
-        ''' % (wallet_name, keypool * output_types, transactions, imported_privs * 3 + address))
+        ''' % (wallet_name, keypool, transactions, imported_privs * 3 + address))
 
     def read_dump(self, filename):
         dump = OrderedDict()
@@ -210,7 +208,7 @@ class ToolWalletTest(BitcoinTestFramework):
         shasum_before = self.wallet_shasum()
         timestamp_before = self.wallet_timestamp()
         self.log.debug('Wallet file timestamp before calling create: {}'.format(timestamp_before))
-        out = "Topping up keypool...\n" + self.get_expected_info_output(name="foo", keypool=2000)
+        out = "Topping up keypool...\n" + self.get_expected_info_output(name="foo", keypool=8000)
         self.assert_tool_output(out, '-wallet=foo', 'create')
         shasum_after = self.wallet_shasum()
         timestamp_after = self.wallet_timestamp()
@@ -352,7 +350,8 @@ class ToolWalletTest(BitcoinTestFramework):
             locktime += 1
 
         # conflict with parent
-        conflict_unsigned = self.nodes[0].createrawtransaction(inputs=[conflict_utxo], outputs=[{wallet.getnewaddress(): 9.9999}])
+        # Ensure replacement pays a higher fee than the conflicting parent tx.
+        conflict_unsigned = self.nodes[0].createrawtransaction(inputs=[conflict_utxo], outputs=[{wallet.getnewaddress(): 9.9997}])
         conflict_signed = wallet.signrawtransactionwithwallet(conflict_unsigned)["hex"]
         conflict_txid = self.nodes[0].sendrawtransaction(conflict_signed)
         self.generate(self.nodes[0], 1)
@@ -370,7 +369,6 @@ class ToolWalletTest(BitcoinTestFramework):
             Format: sqlite
             Descriptors: yes
             Encrypted: no
-            HD (hd seed available): yes
             Keypool Size: 8
             Transactions: 4
             Address Book: 4

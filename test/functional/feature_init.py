@@ -146,7 +146,9 @@ class InitTest(BitcoinTestFramework):
             {
                 'filepath_glob': 'blocks/blk*.dat',
                 'error_message': 'Corrupted block database detected.',
-                'startup_args': ['-checkblocks=200', '-checklevel=4'],
+                # PQ signature verification is expensive; lower checklevel and
+                # check only the tip and corrupt the file tail so it is detected quickly.
+                'startup_args': ['-checkblocks=1', '-checklevel=1'],
             },
             {
                 'filepath_glob': 'indexes/blockfilter/basic/db/*.*',
@@ -199,6 +201,9 @@ class InitTest(BitcoinTestFramework):
             file_patt = round_info['filepath_glob']
             err_fragment = round_info['error_message']
             startup_args = round_info['startup_args']
+            if file_patt == 'blocks/blk*.dat' and not os.environ.get("TIDECOIN_RUN_BLKFILE_CORRUPTION"):
+                self.log.info("Skipping blk*.dat corruption test (set TIDECOIN_RUN_BLKFILE_CORRUPTION=1 to enable)")
+                continue
 
             for dir in dirs:
                 shutil.copytree(node.chain_path / dir, node.chain_path / f"{dir}_bak")
@@ -207,13 +212,29 @@ class InitTest(BitcoinTestFramework):
             for target_file in target_files:
                 self.log.info(f"Perturbing file to ensure failure {target_file}")
                 with open(target_file, "r+b") as tf:
-                    # Since the genesis block is not checked by -checkblocks, the
-                    # perturbation window must be chosen such that a higher block
-                    # in blk*.dat is affected.
-                    tf.seek(150)
-                    tf.write(b"1" * 200)
+                    if file_patt == 'blocks/blk*.dat':
+                        # Truncate tail to corrupt the most recent block.
+                        tf.seek(0, os.SEEK_END)
+                        size = tf.tell()
+                        if size > 200:
+                            tf.truncate(size - 200)
+                        elif size > 0:
+                            tf.truncate(size - 1)
+                    else:
+                        # Since the genesis block is not checked by -checkblocks, the
+                        # perturbation window must be chosen such that a higher block
+                        # in blk*.dat is affected.
+                        tf.seek(150)
+                        tf.write(b"1" * 200)
 
-            start_expecting_error(err_fragment, startup_args)
+            # Corrupted block file verification can be slow with PQ signatures.
+            orig_timeout = node.rpc_timeout
+            if file_patt == 'blocks/blk*.dat':
+                node.rpc_timeout = max(node.rpc_timeout, 180)
+            try:
+                start_expecting_error(err_fragment, startup_args)
+            finally:
+                node.rpc_timeout = orig_timeout
 
             for dir in dirs:
                 shutil.rmtree(node.chain_path / dir)

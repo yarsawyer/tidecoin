@@ -20,11 +20,7 @@ from test_framework.util import (
 )
 import time
 
-# The block reward of coinbaseoutput.nValue (50) BTC/block matures after
-# COINBASE_MATURITY (100) blocks. Therefore, after mining 101 blocks we expect
-# node 0 to have a balance of (BLOCKS - COINBASE_MATURITY) * 50 BTC/block.
 BLOCKS = COINBASE_MATURITY + 1
-BALANCE = (BLOCKS - 100) * 50
 
 JSON_PARSING_ERROR = 'error: Error parsing JSON: foo'
 BLOCKS_VALUE_OF_ZERO = 'error: the first argument (number of blocks to generate, default: 1) must be an integer value greater than zero'
@@ -97,6 +93,9 @@ class TestBitcoinCli(BitcoinTestFramework):
     def run_test(self):
         """Main test logic"""
         self.generate(self.nodes[0], BLOCKS)
+        subsidy_sats = self.nodes[0].getblockstats(1)["subsidy"]
+        first_subsidy = Decimal(subsidy_sats) / Decimal(1e8)
+        expected_balance = Decimal(BLOCKS - COINBASE_MATURITY) * first_subsidy
 
         self.log.info("Compare responses from getblockchaininfo RPC and `bitcoin-cli getblockchaininfo`")
         cli_response = self.nodes[0].cli.getblockchaininfo()
@@ -113,6 +112,7 @@ class TestBitcoinCli(BitcoinTestFramework):
         assert_raises_rpc_error(-8, "Parameter args specified multiple times", self.nodes[0].cli("-named", "echo", "args=[0,1,2,3]", "4", "5", "6", ).send_cli)
 
         user, password = get_auth_cookie(self.nodes[0].datadir_path, self.chain)
+        wallet_passphrase = "tidecoin-cli-wallet-passphrase"
 
         self.log.info("Test -stdinrpcpass option")
         assert_equal(BLOCKS, self.nodes[0].cli(f'-rpcuser={user}', '-stdinrpcpass', input=password).getblockcount())
@@ -191,9 +191,9 @@ class TestBitcoinCli(BitcoinTestFramework):
         assert_raises_process_error(1, "Invalid value for -color option. Valid values: always, auto, never.", self.nodes[0].cli('-getinfo', '-color=foo').send_cli)
 
         self.log.info("Test -getinfo returns expected network and blockchain info")
+        encryption_supported = True
         if self.is_wallet_compiled():
             self.import_deterministic_coinbase_privkeys()
-            self.nodes[0].encryptwallet(password)
         cli_get_info_string = self.nodes[0].cli('-getinfo').send_cli()
         cli_get_info = cli_get_info_string_to_dict(cli_get_info_string)
 
@@ -222,18 +222,21 @@ class TestBitcoinCli(BitcoinTestFramework):
             # Explicitly set the output type in order to have consistent tx vsize / fees
             # for both legacy and descriptor wallets (disables the change address type detection algorithm)
             self.restart_node(0, extra_args=["-addresstype=bech32", "-changetype=bech32"])
-            assert_equal(Decimal(cli_get_info['Balance']), BALANCE)
+            assert_equal(Decimal(cli_get_info['Balance']), expected_balance)
             assert 'Balances' not in cli_get_info_string
             wallet_info = self.nodes[0].getwalletinfo()
+            wallet_is_encrypted = "unlocked_until" in wallet_info
             assert_equal(int(cli_get_info['Keypool size']), wallet_info['keypoolsize'])
-            assert_equal(int(cli_get_info['Unlocked until']), wallet_info['unlocked_until'])
+            if wallet_is_encrypted:
+                assert_equal(int(cli_get_info['Unlocked until']), wallet_info['unlocked_until'])
             assert_equal(Decimal(cli_get_info['Transaction fee rate (-paytxfee) (BTC/kvB)']), wallet_info['paytxfee'])
             assert_equal(Decimal(cli_get_info['Min tx relay fee rate (BTC/kvB)']), network_info['relayfee'])
             assert_equal(self.nodes[0].cli.getwalletinfo(), wallet_info)
 
             # Setup to test -getinfo, -generate, and -rpcwallet= with multiple wallets.
             wallets = [self.default_wallet_name, 'Encrypted', 'secret']
-            amounts = [BALANCE + Decimal('9.999928'), Decimal(9), Decimal(31)]
+            send1 = min(Decimal('9'), expected_balance / Decimal(2))
+            send2 = min(Decimal('31'), expected_balance / Decimal(2))
             self.nodes[0].createwallet(wallet_name=wallets[1])
             self.nodes[0].createwallet(wallet_name=wallets[2])
             w1 = self.nodes[0].get_wallet_rpc(wallets[0])
@@ -241,13 +244,16 @@ class TestBitcoinCli(BitcoinTestFramework):
             w3 = self.nodes[0].get_wallet_rpc(wallets[2])
             rpcwallet2 = f'-rpcwallet={wallets[1]}'
             rpcwallet3 = f'-rpcwallet={wallets[2]}'
-            w1.walletpassphrase(password, self.rpc_timeout)
-            w2.encryptwallet(password)
-            w1.sendtoaddress(w2.getnewaddress(), amounts[1])
-            w1.sendtoaddress(w3.getnewaddress(), amounts[2])
+            if wallet_is_encrypted:
+                w1.walletpassphrase(wallet_passphrase, self.rpc_timeout)
+            if encryption_supported:
+                w2.encryptwallet(wallet_passphrase)
+            w1.sendtoaddress(w2.getnewaddress(), send1)
+            w1.sendtoaddress(w3.getnewaddress(), send2)
 
-            # Mine a block to confirm; adds a block reward (50 BTC) to the default wallet.
+            # Mine a block to confirm.
             self.generate(self.nodes[0], 1)
+            expected_amounts = [w1.getbalance(), send1, send2]
 
             self.log.info("Test -getinfo with multiple wallets and -rpcwallet returns specified wallet balance")
             for i in range(len(wallets)):
@@ -255,7 +261,7 @@ class TestBitcoinCli(BitcoinTestFramework):
                 cli_get_info = cli_get_info_string_to_dict(cli_get_info_string)
                 assert 'Balances' not in cli_get_info_string
                 assert_equal(cli_get_info["Wallet"], wallets[i])
-                assert_equal(Decimal(cli_get_info['Balance']), amounts[i])
+                assert_equal(Decimal(cli_get_info['Balance']), expected_amounts[i])
 
             self.log.info("Test -getinfo with multiple wallets and -rpcwallet=non-existing-wallet returns no balances")
             cli_get_info_string = self.nodes[0].cli('-getinfo', '-rpcwallet=does-not-exist').send_cli()
@@ -267,7 +273,7 @@ class TestBitcoinCli(BitcoinTestFramework):
             cli_get_info_string = self.nodes[0].cli('-getinfo').send_cli()
             cli_get_info = cli_get_info_string_to_dict(cli_get_info_string)
             assert 'Balance' not in cli_get_info
-            for k, v in zip(wallets, amounts):
+            for k, v in zip(wallets, expected_amounts):
                 assert_equal(Decimal(cli_get_info['Balances'][k]), v)
 
             # Unload the default wallet and re-verify.
@@ -277,7 +283,7 @@ class TestBitcoinCli(BitcoinTestFramework):
             cli_get_info = cli_get_info_string_to_dict(cli_get_info_string)
             assert 'Balance' not in cli_get_info
             assert 'Balances' in cli_get_info_string
-            for k, v in zip(wallets[1:], amounts[1:]):
+            for k, v in zip(wallets[1:], expected_amounts[1:]):
                 assert_equal(Decimal(cli_get_info['Balances'][k]), v)
             assert wallets[0] not in cli_get_info
 
@@ -288,7 +294,7 @@ class TestBitcoinCli(BitcoinTestFramework):
             cli_get_info = cli_get_info_string_to_dict(cli_get_info_string)
             assert 'Balances' not in cli_get_info_string
             assert_equal(cli_get_info['Wallet'], wallets[1])
-            assert_equal(Decimal(cli_get_info['Balance']), amounts[1])
+            assert_equal(Decimal(cli_get_info['Balance']), expected_amounts[1])
 
             self.log.info("Test -getinfo -norpcwallet returns the same as -getinfo")
             # Previously there was a bug where -norpcwallet was treated like -rpcwallet=0
@@ -299,7 +305,7 @@ class TestBitcoinCli(BitcoinTestFramework):
             cli_get_info = cli_get_info_string_to_dict(cli_get_info_string)
             assert 'Balances' not in cli_get_info_string
             assert_equal(cli_get_info['Wallet'], wallets[1])
-            assert_equal(Decimal(cli_get_info['Balance']), amounts[1])
+            assert_equal(Decimal(cli_get_info['Balance']), expected_amounts[1])
 
             self.log.info("Test -getinfo with -rpcwallet=unloaded wallet returns no balances")
             cli_get_info_string = self.nodes[0].cli('-getinfo', rpcwallet3).send_cli()
@@ -310,7 +316,8 @@ class TestBitcoinCli(BitcoinTestFramework):
             # Test bitcoin-cli -generate.
             n1 = 3
             n2 = 4
-            w2.walletpassphrase(password, self.rpc_timeout)
+            if "unlocked_until" in w2.getwalletinfo():
+                w2.walletpassphrase(wallet_passphrase, self.rpc_timeout)
             blocks = self.nodes[0].getblockcount()
 
             self.log.info('Test -generate with no args')

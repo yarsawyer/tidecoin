@@ -57,7 +57,7 @@ def fill_mempool(test_framework, node, *, tx_sync_fun=None):
     """Fill mempool until eviction.
 
     Allows for simpler testing of scenarios with floating mempoolminfee > minrelay
-    Requires -maxmempool=9.
+    Requires -maxmempool to be small enough that eviction can be triggered.
     To avoid unintentional tx dependencies, the mempool filling txs are created with a
     tagged ephemeral miniwallet instance.
     """
@@ -66,20 +66,20 @@ def fill_mempool(test_framework, node, *, tx_sync_fun=None):
     minrelayfee = node.getnetworkinfo()['relayfee']
 
     tx_batch_size = 1
-    num_of_batches = 75
+    max_num_of_batches = 300
     # Generate UTXOs to flood the mempool
     # 1 to create a tx initially that will be evicted from the mempool later
-    # 75 transactions each with a fee rate higher than the previous one
+    # many transactions each with a fee rate higher than the previous one
     ephemeral_miniwallet = MiniWallet(node, tag_name="fill_mempool_ephemeral_wallet")
-    test_framework.generate(ephemeral_miniwallet, 1 + num_of_batches * tx_batch_size)
+    test_framework.generate(ephemeral_miniwallet, 1 + max_num_of_batches * tx_batch_size)
 
     # Mine enough blocks so that the UTXOs are allowed to be spent
     test_framework.generate(node, COINBASE_MATURITY - 1)
 
     # Get all UTXOs up front to ensure none of the transactions spend from each other, as that may
     # change their effective feerate and thus the order in which they are selected for eviction.
-    confirmed_utxos = [ephemeral_miniwallet.get_utxo(confirmed_only=True) for _ in range(num_of_batches * tx_batch_size + 1)]
-    assert_equal(len(confirmed_utxos), num_of_batches * tx_batch_size + 1)
+    confirmed_utxos = [ephemeral_miniwallet.get_utxo(confirmed_only=True) for _ in range(max_num_of_batches * tx_batch_size + 1)]
+    assert_equal(len(confirmed_utxos), max_num_of_batches * tx_batch_size + 1)
 
     test_framework.log.debug("Create a mempool tx that will be evicted")
     tx_to_be_evicted_id = ephemeral_miniwallet.send_self_transfer(
@@ -94,20 +94,24 @@ def fill_mempool(test_framework, node, *, tx_sync_fun=None):
     # The tx has an approx. vsize of 65k, i.e. multiplying the previous fee rate (in sats/kvB)
     # by 130 should result in a fee that corresponds to 2x of that fee rate
     base_fee = minrelayfee * 130
-    batch_fees = [(i + 1) * base_fee for i in range(num_of_batches)]
+    batch_fees = [(i + 1) * base_fee for i in range(max_num_of_batches)]
 
     test_framework.log.debug("Fill up the mempool with txs with higher fee rate")
-    for fee in batch_fees[:-3]:
+    batches_sent = 0
+    eviction_triggered = False
+    for fee in batch_fees:
         send_batch(fee)
-    tx_sync_fun() if tx_sync_fun else test_framework.sync_mempools()  # sync before any eviction
-    assert_equal(node.getmempoolinfo()["mempoolminfee"], minrelayfee)
-    for fee in batch_fees[-3:]:
-        send_batch(fee)
-    tx_sync_fun() if tx_sync_fun else test_framework.sync_mempools()  # sync after all evictions
+        batches_sent += 1
+        if node.getmempoolinfo()["mempoolminfee"] > minrelayfee and tx_to_be_evicted_id not in node.getrawmempool():
+            eviction_triggered = True
+            break
+    tx_sync_fun() if tx_sync_fun else test_framework.sync_mempools()
+    assert eviction_triggered, "Mempool did not evict transactions while filling"
 
     test_framework.log.debug("The tx should be evicted by now")
-    # The number of transactions created should be greater than the ones present in the mempool
-    assert_greater_than(tx_batch_size * num_of_batches, len(node.getrawmempool()))
+    # The number of transactions created should be greater than the ones present in the mempool.
+    # +1 accounts for tx_to_be_evicted_id created before the batches.
+    assert_greater_than(tx_batch_size * batches_sent + 1, len(node.getrawmempool()))
     # Initial tx created should not be present in the mempool anymore as it had a lower fee rate
     assert tx_to_be_evicted_id not in node.getrawmempool()
 

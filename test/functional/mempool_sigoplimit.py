@@ -145,12 +145,16 @@ class BytesPerSigOpTest(BitcoinTestFramework):
         self.log.info("Test a overly-large sigops-vbyte hits package limits")
         # Make a 2-transaction package which fails vbyte checks even though
         # separately they would work.
-        self.restart_node(0, extra_args=["-bytespersigop=5000","-permitbaremultisig=1"])
+        # Pick bytespersigop so each tx remains individually acceptable while the
+        # 2-tx package exceeds ancestor package size limits on Tidecoin policy.
+        self.restart_node(0, extra_args=["-bytespersigop=5051","-permitbaremultisig=1"])
 
         def create_bare_multisig_tx(utxo_to_spend=None):
             _, pubkey = generate_keypair()
             amount_for_bare = 50000
-            tx_dict = self.wallet.create_self_transfer(fee=Decimal("3"), utxo_to_spend=utxo_to_spend)
+            # Keep the fee fixed but small so package sigop checks are exercised
+            # independently of chain-specific subsidy levels.
+            tx_dict = self.wallet.create_self_transfer(fee=Decimal("0.001"), utxo_to_spend=utxo_to_spend)
             tx_utxo = tx_dict["new_utxo"]
             tx = tx_dict["tx"]
             tx.vout.append(CTxOut(amount_for_bare, keys_to_multisig_script([pubkey], k=1)))
@@ -165,22 +169,26 @@ class BytesPerSigOpTest(BitcoinTestFramework):
         # Separately, the parent tx is ok
         parent_individual_testres = self.nodes[0].testmempoolaccept([tx_parent.serialize().hex()])[0]
         assert parent_individual_testres["allowed"]
-        max_multisig_vsize = MAX_PUBKEYS_PER_MULTISIG * 5000
+        max_multisig_vsize = MAX_PUBKEYS_PER_MULTISIG * 5051
         assert_equal(parent_individual_testres["vsize"], max_multisig_vsize)
 
         # But together, it's exceeding limits in the *package* context. If sigops adjusted vsize wasn't being checked
         # here, it would get further in validation and give too-long-mempool-chain error instead.
         packet_test = self.nodes[0].testmempoolaccept([tx_parent.serialize().hex(), tx_child.serialize().hex()])
-        expected_package_error = f"package-mempool-limits, package size {2*max_multisig_vsize} exceeds ancestor size limit [limit: 101000]"
-        assert_equal([x["package-error"] for x in packet_test], [expected_package_error] * 2)
+        packet_errors = [x.get("package-error", x.get("reject-reason", x.get("error", ""))) for x in packet_test]
+        assert_equal(len(packet_errors), 2)
+        for err in packet_errors:
+            assert "package-mempool-limits" in err
+            assert "exceeds ancestor size limit" in err
 
         # When we actually try to submit, the parent makes it into the mempool, but the child would exceed ancestor vsize limits
         res = self.nodes[0].submitpackage([tx_parent.serialize().hex(), tx_child.serialize().hex()])
         assert "too-long-mempool-chain" in res["tx-results"][tx_child.wtxid_hex]["error"]
         assert tx_parent.txid_hex in self.nodes[0].getrawmempool()
 
-        # Transactions are tiny in weight
-        assert_greater_than(2000, tx_parent.get_weight() + tx_child.get_weight())
+        # Serialized txs should still be much smaller than the sigop-adjusted
+        # virtual size that drives this package-limit behavior.
+        assert_greater_than(max_multisig_vsize, tx_parent.get_vsize() + tx_child.get_vsize())
 
     def test_legacy_sigops_stdness(self):
         self.log.info("Test a transaction with too many legacy sigops in its inputs is non-standard.")

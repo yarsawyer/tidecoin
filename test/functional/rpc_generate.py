@@ -55,7 +55,9 @@ class RPCGenerateTest(BitcoinTestFramework):
         self.log.info('Generate an empty block to a combo descriptor with PQ key')
         combo_privkey, _ = generate_keypair(wif=True)
         combo_desc = descsum_create(f"combo({combo_privkey})")
-        combo_address = node.deriveaddresses(combo_desc)[0]
+        # combo() derives [pkh, wpkh, sh(wpkh)] while generateblock uses the
+        # witness form when multiple destinations are available.
+        combo_address = node.deriveaddresses(combo_desc)[1]
         hash = self.generateblock(node, combo_desc, [])['hash']
         block = node.getblock(hash, 2)
         assert_equal(len(block['tx']), 1)
@@ -106,7 +108,7 @@ class RPCGenerateTest(BitcoinTestFramework):
         assert_raises_rpc_error(-5, 'Invalid address or descriptor', self.generateblock, node, '1234', [])
 
         self.log.info('Fail to generate block with a ranged descriptor')
-        ranged_descriptor = descsum_create("wpkh(pqhd(" + ("00" * 32) + ")/0h/*h)")
+        ranged_descriptor = descsum_create("wpkh(pqhd(" + ("00" * 32) + ")/10007h/6868h/7h/0h/0h/*h)")
         assert_raises_rpc_error(-8, 'Ranged descriptor not accepted. Maybe pass through deriveaddresses first?',
                                 self.generateblock, node, ranged_descriptor, [])
 

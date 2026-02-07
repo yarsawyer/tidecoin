@@ -136,11 +136,14 @@ bool DecryptKey(const CKeyingMaterial& master_key, const std::span<const unsigne
         return false;
     }
 
-    if (secret.size() != 32) {
+    if (secret.empty()) {
         return false;
     }
 
     key.Set(secret.begin(), secret.end());
+    if (!key.IsValid()) {
+        return false;
+    }
     return key.VerifyPubKey(pub_key);
 }
 } // namespace wallet

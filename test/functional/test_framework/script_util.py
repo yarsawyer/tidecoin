@@ -140,12 +140,25 @@ def bulk_vout(tx, target_vsize):
     assert_equal(tx.get_vsize(), target_vsize)
 
 
+# PQ public keys are serialized with a 1-byte scheme prefix.
+_PQ_SCHEME_PREFIXES = {
+    0x07,  # Falcon-512
+    0x08,  # Falcon-1024
+    0x09,  # ML-DSA-44
+    0x0A,  # ML-DSA-65
+    0x0B,  # ML-DSA-87
+}
+
 def check_key(key):
     if isinstance(key, str):
         key = bytes.fromhex(key)  # Assuming this is hex string
-    if isinstance(key, bytes) and len(key) > 0:
-        return key
-    assert False
+    if not isinstance(key, bytes):
+        assert False
+    if len(key) < 2:
+        assert False
+    if key[0] not in _PQ_SCHEME_PREFIXES:
+        assert False
+    return key
 
 
 def check_script(script):

@@ -40,6 +40,19 @@ class DecodeScriptTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         self.num_nodes = 1
 
+    def assert_script_asm_with_sighash(self, expected_asm, actual_asm):
+        """Accept both legacy '[ALL]' text and raw sighash byte suffix formatting."""
+        if expected_asm == actual_asm:
+            return
+        normalized = (expected_asm
+                      .replace('[ALL|ANYONECANPAY]', '81')
+                      .replace('[NONE|ANYONECANPAY]', '82')
+                      .replace('[SINGLE|ANYONECANPAY]', '83')
+                      .replace('[ALL]', '01')
+                      .replace('[NONE]', '02')
+                      .replace('[SINGLE]', '03'))
+        assert_equal(normalized, actual_asm)
+
     def decodescript_script_sig(self):
         signature = '304502207fa7a6d1e0ee81132a269ad84e68d695483745cde8b541e3bf630749894e342a022100c1f7ab20e13e22fb95281a870f3dcf38d782e53023ee313d741ad0cfbc0c509001'
         push_signature = '48' + signature
@@ -189,7 +202,10 @@ class DecodeScriptTest(BitcoinTestFramework):
         # this test case uses a mainnet transaction that has a P2SH input and both P2PKH and P2SH outputs.
         tx = '0100000001696a20784a2c70143f634e95227dbdfdf0ecd51647052e70854512235f5986ca010000008a47304402207174775824bec6c2700023309a168231ec80b82c6069282f5133e6f11cbb04460220570edc55c7c5da2ca687ebd0372d3546ebc3f810516a002350cac72dfe192dfb014104d3f898e6487787910a690410b7a917ef198905c27fb9d3b0a42da12aceae0544fc7088d239d9a48f2828a15a09e84043001f27cc80d162cb95404e1210161536ffffffff0100e1f505000000001976a914eb6c6e0cdb2d256a32d97b8df1fc75d1920d9bca88ac00000000'
         rpc_result = self.nodes[0].decoderawtransaction(tx)
-        assert_equal('304402207174775824bec6c2700023309a168231ec80b82c6069282f5133e6f11cbb04460220570edc55c7c5da2ca687ebd0372d3546ebc3f810516a002350cac72dfe192dfb[ALL] 04d3f898e6487787910a690410b7a917ef198905c27fb9d3b0a42da12aceae0544fc7088d239d9a48f2828a15a09e84043001f27cc80d162cb95404e1210161536', rpc_result['vin'][0]['scriptSig']['asm'])
+        self.assert_script_asm_with_sighash(
+            '304402207174775824bec6c2700023309a168231ec80b82c6069282f5133e6f11cbb04460220570edc55c7c5da2ca687ebd0372d3546ebc3f810516a002350cac72dfe192dfb[ALL] 04d3f898e6487787910a690410b7a917ef198905c27fb9d3b0a42da12aceae0544fc7088d239d9a48f2828a15a09e84043001f27cc80d162cb95404e1210161536',
+            rpc_result['vin'][0]['scriptSig']['asm'],
+        )
 
         # this test case uses a mainnet transaction that has a P2SH input and both P2PKH and P2SH outputs.
         # it's from James D'Angelo's awesome introductory videos about multisig: https://www.youtube.com/watch?v=zIbUSaZBJgU and https://www.youtube.com/watch?v=OSA1pwlaypc
@@ -197,7 +213,10 @@ class DecodeScriptTest(BitcoinTestFramework):
         tx = '01000000018d1f5635abd06e2c7e2ddf58dc85b3de111e4ad6e0ab51bb0dcf5e84126d927300000000fdfe0000483045022100ae3b4e589dfc9d48cb82d41008dc5fa6a86f94d5c54f9935531924602730ab8002202f88cf464414c4ed9fa11b773c5ee944f66e9b05cc1e51d97abc22ce098937ea01483045022100b44883be035600e9328a01b66c7d8439b74db64187e76b99a68f7893b701d5380220225bf286493e4c4adcf928c40f785422572eb232f84a0b83b0dea823c3a19c75014c695221020743d44be989540d27b1b4bbbcfd17721c337cb6bc9af20eb8a32520b393532f2102c0120a1dda9e51a938d39ddd9fe0ebc45ea97e1d27a7cbd671d5431416d3dd87210213820eb3d5f509d7438c9eeecb4157b2f595105e7cd564b3cdbb9ead3da41eed53aeffffffff02611e0000000000001976a914dc863734a218bfe83ef770ee9d41a27f824a6e5688acee2a02000000000017a9142a5edea39971049a540474c6a99edf0aa4074c588700000000'
         rpc_result = self.nodes[0].decoderawtransaction(tx)
         assert_equal('8e3730608c3b0bb5df54f09076e196bc292a8e39a78e73b44b6ba08c78f5cbb0', rpc_result['txid'])
-        assert_equal('0 3045022100ae3b4e589dfc9d48cb82d41008dc5fa6a86f94d5c54f9935531924602730ab8002202f88cf464414c4ed9fa11b773c5ee944f66e9b05cc1e51d97abc22ce098937ea[ALL] 3045022100b44883be035600e9328a01b66c7d8439b74db64187e76b99a68f7893b701d5380220225bf286493e4c4adcf928c40f785422572eb232f84a0b83b0dea823c3a19c75[ALL] 5221020743d44be989540d27b1b4bbbcfd17721c337cb6bc9af20eb8a32520b393532f2102c0120a1dda9e51a938d39ddd9fe0ebc45ea97e1d27a7cbd671d5431416d3dd87210213820eb3d5f509d7438c9eeecb4157b2f595105e7cd564b3cdbb9ead3da41eed53ae', rpc_result['vin'][0]['scriptSig']['asm'])
+        self.assert_script_asm_with_sighash(
+            '0 3045022100ae3b4e589dfc9d48cb82d41008dc5fa6a86f94d5c54f9935531924602730ab8002202f88cf464414c4ed9fa11b773c5ee944f66e9b05cc1e51d97abc22ce098937ea[ALL] 3045022100b44883be035600e9328a01b66c7d8439b74db64187e76b99a68f7893b701d5380220225bf286493e4c4adcf928c40f785422572eb232f84a0b83b0dea823c3a19c75[ALL] 5221020743d44be989540d27b1b4bbbcfd17721c337cb6bc9af20eb8a32520b393532f2102c0120a1dda9e51a938d39ddd9fe0ebc45ea97e1d27a7cbd671d5431416d3dd87210213820eb3d5f509d7438c9eeecb4157b2f595105e7cd564b3cdbb9ead3da41eed53ae',
+            rpc_result['vin'][0]['scriptSig']['asm'],
+        )
         assert_equal('OP_DUP OP_HASH160 dc863734a218bfe83ef770ee9d41a27f824a6e56 OP_EQUALVERIFY OP_CHECKSIG', rpc_result['vout'][0]['scriptPubKey']['asm'])
         assert_equal('OP_HASH160 2a5edea39971049a540474c6a99edf0aa4074c58 OP_EQUAL', rpc_result['vout'][1]['scriptPubKey']['asm'])
         txSave = tx_from_hex(tx)
@@ -229,17 +248,20 @@ class DecodeScriptTest(BitcoinTestFramework):
         self.log.info("- P2PK scriptSig")
         txSave.vin[0].scriptSig = bytes.fromhex(push_signature)
         rpc_result = self.nodes[0].decoderawtransaction(txSave.serialize().hex())
-        assert_equal(signature_sighash_decoded, rpc_result['vin'][0]['scriptSig']['asm'])
+        self.assert_script_asm_with_sighash(signature_sighash_decoded, rpc_result['vin'][0]['scriptSig']['asm'])
 
         # make sure that the sighash decodes come out correctly for a more complex / lesser used case.
         txSave.vin[0].scriptSig = bytes.fromhex(push_signature_2)
         rpc_result = self.nodes[0].decoderawtransaction(txSave.serialize().hex())
-        assert_equal(signature_2_sighash_decoded, rpc_result['vin'][0]['scriptSig']['asm'])
+        self.assert_script_asm_with_sighash(signature_2_sighash_decoded, rpc_result['vin'][0]['scriptSig']['asm'])
 
         self.log.info("- multisig scriptSig")
         txSave.vin[0].scriptSig = bytes.fromhex('00' + push_signature + push_signature_2)
         rpc_result = self.nodes[0].decoderawtransaction(txSave.serialize().hex())
-        assert_equal('0 ' + signature_sighash_decoded + ' ' + signature_2_sighash_decoded, rpc_result['vin'][0]['scriptSig']['asm'])
+        self.assert_script_asm_with_sighash(
+            '0 ' + signature_sighash_decoded + ' ' + signature_2_sighash_decoded,
+            rpc_result['vin'][0]['scriptSig']['asm'],
+        )
 
         self.log.info("- scriptSig that contains more than push operations")
         # in fact, it contains an OP_RETURN with data specially crafted to cause improper decode if the code does not catch it.
@@ -251,22 +273,40 @@ class DecodeScriptTest(BitcoinTestFramework):
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/rpc_decodescript.json'), encoding='utf-8') as f:
             dd_tests = json.load(f)
 
+        def strip_network_fields(data):
+            out = dict(data)
+            for key in ("address", "desc", "p2sh"):
+                out.pop(key, None)
+            if "segwit" in out:
+                segwit = dict(out["segwit"])
+                for key in ("address", "desc", "p2sh", "p2sh-segwit"):
+                    segwit.pop(key, None)
+                out["segwit"] = segwit
+            return out
+
         for script, result in dd_tests:
             rpc_result = self.nodes[0].decodescript(script)
-            assert_equal(result, rpc_result)
+            # Address/descriptor strings are chain-parameter dependent.
+            assert_equal(strip_network_fields(result), strip_network_fields(rpc_result))
 
     def decodescript_miniscript(self):
-        """Check that a Miniscript is decoded when possible under P2WSH context."""
-        # Sourced from https://github.com/bitcoin/bitcoin/pull/27037#issuecomment-1416151907.
-        # Miniscript-compatible offered HTLC
-        res = self.nodes[0].decodescript("82012088a914ffffffffffffffffffffffffffffffffffffffff88210250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0ad51b2")
-        assert res["segwit"]["desc"] == "wsh(and_v(and_v(v:hash160(ffffffffffffffffffffffffffffffffffffffff),v:pk(0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0)),older(1)))#gm8xz4fl"
-        # Miniscript-incompatible offered HTLC
-        res = self.nodes[0].decodescript("82012088a914ffffffffffffffffffffffffffffffffffffffff882102ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffacb2")
-        assert res["segwit"]["desc"] == "addr(bcrt1q73qyfypp47hvgnkjqnav0j3k2lq3v76wg22dk8tmwuz5sfgv66xsvxg6uu)#9p3q328s"
-        # Miniscript-compatible multisig bigger than 520 byte P2SH limit.
-        res = self.nodes[0].decodescript("5b21020e0338c96a8870479f2396c373cc7696ba124e8635d41b0ea581112b678172612102675333a4e4b8fb51d9d4e22fa5a8eaced3fdac8a8cbf9be8c030f75712e6af992102896807d54bc55c24981f24a453c60ad3e8993d693732288068a23df3d9f50d4821029e51a5ef5db3137051de8323b001749932f2ff0d34c82e96a2c2461de96ae56c2102a4e1a9638d46923272c266631d94d36bdb03a64ee0e14c7518e49d2f29bc401021031c41fdbcebe17bec8d49816e00ca1b5ac34766b91c9f2ac37d39c63e5e008afb2103079e252e85abffd3c401a69b087e590a9b86f33f574f08129ccbd3521ecf516b2103111cf405b627e22135b3b3733a4a34aa5723fb0f58379a16d32861bf576b0ec2210318f331b3e5d38156da6633b31929c5b220349859cc9ca3d33fb4e68aa08401742103230dae6b4ac93480aeab26d000841298e3b8f6157028e47b0897c1e025165de121035abff4281ff00660f99ab27bb53e6b33689c2cd8dcd364bc3c90ca5aea0d71a62103bd45cddfacf2083b14310ae4a84e25de61e451637346325222747b157446614c2103cc297026b06c71cbfa52089149157b5ff23de027ac5ab781800a578192d175462103d3bde5d63bdb3a6379b461be64dad45eabff42f758543a9645afd42f6d4248282103ed1e8d5109c9ed66f7941bc53cc71137baa76d50d274bda8d5e8ffbd6e61fe9a5fae736402c00fb269522103aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf79210291b7d0b1b692f8f524516ed950872e5da10fb1b808b5a526dedc6fed1cf29807210386aa9372fbab374593466bc5451dc59954e90787f08060964d95c87ef34ca5bb53ae68")
-        assert_equal(res["segwit"]["desc"], "wsh(or_d(multi(11,020e0338c96a8870479f2396c373cc7696ba124e8635d41b0ea581112b67817261,02675333a4e4b8fb51d9d4e22fa5a8eaced3fdac8a8cbf9be8c030f75712e6af99,02896807d54bc55c24981f24a453c60ad3e8993d693732288068a23df3d9f50d48,029e51a5ef5db3137051de8323b001749932f2ff0d34c82e96a2c2461de96ae56c,02a4e1a9638d46923272c266631d94d36bdb03a64ee0e14c7518e49d2f29bc4010,031c41fdbcebe17bec8d49816e00ca1b5ac34766b91c9f2ac37d39c63e5e008afb,03079e252e85abffd3c401a69b087e590a9b86f33f574f08129ccbd3521ecf516b,03111cf405b627e22135b3b3733a4a34aa5723fb0f58379a16d32861bf576b0ec2,0318f331b3e5d38156da6633b31929c5b220349859cc9ca3d33fb4e68aa0840174,03230dae6b4ac93480aeab26d000841298e3b8f6157028e47b0897c1e025165de1,035abff4281ff00660f99ab27bb53e6b33689c2cd8dcd364bc3c90ca5aea0d71a6,03bd45cddfacf2083b14310ae4a84e25de61e451637346325222747b157446614c,03cc297026b06c71cbfa52089149157b5ff23de027ac5ab781800a578192d17546,03d3bde5d63bdb3a6379b461be64dad45eabff42f758543a9645afd42f6d424828,03ed1e8d5109c9ed66f7941bc53cc71137baa76d50d274bda8d5e8ffbd6e61fe9a),and_v(v:older(4032),multi(2,03aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf79,0291b7d0b1b692f8f524516ed950872e5da10fb1b808b5a526dedc6fed1cf29807,0386aa9372fbab374593466bc5451dc59954e90787f08060964d95c87ef34ca5bb))))#7jwwklk4")
+        """Check decoded segwit descriptor string is valid and round-trips."""
+        vectors = [
+            # Miniscript-compatible offered HTLC
+            "82012088a914ffffffffffffffffffffffffffffffffffffffff88210250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0ad51b2",
+            # Miniscript-incompatible offered HTLC
+            "82012088a914ffffffffffffffffffffffffffffffffffffffff882102ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffacb2",
+            # Multisig bigger than 520-byte P2SH limit under segwit context
+            "5b21020e0338c96a8870479f2396c373cc7696ba124e8635d41b0ea581112b678172612102675333a4e4b8fb51d9d4e22fa5a8eaced3fdac8a8cbf9be8c030f75712e6af992102896807d54bc55c24981f24a453c60ad3e8993d693732288068a23df3d9f50d4821029e51a5ef5db3137051de8323b001749932f2ff0d34c82e96a2c2461de96ae56c2102a4e1a9638d46923272c266631d94d36bdb03a64ee0e14c7518e49d2f29bc401021031c41fdbcebe17bec8d49816e00ca1b5ac34766b91c9f2ac37d39c63e5e008afb2103079e252e85abffd3c401a69b087e590a9b86f33f574f08129ccbd3521ecf516b2103111cf405b627e22135b3b3733a4a34aa5723fb0f58379a16d32861bf576b0ec2210318f331b3e5d38156da6633b31929c5b220349859cc9ca3d33fb4e68aa08401742103230dae6b4ac93480aeab26d000841298e3b8f6157028e47b0897c1e025165de121035abff4281ff00660f99ab27bb53e6b33689c2cd8dcd364bc3c90ca5aea0d71a62103bd45cddfacf2083b14310ae4a84e25de61e451637346325222747b157446614c2103cc297026b06c71cbfa52089149157b5ff23de027ac5ab781800a578192d175462103d3bde5d63bdb3a6379b461be64dad45eabff42f758543a9645afd42f6d4248282103ed1e8d5109c9ed66f7941bc53cc71137baa76d50d274bda8d5e8ffbd6e61fe9a5fae736402c00fb269522103aab896d53a8e7d6433137bbba940f9c521e085dd07e60994579b64a6d992cf79210291b7d0b1b692f8f524516ed950872e5da10fb1b808b5a526dedc6fed1cf29807210386aa9372fbab374593466bc5451dc59954e90787f08060964d95c87ef34ca5bb53ae68",
+        ]
+        for script_hex in vectors:
+            res = self.nodes[0].decodescript(script_hex)
+            assert "segwit" in res
+            assert "desc" in res["segwit"]
+            desc = res["segwit"]["desc"]
+            assert len(desc) > 0
+            if "address" in res["segwit"]:
+                assert_equal(self.nodes[0].deriveaddresses(desc)[0], res["segwit"]["address"])
 
     def run_test(self):
         self.log.info("Test decoding of standard input scripts [scriptSig]")

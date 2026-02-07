@@ -5,10 +5,9 @@
 """Test multisig RPCs"""
 import decimal
 import itertools
-import json
-import os
 
 from test_framework.address import address_to_scriptpubkey
+from test_framework.authproxy import JSONRPCException
 from test_framework.descriptors import descsum_create
 from test_framework.messages import COIN
 from test_framework.script_util import keys_to_multisig_script
@@ -44,9 +43,14 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         self.generate(self.wallet, 149)
 
         self.create_keys(21)  # max number of allowed keys + 1
-        m_of_n = [(2, 3), (3, 3), (2, 5), (3, 5), (10, 15), (15, 15)]
-        for (sigs, keys) in m_of_n:
-            for output_type in ["bech32", "p2sh-segwit", "legacy"]:
+        # Legacy spends hit scriptSig policy limits much earlier with PQ keys.
+        vectors_by_output = {
+            "bech32": [(2, 3), (3, 3), (2, 5), (3, 5), (5, 9), (9, 9)],
+            "p2sh-segwit": [(2, 3), (3, 3), (2, 5), (3, 5), (5, 9), (9, 9)],
+            "legacy": [(2, 3), (3, 3), (2, 5), (3, 5)],
+        }
+        for output_type, vectors in vectors_by_output.items():
+            for sigs, keys in vectors:
                 self.do_multisig(keys, sigs, output_type)
 
         self.test_multisig_script_limit()
@@ -55,28 +59,30 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         # Check that bech32m is not a supported address type
         assert_raises_rpc_error(-5, "Unknown address type 'bech32m'", self.nodes[0].createmultisig, 2, self.pub, "bech32m")
 
-        self.log.info('Check correct encoding of multisig script for all n (1..20)')
+        self.log.info('Check correct encoding of multisig script up to script size limit')
         for nkeys in range(1, 20+1):
             keys = [self.pub[0]]*nkeys
             expected_ms_script = keys_to_multisig_script(keys, k=nkeys)  # simply use n-of-n
-            # note that the 'legacy' address type fails for n values larger than 15
-            # due to exceeding the P2SH size limit (520 bytes), so we use 'bech32' instead
-            # (for the purpose of this encoding test, we don't care about the resulting address)
-            res = self.nodes[0].createmultisig(nrequired=nkeys, keys=keys, address_type='bech32')
+            try:
+                # We use bech32 purely as a script-construction path.
+                res = self.nodes[0].createmultisig(nrequired=nkeys, keys=keys, address_type='bech32')
+            except JSONRPCException as e:
+                assert "redeemScript exceeds size limit" in e.error["message"]
+                break
             assert_equal(res['redeemScript'], expected_ms_script.hex())
 
     def test_multisig_script_limit(self):
         node1 = self.nodes[1]
         pubkeys = self.pub[0:20]
 
-        self.log.info('Test legacy redeem script max size limit')
-        assert_raises_rpc_error(-8, "redeemScript exceeds size limit: 684 > 520", node1.createmultisig, 16, pubkeys, 'legacy')
+        self.log.info('Test redeem script max size limit for large PQ multisig')
+        assert_raises_rpc_error(-8, "redeemScript exceeds size limit", node1.createmultisig, 16, pubkeys, 'legacy')
 
-        self.log.info('Test valid 16-20 multisig p2sh-legacy and bech32 (no wallet)')
-        self.do_multisig(nkeys=20, nsigs=16, output_type="p2sh-segwit")
-        self.do_multisig(nkeys=20, nsigs=16, output_type="bech32")
+        self.log.info('Test valid high multisig within size limit (no wallet)')
+        self.do_multisig(nkeys=9, nsigs=9, output_type="p2sh-segwit")
+        self.do_multisig(nkeys=9, nsigs=9, output_type="bech32")
 
-        self.log.info('Test invalid 16-21 multisig p2sh-legacy and bech32 (no wallet)')
+        self.log.info('Test invalid key-count bound (still capped at 20)')
         assert_raises_rpc_error(-8, "Number of keys involved in the multisignature address creation > 20", node1.createmultisig, 16, self.pub, 'p2sh-segwit')
         assert_raises_rpc_error(-8, "Number of keys involved in the multisignature address creation > 20", node1.createmultisig, 16, self.pub, 'bech32')
 
@@ -101,7 +107,10 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         mredeem = msig["redeemScript"]
         assert_equal(desc, msig['descriptor'])
         if output_type == 'bech32':
-            assert madd[0:4] == "bcrt"  # actually a bech32 address
+            # Tidecoin uses a different HRP than Bitcoin regtest; assert semantics instead.
+            addr_info = node2.validateaddress(madd)
+            assert_equal(addr_info["iswitness"], True)
+            assert_equal(addr_info["witness_version"], 0)
 
         spk = address_to_scriptpubkey(madd)
         value = decimal.Decimal("0.00004000")
@@ -158,17 +167,18 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         self.log.info("n/m=%d/%d %s size=%d vsize=%d weight=%d" % (nsigs, nkeys, output_type, txinfo["size"], txinfo["vsize"], txinfo["weight"]))
 
     def test_sortedmulti_descriptors_bip67(self):
-        self.log.info('Testing sortedmulti descriptors with BIP 67 test vectors')
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/rpc_bip67.json'), encoding='utf-8') as f:
-            vectors = json.load(f)
+        self.log.info('Testing sortedmulti deterministic ordering with PQ keys')
+        node = self.nodes[0]
+        pq_keys = self.pub[0:5]
 
-        for t in vectors:
-            key_str = ','.join(t['keys'])
-            desc = descsum_create('sh(sortedmulti(2,{}))'.format(key_str))
-            assert_equal(self.nodes[0].deriveaddresses(desc)[0], t['address'])
-            sorted_key_str = ','.join(t['sorted_keys'])
-            sorted_key_desc = descsum_create('sh(multi(2,{}))'.format(sorted_key_str))
-            assert_equal(self.nodes[0].deriveaddresses(sorted_key_desc)[0], t['address'])
+        for key_perm in itertools.permutations(pq_keys, 3):
+            key_str = ','.join(key_perm)
+            sorted_desc = descsum_create('wsh(sortedmulti(2,{}))'.format(key_str))
+            sorted_addr = node.deriveaddresses(sorted_desc)[0]
+
+            manually_sorted = ','.join(sorted(key_perm))
+            manual_desc = descsum_create('wsh(multi(2,{}))'.format(manually_sorted))
+            assert_equal(node.deriveaddresses(manual_desc)[0], sorted_addr)
 
 
 if __name__ == '__main__':

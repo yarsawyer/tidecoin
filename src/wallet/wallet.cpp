@@ -886,7 +886,9 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
         encrypted_batch = nullptr;
 
         Lock();
-        Unlock(strWalletPassphrase);
+        if (!Unlock(strWalletPassphrase)) {
+            throw std::runtime_error(std::string(__func__) + ": Failed to unlock wallet after encrypting keys");
+        }
 
         // Make new descriptors with a new seed
         if (!IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {

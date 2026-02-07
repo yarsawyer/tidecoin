@@ -101,6 +101,9 @@ class DustRelayFeeTest(BitcoinTestFramework):
         self.wallet = MiniWallet(self.nodes[0])
 
         self.test_dustrelay()
+        # test_dustrelay() restarts without -permitbaremultisig; restore it for
+        # subsequent bare-multisig dust threshold checks.
+        self.restart_node(0, extra_args=["-permitbaremultisig"])
 
         # prepare output scripts of each standard type
         _, pubkey = generate_keypair()

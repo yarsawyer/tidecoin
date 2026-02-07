@@ -922,8 +922,19 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             # This is needed so that we are out of IBD when the test starts,
             # see the tip age check in IsInitialBlockDownload().
             from test_framework.address import create_deterministic_address_p2wsh_op_true
+            from test_framework.wallet_util import generate_keypair_at_index
+            from test_framework.segwit_addr import encode_segwit_address
+            from test_framework.script import hash160
             miniwallet_addr, _ = create_deterministic_address_p2wsh_op_true(self.chain)
-            gen_addresses = [miniwallet_addr] + [cache_node.getnewaddress(address_type="bech32") for _ in range(3)]
+            hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
+            hrp = hrp_map.get(self.chain, "rtbc")
+            gen_addresses = []
+            for i in range(3):
+                _, pubkey = generate_keypair_at_index(i)
+                gen_addresses.append(encode_segwit_address(hrp, 0, hash160(pubkey)))
+            # Keep MiniWallet coinbase range at blocks 76-100 to match upstream
+            # functional test assumptions.
+            gen_addresses.append(miniwallet_addr)
             assert_equal(len(gen_addresses), 4)
             for i in range(8):
                 self.generatetoaddress(

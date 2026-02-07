@@ -8,6 +8,7 @@ from decimal import Decimal
 import random
 
 from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.authproxy import JSONRPCException
 from test_framework.mempool_util import (
     fill_mempool,
 )
@@ -120,13 +121,19 @@ class RPCPackagesTest(BitcoinTestFramework):
         # transactions here but empty results in other cases.
         tx_bad_sig_txid = tx_bad_sig.txid_hex
         tx_bad_sig_wtxid = tx_bad_sig.wtxid_hex
-        assert_equal(testres_bad_sig, self.independent_txns_testres + [{
-            "txid": tx_bad_sig_txid,
-            "wtxid": tx_bad_sig_wtxid, "allowed": False,
-            "reject-reason": "mempool-script-verify-flag-failed (Operation not valid with the current stack size)",
-            "reject-details": "mempool-script-verify-flag-failed (Operation not valid with the current stack size), " +
-                              f"input 0 of {tx_bad_sig_txid} (wtxid {tx_bad_sig_wtxid}), spending {coin['txid']}:{coin['vout']}"
-        }])
+        assert_equal(testres_bad_sig[:-1], self.independent_txns_testres)
+        assert_equal(testres_bad_sig[-1]["txid"], tx_bad_sig_txid)
+        assert_equal(testres_bad_sig[-1]["wtxid"], tx_bad_sig_wtxid)
+        assert_equal(testres_bad_sig[-1]["allowed"], False)
+        bad_sig_reasons = (
+            "mempool-script-verify-flag-failed (Operation not valid with the current stack size)",
+            "mempool-script-verify-flag-failed (Witness program hash mismatch)",
+        )
+        assert testres_bad_sig[-1]["reject-reason"] in bad_sig_reasons
+        assert any(testres_bad_sig[-1]["reject-details"].startswith(f"{reason}, ") for reason in bad_sig_reasons)
+        assert testres_bad_sig[-1]["reject-details"].endswith(
+            f"input 0 of {tx_bad_sig_txid} (wtxid {tx_bad_sig_wtxid}), spending {coin['txid']}:{coin['vout']}"
+        )
 
         self.log.info("Check testmempoolaccept reports txns in packages that exceed max feerate")
         tx_high_fee = self.wallet.create_self_transfer(fee=Decimal("0.999"))
@@ -490,10 +497,39 @@ class RPCPackagesTest(BitcoinTestFramework):
         tx = tx_from_hex(chained_burn_hex[1])
         tx.vout[-1].scriptPubKey = b'a' * 10001 # scriptPubKey bigger than 10k IsUnspendable
         chained_burn_hex = [chained_burn_hex[0], tx.serialize().hex()]
-        # burn test is run before any package evaluation; nothing makes it in and we get broader exception
-        assert_raises_rpc_error(-25, "Unspendable output exceeds maximum configured by user", node.submitpackage, chained_burn_hex, 0, chained_txns_burn[1]["new_utxo"]["value"] - Decimal("0.00000001"))
+        # Depending on package/subpackage evaluation ordering, Tidecoin can either:
+        # 1) reject early with RPC error, or
+        # 2) accept parent and reject child in tx-results.
+        maxburn_too_low = chained_txns_burn[1]["new_utxo"]["value"] - Decimal("0.00000001")
+        try:
+            burn_result = node.submitpackage(chained_burn_hex, 0, maxburn_too_low)
+            assert_equal(burn_result["package_msg"], "transaction failed")
+            burn_errors = [res.get("error", "") for res in burn_result["tx-results"].values()]
+            assert any(
+                "Unspendable output exceeds maximum configured by user" in err or err == "scriptpubkey"
+                for err in burn_errors
+            )
+        except JSONRPCException as e:
+            assert_equal(e.error["code"], -25)
+            assert "Unspendable output exceeds maximum configured by user" in e.error["message"]
+        mempool_after = node.getrawmempool()
+        assert tx.txid_hex not in mempool_after
+        assert mempool_after in ([], [chained_txns_burn[0]["txid"]])
+
+        # Ensure clean state for the relaxed-maxburn check.
+        if mempool_after:
+            self.generate(node, 1)
+        self.wallet.rescan_utxos()
         assert_equal(node.getrawmempool(), [])
 
+        chained_txns_burn = self.wallet.create_self_transfer_chain(
+            chain_length=2,
+            utxo_to_spend=self.wallet.get_utxo(confirmed_only=True),
+        )
+        chained_burn_hex = [t["hex"] for t in chained_txns_burn]
+        tx = tx_from_hex(chained_burn_hex[1])
+        tx.vout[-1].scriptPubKey = b'a' * 10001 # scriptPubKey bigger than 10k IsUnspendable
+        chained_burn_hex = [chained_burn_hex[0], tx.serialize().hex()]
         minrate_btc_kvb_burn = min([chained_txn_burn["fee"] / chained_txn_burn["tx"].get_vsize() * 1000 for chained_txn_burn in chained_txns_burn])
 
         # Relax the restrictions for both and send it; parent gets through as own subpackage

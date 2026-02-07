@@ -2,42 +2,24 @@
 # Copyright (c) 2025 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test mining on an alternate mainnet
+"""Test mining on a Tide-specific alternate mainnet chain.
 
-Test mining related RPCs that involve difficulty adjustment, which
-regtest doesn't have.
-
-It uses an alternate mainnet chain. See data/README.md for how it was generated.
-
-Mine one retarget period worth of blocks with a short interval in
-order to maximally raise the difficulty. Verify this using the getmininginfo RPC.
-
+The test replays precomputed blocks up to the retarget boundary and verifies
+that getmininginfo reports a higher next-period difficulty as expected.
+See test/functional/data/README.md for vector generation details.
 """
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
-from test_framework.blocktools import (
-    DIFF_1_N_BITS,
-    DIFF_1_TARGET,
-    DIFF_4_N_BITS,
-    DIFF_4_TARGET,
-    create_coinbase,
-    nbits_str,
-    target_str
-)
+from test_framework.blocktools import nbits_str, target_str
 
-from test_framework.messages import (
-    CBlock,
-    SEQUENCE_FINAL,
-)
+from test_framework.messages import uint256_from_compact
+from test_framework.util import assert_greater_than
 
 import json
 import os
-
-# See data/README.md
-COINBASE_SCRIPT_PUBKEY="76a914eadbac7f36c37e39361168b7aaee3cb24a25312d88ac"
 
 class MiningMainnetTest(BitcoinTestFramework):
 
@@ -49,29 +31,14 @@ class MiningMainnetTest(BitcoinTestFramework):
     def add_options(self, parser):
         parser.add_argument(
             '--datafile',
-            default='data/mainnet_alt.json',
+            default='data/mainnet_tide_alt.json',
             help='Block data file (default: %(default)s)',
         )
 
-    def mine(self, height, prev_hash, blocks, node):
-        self.log.debug(f"height={height}")
-        block = CBlock()
-        block.nVersion = 0x20000000
-        block.hashPrevBlock = int(prev_hash, 16)
-        block.nTime = blocks['timestamps'][height - 1]
-        block.nBits = DIFF_1_N_BITS if height < 2016 else DIFF_4_N_BITS
-        block.nNonce = blocks['nonces'][height - 1]
-        block.vtx = [create_coinbase(height=height, script_pubkey=bytes.fromhex(COINBASE_SCRIPT_PUBKEY), halving_period=210000)]
-        # The alternate mainnet chain was mined with non-timelocked coinbase txs.
-        block.vtx[0].nLockTime = 0
-        block.vtx[0].vin[0].nSequence = SEQUENCE_FINAL
-        block.hashMerkleRoot = block.calc_merkle_root()
-        block_hex = block.serialize(with_witness=False).hex()
-        self.log.debug(block_hex)
-        assert_equal(node.submitblock(block_hex), None)
-        prev_hash = node.getbestblockhash()
-        assert_equal(prev_hash, block.hash_hex)
-        return prev_hash
+    def submit_precomputed(self, block_height, block_data, node):
+        self.log.debug(f"height={block_height}")
+        assert_equal(node.submitblock(block_data["hex"]), None)
+        assert_equal(node.getbestblockhash(), block_data["hash"])
 
 
     def run_test(self):
@@ -81,44 +48,44 @@ class MiningMainnetTest(BitcoinTestFramework):
         node.stderr.truncate()
         self.log.info("Load alternative mainnet blocks")
         path = os.path.join(os.path.dirname(os.path.realpath(__file__)), self.options.datafile)
-        prev_hash = node.getbestblockhash()
-        blocks = None
+        vectors = None
         with open(path, encoding='utf-8') as f:
-            blocks = json.load(f)
-            n_blocks = len(blocks['timestamps'])
-            assert_equal(n_blocks, 2016)
+            vectors = json.load(f)
+
+        interval = int(vectors['retarget_interval'])
+        blocks = vectors["blocks"]
+        assert_equal(len(blocks), interval)
+        assert_equal(node.getblockhash(0), vectors['genesis_hash'])
+        initial_nbits = int(vectors['initial_nbits'], 16)
 
         # Mine up to the last block of the first retarget period
-        for i in range(2015):
-            prev_hash = self.mine(i + 1, prev_hash, blocks, node)
+        for i in range(interval - 1):
+            self.submit_precomputed(i + 1, blocks[i], node)
 
-        assert_equal(node.getblockcount(), 2015)
+        assert_equal(node.getblockcount(), interval - 1)
 
         self.log.info("Check difficulty adjustment with getmininginfo")
         mining_info = node.getmininginfo()
-        assert_equal(mining_info['difficulty'], 1)
-        assert_equal(mining_info['bits'], nbits_str(DIFF_1_N_BITS))
-        assert_equal(mining_info['target'], target_str(DIFF_1_TARGET))
+        assert_equal(mining_info['bits'], nbits_str(initial_nbits))
+        assert_equal(mining_info['target'], target_str(uint256_from_compact(initial_nbits)))
 
-        assert_equal(mining_info['next']['height'], 2016)
-        assert_equal(mining_info['next']['difficulty'], 4)
-        assert_equal(mining_info['next']['bits'], nbits_str(DIFF_4_N_BITS))
-        assert_equal(mining_info['next']['target'], target_str(DIFF_4_TARGET))
+        assert_equal(mining_info['next']['height'], interval)
+        assert_greater_than(mining_info['next']['difficulty'], mining_info['difficulty'])
+        assert_greater_than(int(mining_info['target'], 16), int(mining_info['next']['target'], 16))
+        assert_equal(mining_info["next"]["bits"], blocks[interval - 1]["bits"])
 
         # Mine first block of the second retarget period
-        height = 2016
-        prev_hash = self.mine(height, prev_hash, blocks, node)
-        assert_equal(node.getblockcount(), height)
+        self.submit_precomputed(interval, blocks[interval - 1], node)
+        assert_equal(node.getblockcount(), interval)
 
         mining_info = node.getmininginfo()
-        assert_equal(mining_info['difficulty'], 4)
+        assert_equal(mining_info['bits'], blocks[interval - 1]["bits"])
 
         self.log.info("getblock RPC should show historical target")
         block_info = node.getblock(node.getblockhash(1))
 
-        assert_equal(block_info['difficulty'], 1)
-        assert_equal(block_info['bits'], nbits_str(DIFF_1_N_BITS))
-        assert_equal(block_info['target'], target_str(DIFF_1_TARGET))
+        assert_equal(block_info['bits'], nbits_str(initial_nbits))
+        assert_equal(block_info['target'], target_str(uint256_from_compact(initial_nbits)))
 
 
 if __name__ == '__main__':

@@ -33,6 +33,7 @@ from test_framework.messages import (
 )
 from test_framework.script import (
     CScript,
+    OP_0,
     OP_DROP,
     OP_NOP,
     OP_RETURN,
@@ -166,10 +167,20 @@ class MiniWallet:
 
     def sign_tx(self, tx, fixed_length=True):
         if self._mode == MiniWalletMode.RAW_P2PK:
-            if not getattr(self, "_last_spent_utxos", None):
-                raise AssertionError("RAW_P2PK signing requires spent UTXO context")
+            utxos = getattr(self, "_last_spent_utxos", None)
+            if not utxos:
+                utxos = []
+                for vin in tx.vin:
+                    prev_txid = f"{vin.prevout.hash:064x}"
+                    try:
+                        utxo = self.get_utxo(txid=prev_txid, vout=vin.prevout.n, mark_as_spent=False)
+                    except StopIteration:
+                        utxo = None
+                    if utxo is None:
+                        raise AssertionError("RAW_P2PK signing requires spent UTXO context")
+                    utxos.append(utxo)
             prevtxs = []
-            for utxo in self._last_spent_utxos:
+            for utxo in utxos:
                 prevtxs.append({
                     "txid": utxo["txid"],
                     "vout": utxo["vout"],
@@ -370,8 +381,13 @@ class MiniWallet:
         assert fee_rate >= 0
         assert fee >= 0
         # calculate fee
+        if self._mode == MiniWalletMode.RAW_OP_TRUE:
+            vsize = Decimal(104)  # anyone-can-spend (raw) vsize
+        elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
+            # Tagged ADDRESS_OP_TRUE uses a larger witness script
+            # ([tag_hash, OP_DROP, OP_TRUE]) than the default OP_TRUE witness.
+            vsize = Decimal(96 if bytes(self._witness_script) == bytes(CScript([OP_TRUE])) else 104)
         if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
-            vsize = Decimal(96)  # anyone-can-spend vsize (no signatures)
             if target_vsize and not fee:  # respect fee_rate if target vsize is passed
                 fee = get_fee(target_vsize, fee_rate)
             send_value = utxo_to_spend["value"] - (fee or (fee_rate * vsize / 1000))
@@ -449,7 +465,7 @@ class MiniWallet:
         return chain
 
 
-def getnewdestination(address_type='bech32'):
+def getnewdestination(address_type='bech32', chain='regtest'):
     """Generate a random destination of the specified type and return the
        corresponding public key, scriptPubKey and address. Supported types are
        'legacy', 'p2sh-segwit', and 'bech32'. Can be used when a random
@@ -458,13 +474,13 @@ def getnewdestination(address_type='bech32'):
     key, pubkey = generate_keypair()
     if address_type == 'legacy':
         scriptpubkey = key_to_p2pkh_script(pubkey)
-        address = key_to_p2pkh(pubkey)
+        address = key_to_p2pkh(pubkey, chain=chain)
     elif address_type == 'p2sh-segwit':
         scriptpubkey = key_to_p2sh_p2wpkh_script(pubkey)
-        address = key_to_p2sh_p2wpkh(pubkey)
+        address = key_to_p2sh_p2wpkh(pubkey, chain=chain)
     elif address_type == 'bech32':
         scriptpubkey = key_to_p2wpkh_script(pubkey)
-        address = key_to_p2wpkh(pubkey)
+        address = key_to_p2wpkh(pubkey, chain=chain)
     else:
         assert False
     return pubkey, scriptpubkey, address

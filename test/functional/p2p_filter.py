@@ -28,12 +28,17 @@ from test_framework.p2p import (
     P2P_VERSION,
     p2p_lock,
 )
-from test_framework.script import MAX_SCRIPT_ELEMENT_SIZE
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.wallet import (
     MiniWallet,
     getnewdestination,
 )
+
+# test_framework.script still carries Bitcoin's 520-byte script element size.
+# Tidecoin core enforces 8192 bytes, and FILTERADD policy uses the core limit.
+TIDECOIN_FILTERADD_MAX_DATA_SIZE = 8192
+# Keep BIP37 behavior checks independent from chain subsidy amount.
+TEST_SEND_AMOUNT = 1_000_000  # 0.01 coin
 
 
 class P2PBloomFilter(P2PInterface):
@@ -125,11 +130,11 @@ class FilterTest(BitcoinTestFramework):
 
         self.log.info('Check that max size data element to add to the filter is accepted')
         with self.nodes[0].assert_debug_log([], unexpected_msgs=['Misbehaving']):
-            filter_peer.send_and_ping(msg_filteradd(data=b'\xcc'*(MAX_SCRIPT_ELEMENT_SIZE)))
+            filter_peer.send_and_ping(msg_filteradd(data=b'\xcc' * TIDECOIN_FILTERADD_MAX_DATA_SIZE))
 
         self.log.info('Check that too large data element to add to the filter is rejected')
         with self.nodes[0].assert_debug_log(['Misbehaving']):
-            filter_peer.send_and_ping(msg_filteradd(data=b'\xcc'*(MAX_SCRIPT_ELEMENT_SIZE+1)))
+            filter_peer.send_and_ping(msg_filteradd(data=b'\xcc' * (TIDECOIN_FILTERADD_MAX_DATA_SIZE + 1)))
 
         filter_peer.send_and_ping(msg_filterclear())
 
@@ -157,7 +162,7 @@ class FilterTest(BitcoinTestFramework):
     def test_frelay_false(self, filter_peer):
         self.log.info("Check that a node with fRelay set to false does not receive invs until the filter is set")
         filter_peer.tx_received = False
-        self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=filter_peer.watch_script_pubkey, amount=9 * COIN)
+        self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=filter_peer.watch_script_pubkey, amount=TEST_SEND_AMOUNT)
         # Sync to make sure the reason filter_peer doesn't receive the tx is not p2p delays
         filter_peer.sync_with_ping()
         assert not filter_peer.tx_received
@@ -186,21 +191,21 @@ class FilterTest(BitcoinTestFramework):
         self.log.info('Check that we not receive a tx if the filter does not match a mempool tx')
         filter_peer.merkleblock_received = False
         filter_peer.tx_received = False
-        self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=getnewdestination()[1], amount=7 * COIN)
+        self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=getnewdestination()[1], amount=TEST_SEND_AMOUNT)
         filter_peer.sync_with_ping()
         assert not filter_peer.merkleblock_received
         assert not filter_peer.tx_received
 
         self.log.info('Check that we receive a tx if the filter matches a mempool tx')
         filter_peer.merkleblock_received = False
-        txid = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=filter_peer.watch_script_pubkey, amount=9 * COIN)["txid"]
+        txid = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=filter_peer.watch_script_pubkey, amount=TEST_SEND_AMOUNT)["txid"]
         filter_peer.wait_for_tx(txid)
         assert not filter_peer.merkleblock_received
 
         self.log.info('Check that after deleting filter all txs get relayed again')
         filter_peer.send_and_ping(msg_filterclear())
         for _ in range(5):
-            txid = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=getnewdestination()[1], amount=7 * COIN)["txid"]
+            txid = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=getnewdestination()[1], amount=TEST_SEND_AMOUNT)["txid"]
             filter_peer.wait_for_tx(txid)
 
         self.log.info('Check that request for filtered blocks is ignored if no filter is set')

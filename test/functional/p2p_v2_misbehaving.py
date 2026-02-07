@@ -9,12 +9,12 @@ from enum import Enum
 
 from test_framework.messages import MAGIC_BYTES
 from test_framework.p2p import P2PInterface
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinTestFramework, SkipTest
 from test_framework.util import random_bitflip
-from test_framework.v2_p2p import (
-    EncryptedP2PState,
-    MAX_GARBAGE_LEN,
-)
+from test_framework import v2_p2p
+
+EncryptedP2PState = v2_p2p.EncryptedP2PState
+MAX_GARBAGE_LEN = getattr(v2_p2p, "MAX_GARBAGE_LEN", None)
 
 
 class TestType(Enum):
@@ -125,6 +125,15 @@ class MisbehavingV2Peer(P2PInterface):
 
 
 class EncryptedP2PMisbehaving(BitcoinTestFramework):
+    def skip_test_if_missing_module(self):
+        super().skip_test_if_missing_module()
+        if MAX_GARBAGE_LEN is None:
+            raise SkipTest("v2 transport is not implemented in Tidecoin's python functional test framework")
+        try:
+            EncryptedP2PState(initiating=True, net='regtest').initiate_v2_handshake()
+        except NotImplementedError:
+            raise SkipTest("v2 transport is not implemented in Tidecoin's python functional test framework")
+
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [["-v2transport=1", "-peertimeout=3"]]

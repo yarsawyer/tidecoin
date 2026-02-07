@@ -57,7 +57,7 @@ TEST_CLI_MAX_ARG_SIZE = 1024
 
 # The null blocks key (all 0s)
 NULL_BLK_XOR_KEY = bytes([0] * NUM_XOR_BYTES)
-BITCOIN_PID_FILENAME_DEFAULT = "bitcoind.pid"
+BITCOIN_PID_FILENAME_DEFAULT = "tidecoind.pid"
 
 if sys.platform.startswith("linux"):
     UNIX_PATH_MAX = 108          # includes the trailing NUL
@@ -200,37 +200,28 @@ class TestNode():
     def get_deterministic_priv_key(self):
         """Return a deterministic priv key in base58, that only depends on the node's index"""
         if self._deterministic_priv_key is None:
-            # Prefer a wallet-derived bech32 address so dumpprivkey works with PQHD wallets.
+            # Prefer deterministic PQ test keys to avoid requiring a loaded wallet.
             try:
-                addr = self.getnewaddress(address_type="bech32")
-                key = self.dumpprivkey(addr)
-            except JSONRPCException as e:
-                msg = str(e)
-                # If the node wallet can't give us a spendable key (no wallet loaded, watch-only,
-                # locked, or private keys disabled), fall back to deterministic PQ test keys.
-                if "No wallet is loaded" in msg:
-                    if "-disablewallet" not in self.args:
+                from .wallet_util import generate_keypair_at_index
+                from .segwit_addr import encode_segwit_address
+                from .script import hash160
+                key, pubkey = generate_keypair_at_index(self.index)
+                hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
+                hrp = hrp_map.get(self.chain, "rtbc")
+                addr = encode_segwit_address(hrp, 0, hash160(pubkey))
+            except FileNotFoundError:
+                # Fallback to wallet-derived keys if testkey tool is unavailable.
+                try:
+                    addr = self.getnewaddress(address_type="bech32")
+                    key = self.dumpprivkey(addr)
+                except JSONRPCException as e:
+                    msg = str(e)
+                    if "No wallet is loaded" in msg and "-disablewallet" not in self.args:
                         self.createwallet(wallet_name="test_framework", load_on_startup=True)
                         addr = self.getnewaddress(address_type="bech32")
                         key = self.dumpprivkey(addr)
                     else:
-                        from .wallet_util import generate_keypair_at_index
-                        from .segwit_addr import encode_segwit_address
-                        from .script import hash160
-                        key, pubkey = generate_keypair_at_index(self.index)
-                        hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
-                        hrp = hrp_map.get(self.chain, "rtbc")
-                        addr = encode_segwit_address(hrp, 0, hash160(pubkey))
-                elif "Private key not available" in msg or "Method not found" in msg:
-                    from .wallet_util import generate_keypair_at_index
-                    from .segwit_addr import encode_segwit_address
-                    from .script import hash160
-                    key, pubkey = generate_keypair_at_index(self.index)
-                    hrp_map = {"main": "tbc", "test": "ttbc", "regtest": "rtbc"}
-                    hrp = hrp_map.get(self.chain, "rtbc")
-                    addr = encode_segwit_address(hrp, 0, hash160(pubkey))
-                else:
-                    raise
+                        raise
             self._deterministic_priv_key = self.AddressKeyPair(addr, key)
         return self._deterministic_priv_key
 

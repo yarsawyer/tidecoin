@@ -29,7 +29,10 @@ from test_framework.util import (
 from test_framework.wallet import MiniWallet
 
 
-UPLOAD_TARGET_MB = 800
+# Must be larger than the historical relay buffer:
+# 144 * MAX_BLOCK_SERIALIZED_SIZE bytes over a 24h cycle.
+# Tidecoin uses a larger max block size than upstream Bitcoin.
+UPLOAD_TARGET_MB = 900
 
 
 class TestP2PConn(P2PInterface):
@@ -97,6 +100,7 @@ class MaxUploadTest(BitcoinTestFramework):
 
         # We'll be requesting this new block too
         big_new_block = self.nodes[0].getbestblockhash()
+        new_block_size = self.nodes[0].getblock(big_new_block, True)["size"]
         big_new_block = int(big_new_block, 16)
 
         # p2p_conns[0] will test what happens if we just keep requesting the
@@ -106,7 +110,8 @@ class MaxUploadTest(BitcoinTestFramework):
         getdata_request.inv.append(CInv(MSG_BLOCK, big_old_block))
 
         max_bytes_per_day = UPLOAD_TARGET_MB * 1024 *1024
-        daily_buffer = 144 * 4000000
+        block_size_limit = self.nodes[0].getblocktemplate({"rules": ["segwit"]})["sizelimit"]
+        daily_buffer = 144 * block_size_limit
         max_bytes_available = max_bytes_per_day - daily_buffer
         success_count = max_bytes_available // old_block_size
 
@@ -129,13 +134,16 @@ class MaxUploadTest(BitcoinTestFramework):
         # Historical blocks serving limit is reached by now, but total limit still isn't
         self.assert_uploadtarget_state(target_reached=False, serve_historical_blocks=False)
 
-        # Requesting the current block on p2p_conns[1] should succeed indefinitely,
-        # even when over the max upload target.
-        # We'll try 800 times
+        # Requesting the current block on p2p_conns[1] should succeed until
+        # total outbound target is reached.
         getdata_request.inv = [CInv(MSG_BLOCK, big_new_block)]
-        for i in range(800):
+        expected_min_tries = max_bytes_per_day // max(1, new_block_size)
+        max_tries = max(800, expected_min_tries + 100)
+        i = 0
+        while i < max_tries and not self.nodes[0].getnettotals()["uploadtarget"]["target_reached"]:
             p2p_conns[1].send_and_ping(getdata_request)
-            assert_equal(p2p_conns[1].block_receive_map[big_new_block], i+1)
+            i += 1
+            assert_equal(p2p_conns[1].block_receive_map[big_new_block], i)
 
         # Both historical blocks serving limit and total limit are reached
         self.assert_uploadtarget_state(target_reached=True, serve_historical_blocks=False)
@@ -176,11 +184,13 @@ class MaxUploadTest(BitcoinTestFramework):
         # Sending mempool message shouldn't disconnect peer, as total limit isn't reached yet
         peer.send_and_ping(msg_mempool())
 
-        #retrieve 20 blocks which should be enough to break the 1MB limit
+        # Retrieve enough blocks to exceed the 1 MB limit.
         getdata_request.inv = [CInv(MSG_BLOCK, big_new_block)]
-        for i in range(20):
+        i = 0
+        while i < 200 and not self.nodes[0].getnettotals()["uploadtarget"]["target_reached"]:
             peer.send_and_ping(getdata_request)
-            assert_equal(peer.block_receive_map[big_new_block], i+1)
+            i += 1
+            assert_equal(peer.block_receive_map[big_new_block], i)
 
         # Total limit is exceeded
         self.assert_uploadtarget_state(target_reached=True, serve_historical_blocks=False)

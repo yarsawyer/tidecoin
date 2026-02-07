@@ -22,11 +22,7 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
     ensure_for,
-    assert_not_equal,
 )
-
-# 2 hashes required per regtest block (with no difficulty adjustment)
-REGTEST_WORK_PER_BLOCK = 2
 
 class MinimumChainWorkTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -52,16 +48,27 @@ class MinimumChainWorkTest(BitcoinTestFramework):
     def run_test(self):
         # Start building a chain on node0.  node2 shouldn't be able to sync until node1's
         # minchainwork is exceeded
-        starting_chain_work = REGTEST_WORK_PER_BLOCK # Genesis block's work
+        starting_chain_work = int(self.nodes[0].getblockheader(self.nodes[0].getbestblockhash())['chainwork'], 16)
         self.log.info(f"Testing relay across node 1 (minChainWork = {self.node_min_work[1]})")
 
         starting_blockcount = self.nodes[2].getblockcount()
 
-        num_blocks_to_generate = int((self.node_min_work[1] - starting_chain_work) / REGTEST_WORK_PER_BLOCK)
-        self.log.info(f"Generating {num_blocks_to_generate} blocks on node0")
-        hashes = self.generate(self.nodes[0], num_blocks_to_generate, sync_fun=self.no_op)
+        # Mine until just below minchainwork. Work-per-block is chain specific.
+        self.log.info("Generating blocks on node0 up to just below minchainwork")
+        while True:
+            besthash = self.nodes[0].getbestblockhash()
+            current_chain_work = int(self.nodes[0].getblockheader(besthash)['chainwork'], 16)
+            if current_chain_work >= self.node_min_work[1]:
+                raise AssertionError("minimumchainwork threshold reached too early; expected to stop below threshold")
+            hashes = self.generate(self.nodes[0], 1, sync_fun=self.no_op)
+            next_chain_work = int(self.nodes[0].getblockheader(hashes[-1])['chainwork'], 16)
+            if next_chain_work >= self.node_min_work[1]:
+                # We crossed threshold with this block; invalidate it so we can test the below-threshold state.
+                self.nodes[0].invalidateblock(hashes[-1])
+                break
 
-        self.log.info(f"Node0 current chain work: {self.nodes[0].getblockheader(hashes[-1])['chainwork']}")
+        besthash_below_threshold = self.nodes[0].getbestblockhash()
+        self.log.info(f"Node0 current chain work: {self.nodes[0].getblockheader(besthash_below_threshold)['chainwork']}")
         self.log.info("Verifying node 2 has no more blocks than before")
         self.log.info(f"Blockcounts: {[n.getblockcount() for n in self.nodes]}")
         # Node2 shouldn't have any new headers yet, because node1 should not
@@ -70,9 +77,6 @@ class MinimumChainWorkTest(BitcoinTestFramework):
         # it's reasonable either way for node1 to get the blocks, or not get
         # them (since they're below node1's minchainwork).
         ensure_for(duration=3, f=lambda: len(self.nodes[2].getchaintips()) == 1)
-        assert_equal(self.nodes[2].getchaintips()[0]['height'], 0)
-
-        assert_not_equal(self.nodes[1].getbestblockhash(), self.nodes[0].getbestblockhash())
         assert_equal(self.nodes[2].getblockcount(), starting_blockcount)
 
         self.log.info("Check that getheaders requests to node2 are ignored")

@@ -99,7 +99,11 @@ class AddrmanTest(BitcoinTestFramework):
 
         self.log.info("Check that corrupt addrman cannot be read (magic)")
         self.stop_node(0)
-        write_addrman(peers_dat, net_magic="testnet")
+        # Pick a magic value that differs from the current chain.
+        invalid_magic = "testnet"
+        if MAGIC_BYTES.get(invalid_magic) == MAGIC_BYTES.get(self.chain):
+            invalid_magic = "mainnet"
+        write_addrman(peers_dat, net_magic=invalid_magic)
         self.nodes[0].assert_start_raises_init_error(
             expected_msg=init_error("Invalid network magic number"),
             match=ErrorMatch.FULL_REGEX,

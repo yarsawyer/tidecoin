@@ -54,10 +54,11 @@ from .util import assert_equal
 MAX_BLOCK_SIGOPS = 20000
 MAX_BLOCK_SIGOPS_WEIGHT = MAX_BLOCK_SIGOPS * WITNESS_SCALE_FACTOR
 MAX_STANDARD_TX_SIGOPS = 4000
-MAX_STANDARD_TX_WEIGHT = 400000
+# Tidecoin policy allows up to 800,000 weight units for standard transactions.
+MAX_STANDARD_TX_WEIGHT = 800000
 
-# Genesis block time (regtest)
-TIME_GENESIS_BLOCK = 1296688602
+# Genesis block time (regtest, must match src/kernel/chainparams.cpp)
+TIME_GENESIS_BLOCK = 1609074580
 
 MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60
 
@@ -117,7 +118,7 @@ def target_str(target):
 
 def create_block(hashprev=None, coinbase=None, ntime=None, *, version=None, tmpl=None, txlist=None,
                  use_auxpow=False, chain_id=CHAIN_ID, auxpow_active=None):
-    """Create a block (with regtest difficulty)."""
+    """Create a block (unsolved by default)."""
     block = CBlock()
     if tmpl is None:
         tmpl = {}
@@ -139,14 +140,6 @@ def create_block(hashprev=None, coinbase=None, ntime=None, *, version=None, tmpl
     block.hashMerkleRoot = block.calc_merkle_root()
     if use_auxpow:
         _apply_auxpow(block, chain_id)
-    else:
-        height = tmpl.get("height")
-        if auxpow_active is None:
-            auxpow_active = height is None or height >= REGTEST_AUXPOW_START_HEIGHT
-        if auxpow_active:
-            block.solve_scrypt()
-        else:
-            block.solve()
     return block
 
 def _apply_auxpow(block, chain_id):

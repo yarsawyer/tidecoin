@@ -32,7 +32,7 @@ from test_framework.crypto.siphash import siphash256
 from test_framework.util import assert_equal
 
 MAX_LOCATOR_SZ = 101
-MAX_BLOCK_WEIGHT = 4000000
+MAX_BLOCK_WEIGHT = 6000000
 DEFAULT_BLOCK_RESERVED_WEIGHT = 8000
 MINIMUM_BLOCK_RESERVED_WEIGHT = 2000
 MAX_BLOOM_FILTER_SIZE = 36000
@@ -905,8 +905,12 @@ class CBlock(CBlockHeader):
 
     def is_valid(self):
         target = uint256_from_compact(self.nBits)
-        if self.hash_int > target:
-            return False
+        # Tidecoin uses scrypt PoW for non-AuxPoW blocks.
+        # AuxPoW validity requires parent-chain context and is not fully
+        # verifiable in this lightweight helper.
+        if not self.is_auxpow():
+            if self.scrypt_pow_int() > target:
+                return False
         for tx in self.vtx:
             if not tx.is_valid():
                 return False
@@ -915,9 +919,8 @@ class CBlock(CBlockHeader):
         return True
 
     def solve(self):
-        target = uint256_from_compact(self.nBits)
-        while self.hash_int > target:
-            self.nNonce += 1
+        # Tidecoin uses scrypt PoW; keep solve() aligned with chain behavior.
+        self.solve_scrypt()
 
     def solve_scrypt(self):
         target = uint256_from_compact(self.nBits)
