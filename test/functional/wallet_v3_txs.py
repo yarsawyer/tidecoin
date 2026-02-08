@@ -311,7 +311,7 @@ class WalletV3Test(BitcoinTestFramework):
             bob_tx, {'include_unsafe': True}
         )
         # alice fee-bumps her tx so it only spends the v2 utxo
-        outputs = {self.charlie.getnewaddress() : alice_v2_unspent['amount'] - Decimal(0.00015120)}
+        outputs = {self.charlie.getnewaddress() : alice_v2_unspent['amount'] - Decimal(0.00045120)}
         self.send_tx(self.alice, [alice_v2_unspent], outputs, 2)
         # bob can now create a transaction
         outputs = {self.bob.getnewaddress() : 1.999}
@@ -335,12 +335,15 @@ class WalletV3Test(BitcoinTestFramework):
         outputs = {self.bob.getnewaddress() : 1.999}
         bob_txid = self.send_tx(self.bob, inputs, outputs, 3)
         # alice spends both of her utxos, replacing bob's tx
-        outputs = {self.charlie.getnewaddress() : alice_v2_unspent['amount'] + alice_unspent['amount'] - Decimal(0.00005120)}
+        # Tidecoin PQ signatures produce larger virtual sizes than Bitcoin's ECDSA
+        # assumptions; use a larger absolute fee so this replacement remains higher
+        # feerate than Bob's sibling spend under TRUC/RBF policy.
+        outputs = {self.charlie.getnewaddress() : alice_v2_unspent['amount'] + alice_unspent['amount'] - Decimal(0.00045120)}
         alice_txid = self.send_tx(self.alice, [alice_v2_unspent, alice_unspent], outputs, 3)
         # bob's tx now has a mempool conflict
         assert_equal(self.bob.gettransaction(bob_txid)['mempoolconflicts'], [alice_txid])
         # alice fee-bumps her tx so it only spends the v2 utxo
-        outputs = {self.charlie.getnewaddress() : alice_v2_unspent['amount'] - Decimal(0.00015120)}
+        outputs = {self.charlie.getnewaddress() : alice_v2_unspent['amount'] - Decimal(0.00065120)}
         self.send_tx(self.alice, [alice_v2_unspent], outputs, 2)
         # bob's tx now has non conflicts and can be rebroadcast
         bob_tx = self.bob.gettransaction(bob_txid)
@@ -450,8 +453,12 @@ class WalletV3Test(BitcoinTestFramework):
     def sendall_v3(self):
         self.log.info("Test setting version to 3 with sendall")
 
-        tx_hex = self.charlie.sendall(recipients=[self.alice.getnewaddress()], version=3, add_to_wallet=False)["hex"]
-        assert_equal(self.charlie.decoderawtransaction(tx_hex)["version"], 3)
+        # Use a single confirmed UTXO wallet for sendall so TRUC vsize checks
+        # exercise version handling rather than failing on very large sweeps.
+        self.charlie.sendtoaddress(self.alice.getnewaddress(), 5)
+        self.generate(self.nodes[0], 1)
+        tx_hex = self.alice.sendall(recipients=[self.charlie.getnewaddress()], version=3, add_to_wallet=False)["hex"]
+        assert_equal(self.alice.decoderawtransaction(tx_hex)["version"], 3)
 
     @cleanup
     def sendall_with_unconfirmed_v3(self):

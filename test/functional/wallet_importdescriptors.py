@@ -212,11 +212,22 @@ class ImportDescriptorsTest(BitcoinTestFramework):
                      wif_key.p2sh_p2wpkh_addr,
                      solvable=True,
                      ismine=True)
-        txid = w0.sendtoaddress(wif_key.p2sh_p2wpkh_addr, 49.99995540)
+        txid = w0.sendtoaddress(wif_key.p2sh_p2wpkh_addr, 9.99995540)
         self.generatetoaddress(self.nodes[0], 6, w0.getnewaddress())
-        tx = wpriv.createrawtransaction([{"txid": txid, "vout": 0}], {w0.getnewaddress(): 49.999})
+        decoded = w0.gettransaction(txid=txid, verbose=True)['decoded']
+        vout = next(i for i, out in enumerate(decoded['vout']) if out['scriptPubKey'].get('address') == wif_key.p2sh_p2wpkh_addr)
+        tx = wpriv.createrawtransaction([{"txid": txid, "vout": vout}], {w0.getnewaddress(): 9.999})
         signed_tx = wpriv.signrawtransactionwithwallet(tx)
+        assert_equal(signed_tx['complete'], True)
         w1.sendrawtransaction(signed_tx['hex'])
+
+        self.log.info("Descriptor-address dumpprivkey parity for imported private descriptor")
+        dump_key = get_generate_key()
+        dump_desc = descsum_create("wpkh(" + dump_key.privkey + ")")
+        self.test_importdesc({"desc": dump_desc, "timestamp": "now"}, success=True, wallet=wpriv)
+        dump_addr = self.nodes[1].deriveaddresses(dump_desc)[0]
+        assert_equal(wpriv.dumpprivkey(dump_desc, {"index": 0}), dump_key.privkey)
+        assert_equal(wpriv.dumpprivkey(dump_addr), dump_key.privkey)
 
         # Make sure that we can import a simple WIF multisig and spend from it
         self.log.info('Test that multisigs can be imported and signed for (WIF-based)')
@@ -231,10 +242,10 @@ class ImportDescriptorsTest(BitcoinTestFramework):
                               "timestamp": "now"},
                              success=True,
                              wallet=wmulti_priv)
-        addr = wmulti_priv.getnewaddress('', 'bech32')
+        addr = self.nodes[1].deriveaddresses(descsum_create(desc))[0]
         w0.sendtoaddress(addr, 10)
         self.generate(self.nodes[0], 6)
-        txid = wmulti_priv.sendtoaddress(w0.getnewaddress(), 8)
+        txid = wmulti_priv.sendall(recipients=[w0.getnewaddress()])["txid"]
         decoded = wmulti_priv.gettransaction(txid=txid, verbose=True)['decoded']
         # dummy + 2 sigs + witness script
         assert_equal(len(decoded['vin'][0]['txinwitness']), 4)

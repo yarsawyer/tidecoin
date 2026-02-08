@@ -9,6 +9,8 @@ try:
 except ImportError:
     pass
 
+from decimal import Decimal
+
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
@@ -106,7 +108,10 @@ class WalletDescriptorTest(BitcoinTestFramework):
 
         self.log.info("Test sending and receiving")
         addr = recv_wrpc.getnewaddress()
-        send_wrpc.sendtoaddress(addr, 10)
+        send_balance = send_wrpc.getbalance()
+        send_amt = min(Decimal("10"), send_balance - Decimal("0.01"))
+        assert send_amt > 0
+        send_wrpc.sendtoaddress(addr, send_amt)
 
         self.log.info("Test encryption")
         send_wrpc.encryptwallet('pass')

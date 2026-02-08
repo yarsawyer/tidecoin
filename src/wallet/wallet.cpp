@@ -874,6 +874,33 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
             }
         }
 
+        // Encrypt any plaintext PQHD seeds so a locked wallet cannot derive new
+        // addresses from unencrypted seed material.
+        for (auto& [seed_id, seed_state] : m_pqhd_seeds) {
+            if (seed_state.encrypted) continue;
+            CKeyingMaterial plaintext_seed{seed_state.seed.begin(), seed_state.seed.end()};
+            std::vector<unsigned char> crypted_seed;
+            if (!EncryptSecret(plain_master_key, plaintext_seed, seed_id, crypted_seed)) {
+                encrypted_batch->TxnAbort();
+                delete encrypted_batch;
+                encrypted_batch = nullptr;
+                assert(false);
+            }
+            PQHDCryptedSeed crypted_record;
+            crypted_record.nCreateTime = seed_state.create_time;
+            crypted_record.crypted_seed = crypted_seed;
+            if (!encrypted_batch->WriteCryptedPQHDSeed(seed_id, crypted_record) ||
+                !encrypted_batch->ErasePQHDSeed(seed_id)) {
+                encrypted_batch->TxnAbort();
+                delete encrypted_batch;
+                encrypted_batch = nullptr;
+                assert(false);
+            }
+            seed_state.seed.clear();
+            seed_state.crypted_seed = std::move(crypted_seed);
+            seed_state.encrypted = true;
+        }
+
         if (!encrypted_batch->TxnCommit()) {
             delete encrypted_batch;
             encrypted_batch = nullptr;
@@ -3396,7 +3423,7 @@ bool CWallet::AttachChain(const std::shared_ptr<CWallet>& walletInstance, interf
             // Wallet is assumed to be from another chain, if genesis block in the active
             // chain differs from the genesis block known to the wallet.
             if (chain.getBlockHash(0) != locator.vHave.back()) {
-                error = Untranslated("Wallet files should not be reused across chains. Restart bitcoind with -walletcrosschain to override.");
+                error = Untranslated("Wallet files should not be reused across chains. Restart tidecoind with -walletcrosschain to override.");
                 return false;
             }
         }
@@ -3928,13 +3955,31 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     std::reverse_copy(seedid_be.begin(), seedid_be.end(), seedid_le.begin());
     const uint256 seed_id{std::span<const unsigned char>(seedid_le)};
 
-    PQHDSeed seed_record;
-    seed_record.nCreateTime = GetTime();
-    seed_record.seed.assign(master_seed.begin(), master_seed.end());
-    if (!batch.WritePQHDSeed(seed_id, seed_record)) {
-        throw std::runtime_error(std::string(__func__) + ": writing PQHD seed failed");
+    if (IsCrypted()) {
+        if (IsLocked()) {
+            throw std::runtime_error(std::string(__func__) + ": Wallet is locked, cannot setup encrypted PQHD seed");
+        }
+        CKeyingMaterial plaintext_seed{master_seed.begin(), master_seed.end()};
+        std::vector<unsigned char> crypted_seed;
+        if (!EncryptSecret(vMasterKey, plaintext_seed, seed_id, crypted_seed)) {
+            throw std::runtime_error(std::string(__func__) + ": encrypting PQHD seed failed");
+        }
+        PQHDCryptedSeed seed_record;
+        seed_record.nCreateTime = GetTime();
+        seed_record.crypted_seed = std::move(crypted_seed);
+        if (!batch.WriteCryptedPQHDSeed(seed_id, seed_record)) {
+            throw std::runtime_error(std::string(__func__) + ": writing encrypted PQHD seed failed");
+        }
+        LoadPQHDCryptedSeed(seed_id, PQHDCryptedSeed(seed_record));
+    } else {
+        PQHDSeed seed_record;
+        seed_record.nCreateTime = GetTime();
+        seed_record.seed.assign(master_seed.begin(), master_seed.end());
+        if (!batch.WritePQHDSeed(seed_id, seed_record)) {
+            throw std::runtime_error(std::string(__func__) + ": writing PQHD seed failed");
+        }
+        LoadPQHDSeed(seed_id, PQHDSeed(seed_record));
     }
-    LoadPQHDSeed(seed_id, PQHDSeed(seed_record));
 
     PQHDPolicy policy;
     policy.default_receive_scheme = static_cast<uint8_t>(pq::SchemeId::FALCON_512);

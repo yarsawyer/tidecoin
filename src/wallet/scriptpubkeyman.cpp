@@ -22,6 +22,7 @@
 #include <wallet/scriptpubkeyman.h>
 
 #include <optional>
+#include <set>
 
 using common::PSBTError;
 using util::ToString;
@@ -1227,6 +1228,70 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
         std::unique_ptr<FlatSigningProvider> script_keys = GetSigningProvider(script, /*include_private=*/sign);
         if (script_keys) {
             keys->Merge(std::move(*script_keys));
+        } else {
+            std::set<CKeyID> seen_keyids;
+            std::vector<CPubKey> pubkeys;
+            pubkeys.reserve(8);
+
+            const auto collect_pubkeys_from_script = [&](const CScript& script_to_parse) {
+                if (script_to_parse.empty()) return;
+                std::vector<std::vector<unsigned char>> solutions;
+                const TxoutType which = Solver(script_to_parse, solutions);
+                if (which == TxoutType::PUBKEY && !solutions.empty()) {
+                    CPubKey pubkey(solutions[0]);
+                    if (pubkey.IsValid() && seen_keyids.insert(pubkey.GetID()).second) {
+                        pubkeys.push_back(std::move(pubkey));
+                    }
+                } else if (which == TxoutType::MULTISIG && solutions.size() >= 3) {
+                    for (size_t i = 1; i + 1 < solutions.size(); ++i) {
+                        CPubKey pubkey(solutions[i]);
+                        if (pubkey.IsValid() && seen_keyids.insert(pubkey.GetID()).second) {
+                            pubkeys.push_back(std::move(pubkey));
+                        }
+                    }
+                }
+
+                // Miniscript (and other advanced templates) can embed public keys in
+                // pushed script elements while not matching PUBKEY/MULTISIG solver types.
+                // Scan all pushes and collect any byte strings that parse as valid keys.
+                CScript::const_iterator pc = script_to_parse.begin();
+                opcodetype opcode;
+                std::vector<unsigned char> push_data;
+                while (script_to_parse.GetOp(pc, opcode, push_data)) {
+                    if (push_data.empty()) continue;
+                    CPubKey pubkey(push_data);
+                    if (pubkey.IsValid() && seen_keyids.insert(pubkey.GetID()).second) {
+                        pubkeys.push_back(std::move(pubkey));
+                    }
+                }
+            };
+
+            collect_pubkeys_from_script(script);
+            collect_pubkeys_from_script(input.redeem_script);
+            collect_pubkeys_from_script(input.witness_script);
+
+            for (const auto& pubkey : pubkeys) {
+                std::unique_ptr<FlatSigningProvider> pk_keys = GetSigningProvider(pubkey);
+                if (pk_keys) {
+                    keys->Merge(std::move(*pk_keys));
+                    continue;
+                }
+
+                // Descriptor pubkey index lookups can miss keys for some PQHD-derived
+                // layouts even though the wallet owns the key. Fall back to direct
+                // key-id lookup in the descriptor key store.
+                std::optional<CKey> key;
+                {
+                    LOCK(cs_desc_man);
+                    key = GetKey(pubkey.GetID());
+                }
+                if (key) {
+                    keys->pubkeys.emplace(pubkey.GetID(), pubkey);
+                    if (sign) {
+                        keys->keys.emplace(pubkey.GetID(), *key);
+                    }
+                }
+            }
         }
 
         PSBTError res = SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign), psbtx, i, &txdata, sighash_type, nullptr, finalize, effective_flags);

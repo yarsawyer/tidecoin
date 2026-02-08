@@ -230,7 +230,9 @@ class ReplaceByFeeTest(BitcoinTestFramework):
                 return
 
             txout_value = (initial_value - fee) // tree_width
-            if txout_value < fee:
+            # Tidecoin dust policy uses PQ witness-size proxies and rejects
+            # outputs below this range in this branch-construction scenario.
+            if txout_value < max(fee, 6_000):
                 return
 
             tx = self.wallet.send_self_transfer_multi(
@@ -314,7 +316,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
             utxos_to_spend=[tx0_outpoint],
             sequence=0,
             num_outputs=100,
-            amount_per_output=1000,
+            amount_per_output=30_000,
         )["hex"]
 
         # This will raise an exception due to insufficient fee
@@ -550,7 +552,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
             utxos_to_spend=[tx0_outpoint],
             sequence=0,
             num_outputs=100,
-            amount_per_output=int(0.00001 * COIN),
+            amount_per_output=30_000,
         )["hex"]
 
         # Verify tx1b cannot replace tx1a.

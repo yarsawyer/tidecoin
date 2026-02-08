@@ -863,9 +863,8 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
 
     CheckIsStandard(t);
 
-    // Check dust with default relay fee:
-    CAmount nDustThreshold = 182 * g_dust.GetFeePerK() / 1000;
-    BOOST_CHECK_EQUAL(nDustThreshold, 546);
+    // Check dust with default relay fee (PQ-aware threshold for selected script type).
+    CAmount nDustThreshold = GetDustThreshold(t.vout[0], g_dust);
 
     // Add dust outputs up to allowed maximum, still standard!
     for (size_t i{0}; i < MAX_DUST_OUTPUTS_PER_TX; ++i) {
@@ -897,14 +896,14 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     t.version = 2;
     CheckIsStandard(t);
 
-    // Check dust with odd relay fee to verify rounding:
-    // nDustThreshold = 182 * 3702 / 1000
+    // Check dust with odd relay fee to verify rounding.
     g_dust = CFeeRate(3702);
+    nDustThreshold = GetDustThreshold(t.vout[0], g_dust);
     // dust:
-    t.vout[0].nValue = 674 - 1;
+    t.vout[0].nValue = nDustThreshold - 1;
     CheckIsNotStandard(t, "dust");
     // not dust:
-    t.vout[0].nValue = 674;
+    t.vout[0].nValue = nDustThreshold;
     CheckIsStandard(t);
     g_dust = CFeeRate{DUST_RELAY_TX_FEE};
 
@@ -1059,30 +1058,37 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
 
     // Check P2PKH outputs dust threshold
     t.vout[0].scriptPubKey = CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0) << OP_EQUALVERIFY << OP_CHECKSIG;
-    t.vout[0].nValue = 546;
+    t.vout[0].nValue = GetDustThreshold(t.vout[0], g_dust);
     CheckIsStandard(t);
-    t.vout[0].nValue = 545;
+    t.vout[0].nValue--;
     CheckIsNotStandard(t, "dust");
 
     // Check P2SH outputs dust threshold
     t.vout[0].scriptPubKey = CScript() << OP_HASH160 << std::vector<unsigned char>(20, 0) << OP_EQUAL;
-    t.vout[0].nValue = 540;
+    t.vout[0].nValue = GetDustThreshold(t.vout[0], g_dust);
     CheckIsStandard(t);
-    t.vout[0].nValue = 539;
+    t.vout[0].nValue--;
     CheckIsNotStandard(t, "dust");
 
     // Check P2WPKH outputs dust threshold
     t.vout[0].scriptPubKey = CScript() << OP_0 << std::vector<unsigned char>(20, 0);
-    t.vout[0].nValue = 294;
+    t.vout[0].nValue = GetDustThreshold(t.vout[0], g_dust);
     CheckIsStandard(t);
-    t.vout[0].nValue = 293;
+    t.vout[0].nValue--;
     CheckIsNotStandard(t, "dust");
 
     // Check P2WSH outputs dust threshold
     t.vout[0].scriptPubKey = CScript() << OP_0 << std::vector<unsigned char>(32, 0);
-    t.vout[0].nValue = 330;
+    t.vout[0].nValue = GetDustThreshold(t.vout[0], g_dust);
     CheckIsStandard(t);
-    t.vout[0].nValue = 329;
+    t.vout[0].nValue--;
+    CheckIsNotStandard(t, "dust");
+
+    // Check witness-v1_512 outputs dust threshold
+    t.vout[0].scriptPubKey = CScript() << OP_1 << std::vector<unsigned char>(64, 0);
+    t.vout[0].nValue = GetDustThreshold(t.vout[0], g_dust);
+    CheckIsStandard(t);
+    t.vout[0].nValue--;
     CheckIsNotStandard(t, "dust");
 
 }

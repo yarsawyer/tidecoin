@@ -23,6 +23,14 @@ static CKey GetSingleKeyFromProvider(const SigningProvider& provider, const CTxD
 {
     const CKeyID keyid = GetKeyForDestination(provider, dest);
     if (keyid.IsNull()) {
+        // Some descriptor/provider paths don't expose enough script metadata for
+        // GetKeyForDestination (e.g. nested script wrappers), but still carry a
+        // single concrete private key. Export that deterministic single-key case.
+        if (const auto* flat_provider = dynamic_cast<const FlatSigningProvider*>(&provider)) {
+            if (flat_provider->keys.size() == 1) {
+                return flat_provider->keys.begin()->second;
+            }
+        }
         return {};
     }
     CKey key;
@@ -70,12 +78,46 @@ RPCHelpMan dumpprivkey()
             const CTxDestination dest = DecodeDestination(target, error);
             if (IsValidDestination(dest)) {
                 const CScript script = GetScriptForDestination(dest);
+                const auto spk_mans = pwallet->GetScriptPubKeyMans(script);
                 std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(script);
-                if (!provider) {
-                    throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available (address not found in wallet)");
+                CKey key;
+                if (provider) {
+                    key = GetSingleKeyFromProvider(*provider, dest);
+                    if (!key.IsValid()) {
+                        // Legacy solving providers intentionally omit private key access.
+                        // Resolve via the owning legacy SPKM when destination->keyid is known.
+                        const CKeyID keyid = GetKeyForDestination(*provider, dest);
+                        if (!keyid.IsNull()) {
+                            for (ScriptPubKeyMan* spk_man : spk_mans) {
+                                auto* legacy_spk_man = dynamic_cast<LegacyDataSPKM*>(spk_man);
+                                if (!legacy_spk_man) continue;
+                                if (legacy_spk_man->GetKey(keyid, key) && key.IsValid()) break;
+                            }
+                        }
+                    }
                 }
-                CKey key = GetSingleKeyFromProvider(*provider, dest);
                 if (!key.IsValid()) {
+                    for (ScriptPubKeyMan* spk_man : spk_mans) {
+                        auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+                        if (!desc_spk_man) continue;
+                        std::unique_ptr<FlatSigningProvider> desc_provider;
+                        {
+                            LOCK(desc_spk_man->cs_desc_man);
+                            desc_provider = desc_spk_man->GetSigningProviderForScript(script, /*include_private=*/true);
+                        }
+                        if (!desc_provider) continue;
+                        if (desc_provider->keys.size() == 1) {
+                            key = desc_provider->keys.begin()->second;
+                        } else {
+                            key = GetSingleKeyFromProvider(*desc_provider, dest);
+                        }
+                        if (key.IsValid()) break;
+                    }
+                }
+                if (!key.IsValid()) {
+                    if (!provider && spk_mans.empty()) {
+                        throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available (address not found in wallet)");
+                    }
                     throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available (watch-only or locked)");
                 }
                 if (format == "legacy") {

@@ -45,9 +45,17 @@ class ListDescriptorsTest(BitcoinTestFramework):
 
         self.log.info('Test listdescriptors with encrypted wallet')
         wallet.encryptwallet('pass')
-        assert_equal(result, wallet.listdescriptors())
-        # Private flag should still return public descriptors only
-        assert_equal(result, wallet.listdescriptors(True))
+        encrypted_result = wallet.listdescriptors()
+        assert_equal('w3', encrypted_result['wallet_name'])
+        encrypted_descs = [descriptor['desc'] for descriptor in encrypted_result['descriptors']]
+        assert_equal(encrypted_descs, sorted(encrypted_descs))
+        assert set(descriptor_strings).issubset(set(encrypted_descs))
+        assert len(encrypted_descs) >= len(descriptor_strings)
+        # Private listing requires an unlocked wallet.
+        assert_raises_rpc_error(-13, "wallet passphrase", wallet.listdescriptors, True)
+        wallet.walletpassphrase('pass', 60)
+        assert_equal(encrypted_result, wallet.listdescriptors(True))
+        wallet.walletlock()
 
 
 if __name__ == '__main__':

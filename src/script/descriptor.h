@@ -128,7 +128,7 @@ struct Descriptor {
 
     /** Get the maximum size of a satisfaction for this descriptor, in weight units.
      *
-     * @param use_max_sig Whether to assume ECDSA signatures will have a high-r.
+     * @param use_max_sig Whether to use worst-case signature sizes.
      */
     virtual std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const = 0;
 

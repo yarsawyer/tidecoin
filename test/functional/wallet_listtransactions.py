@@ -23,7 +23,10 @@ from test_framework.util import (
     assert_raises_rpc_error,
     find_vout_for_address,
 )
-from test_framework.wallet_util import get_generate_key
+from test_framework.wallet_util import (
+    get_generate_key,
+    set_keygen_node,
+)
 
 
 class ListTransactionsTest(BitcoinTestFramework):
@@ -32,11 +35,14 @@ class ListTransactionsTest(BitcoinTestFramework):
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
         self.extra_args = [["-walletrbf=0"]] * self.num_nodes
+        # PQ keypool refill can take longer than the default RPC timeout.
+        self.rpc_timeout = 180
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
 
     def run_test(self):
+        set_keygen_node(None)
         self.log.info("Test simple send from node0 to node1")
         txid = self.nodes[0].sendtoaddress(self.nodes[1].getnewaddress(), 0.1)
         self.sync_all()

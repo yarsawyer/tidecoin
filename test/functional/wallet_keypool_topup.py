@@ -46,10 +46,13 @@ class KeypoolRestoreTest(BitcoinTestFramework):
         for i, output_type in enumerate(output_types):
             self.log.info("Generate keys for wallet with address type: {}".format(output_type))
             idx = i+1
+            generated_addresses = set()
             for _ in range(90):
                 addr_oldpool = self.nodes[idx].getnewaddress(address_type=output_type)
+                generated_addresses.add(addr_oldpool)
             for _ in range(20):
                 addr_extpool = self.nodes[idx].getnewaddress(address_type=output_type)
+                generated_addresses.add(addr_extpool)
 
             # Make sure we're creating the outputs we expect
             address_details = self.nodes[idx].validateaddress(addr_extpool)
@@ -76,13 +79,9 @@ class KeypoolRestoreTest(BitcoinTestFramework):
             self.log.info("Verify keypool is restored and balance is correct")
             assert_equal(self.nodes[idx].getbalance(), 15)
             assert_equal(self.nodes[idx].listtransactions()[0]['category'], "receive")
-            # Check that we have marked all keys up to the used keypool key as used
-            if output_type == 'legacy':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/44h/1h/0h/0/110")
-            elif output_type == 'p2sh-segwit':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/49h/1h/0h/0/110")
-            elif output_type == 'bech32':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/84h/1h/0h/0/110")
+            # Ensure all used keys up to the highest used keypool entry were marked used.
+            # The next address must not reuse any pre-backup generated address.
+            assert self.nodes[idx].getnewaddress(address_type=output_type) not in generated_addresses
 
 
 if __name__ == '__main__':

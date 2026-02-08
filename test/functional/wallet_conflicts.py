@@ -138,40 +138,41 @@ class TxConflicts(BitcoinTestFramework):
         alice = self.nodes[0].get_wallet_rpc("alice")
 
         bob = self.nodes[1]
+        fund_amt = Decimal("5")
 
-        self.nodes[2].send(outputs=[{alice.getnewaddress() : 25} for _ in range(3)])
+        self.nodes[2].send(outputs=[{alice.getnewaddress(): fund_amt} for _ in range(3)])
         self.generate(self.nodes[2], 1)
 
         self.log.info("Test a scenario where a transaction has a mempool conflict")
 
         unspents = alice.listunspent()
         assert_equal(len(unspents), 3)
-        assert all([tx["amount"] == 25 for tx in unspents])
+        assert all([tx["amount"] == fund_amt for tx in unspents])
 
         # tx1 spends unspent[0] and unspent[1]
-        raw_tx = alice.createrawtransaction(inputs=[unspents[0], unspents[1]], outputs=[{bob.getnewaddress() : 49.9999}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[0], unspents[1]], outputs=[{bob.getnewaddress(): Decimal("9.9999")}])
         tx1 = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         # tx2 spends unspent[1] and unspent[2], conflicts with tx1
-        raw_tx = alice.createrawtransaction(inputs=[unspents[1], unspents[2]], outputs=[{bob.getnewaddress() : 49.99}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[1], unspents[2]], outputs=[{bob.getnewaddress(): Decimal("9.99")}])
         tx2 = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         # tx3 spends unspent[2], conflicts with tx2
-        raw_tx = alice.createrawtransaction(inputs=[unspents[2]], outputs=[{bob.getnewaddress() : 24.9899}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[2]], outputs=[{bob.getnewaddress(): Decimal("4.9899")}])
         tx3 = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         # broadcast tx1
         tx1_txid = alice.sendrawtransaction(tx1)
 
         assert_equal(alice.listunspent(), [unspents[2]])
-        assert_equal(alice.getbalance(), 25)
+        assert_equal(alice.getbalance(), fund_amt)
 
         # broadcast tx2, replaces tx1 in mempool
         tx2_txid = alice.sendrawtransaction(tx2)
 
         # Check that unspent[0] is now available because the transaction spending it has been replaced in the mempool
         assert_equal(alice.listunspent(), [unspents[0]])
-        assert_equal(alice.getbalance(), 25)
+        assert_equal(alice.getbalance(), fund_amt)
 
         assert_equal(alice.gettransaction(tx1_txid)["mempoolconflicts"], [tx2_txid])
 
@@ -204,8 +205,9 @@ class TxConflicts(BitcoinTestFramework):
         self.nodes[0].createwallet("alice_2")
         alice = self.nodes[0].get_wallet_rpc("alice_2")
         bob = self.nodes[1]
+        fund_amt = Decimal("5")
 
-        self.nodes[2].send(outputs=[{alice.getnewaddress() : 25} for _ in range(3)])
+        self.nodes[2].send(outputs=[{alice.getnewaddress(): fund_amt} for _ in range(3)])
         self.generate(self.nodes[2], 1)
 
         self.log.info("Test a scenario where a transaction has both a block conflict and a mempool conflict")
@@ -219,30 +221,30 @@ class TxConflicts(BitcoinTestFramework):
         self.disconnect_nodes(0, 1)
 
         # Sends funds to bob
-        raw_tx = alice.createrawtransaction(inputs=[unspents[0]], outputs=[{bob.getnewaddress() : 24.99999}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[0]], outputs=[{bob.getnewaddress(): Decimal("4.99999")}])
         raw_tx1 = alice.signrawtransactionwithwallet(raw_tx)['hex']
         tx1_txid = bob.sendrawtransaction(raw_tx1) # broadcast original tx spending unspents[0] only to bob
 
         # create a conflict to previous tx (also spends unspents[0]), but don't broadcast, sends funds back to alice
-        raw_tx = alice.createrawtransaction(inputs=[unspents[0], unspents[2]], outputs=[{alice.getnewaddress() : 49.999}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[0], unspents[2]], outputs=[{alice.getnewaddress(): Decimal("9.999")}])
         tx1_conflict = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         # Sends funds to bob
-        raw_tx = alice.createrawtransaction(inputs=[unspents[1]], outputs=[{bob.getnewaddress() : 24.9999}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[1]], outputs=[{bob.getnewaddress(): Decimal("4.9999")}])
         raw_tx2 = alice.signrawtransactionwithwallet(raw_tx)['hex']
         tx2_txid = bob.sendrawtransaction(raw_tx2) # broadcast another original tx spending unspents[1] only to bob
 
         # create a conflict to previous tx (also spends unspents[1]), but don't broadcast, sends funds to alice
-        raw_tx = alice.createrawtransaction(inputs=[unspents[1]], outputs=[{alice.getnewaddress() : 24.9999}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[1]], outputs=[{alice.getnewaddress(): Decimal("4.9999")}])
         tx2_conflict = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         bob_unspents = [{"txid" : element, "vout" : 0} for element in [tx1_txid, tx2_txid]]
 
         # tx1 and tx2 are now in bob's mempool, and they are unconflicted, so bob has these funds
-        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("49.99989000"))
+        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("9.99989000"))
 
         # spend both of bob's unspents, child tx of tx1 and tx2
-        raw_tx = bob.createrawtransaction(inputs=[bob_unspents[0], bob_unspents[1]], outputs=[{bob.getnewaddress() : 49.999}])
+        raw_tx = bob.createrawtransaction(inputs=[bob_unspents[0], bob_unspents[1]], outputs=[{bob.getnewaddress(): Decimal("9.999")}])
         raw_tx3 = bob.signrawtransactionwithwallet(raw_tx)['hex']
         tx3_txid = bob.sendrawtransaction(raw_tx3) # broadcast tx only to bob
 
@@ -250,7 +252,7 @@ class TxConflicts(BitcoinTestFramework):
         assert_equal(len(alice.getrawmempool()), 0)
         assert_equal(len(bob.getrawmempool()), 3)
 
-        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("49.99900000"))
+        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("9.99900000"))
 
         # bob broadcasts tx_1 conflict
         tx1_conflict_txid = bob.sendrawtransaction(tx1_conflict)
@@ -265,7 +267,7 @@ class TxConflicts(BitcoinTestFramework):
         assert_equal(bob.gettransaction(tx3_txid)["mempoolconflicts"], [tx1_conflict_txid])
 
         # check that tx3 is now conflicted, so the output from tx2 can now be spent
-        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("24.99990000"))
+        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("4.99990000"))
 
         # we will be disconnecting this block in the future
         alice.sendrawtransaction(tx2_conflict)
@@ -295,10 +297,10 @@ class TxConflicts(BitcoinTestFramework):
         assert_equal(bob.gettransaction(tx3_txid)["confirmations"], 0)
 
         bob.sendrawtransaction(raw_tx2)
-        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("24.99990000"))
+        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("4.99990000"))
 
         # create a conflict to previous tx (also spends unspents[2]), but don't broadcast, sends funds back to alice
-        raw_tx = alice.createrawtransaction(inputs=[unspents[2]], outputs=[{alice.getnewaddress() : 24.99}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[2]], outputs=[{alice.getnewaddress(): Decimal("4.99")}])
         tx1_conflict_conflict = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         bob.sendrawtransaction(tx1_conflict_conflict) # kick tx1_conflict out of the mempool
@@ -309,7 +311,7 @@ class TxConflicts(BitcoinTestFramework):
 
         bob.sendrawtransaction(raw_tx3)
         assert_equal(len(bob.getrawmempool()), 4) # The mempool contains: tx1, tx2, tx1_conflict_conflict, tx3
-        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("49.99900000"))
+        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("9.99900000"))
 
         # Clean up for next test
         bob.reconsiderblock(blk)
@@ -322,8 +324,9 @@ class TxConflicts(BitcoinTestFramework):
     def test_descendants_with_mempool_conflicts(self):
         self.nodes[0].createwallet("alice_3")
         alice = self.nodes[0].get_wallet_rpc("alice_3")
+        fund_amt = Decimal("5")
 
-        self.nodes[2].send(outputs=[{alice.getnewaddress() : 25} for _ in range(2)])
+        self.nodes[2].send(outputs=[{alice.getnewaddress(): fund_amt} for _ in range(2)])
         self.generate(self.nodes[2], 1)
 
         self.nodes[1].createwallet("bob_1")
@@ -336,23 +339,23 @@ class TxConflicts(BitcoinTestFramework):
 
         unspents = alice.listunspent()
         assert_equal(len(unspents), 2)
-        assert all([tx["amount"] == 25 for tx in unspents])
+        assert all([tx["amount"] == fund_amt for tx in unspents])
 
         assert_equal(alice.getrawmempool(), [])
 
         # Alice spends first utxo to bob in tx1
-        raw_tx = alice.createrawtransaction(inputs=[unspents[0]], outputs=[{bob.getnewaddress() : 24.9999}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[0]], outputs=[{bob.getnewaddress(): Decimal("4.9999")}])
         tx1 = alice.signrawtransactionwithwallet(raw_tx)['hex']
         tx1_txid = alice.sendrawtransaction(tx1)
 
         self.sync_mempools()
 
-        assert_equal(alice.getbalance(), 25)
-        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("24.99990000"))
+        assert_equal(alice.getbalance(), fund_amt)
+        assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("4.99990000"))
 
         assert_equal(bob.gettransaction(tx1_txid)["mempoolconflicts"],  [])
 
-        raw_tx = bob.createrawtransaction(inputs=[bob.listunspent(minconf=0)[0]], outputs=[{carol.getnewaddress() : 24.999}])
+        raw_tx = bob.createrawtransaction(inputs=[bob.listunspent(minconf=0)[0]], outputs=[{carol.getnewaddress(): Decimal("4.999")}])
         # Bob creates a child to tx1
         tx1_child = bob.signrawtransactionwithwallet(raw_tx)['hex']
         tx1_child_txid = bob.sendrawtransaction(tx1_child)
@@ -367,17 +370,17 @@ class TxConflicts(BitcoinTestFramework):
         assert_equal(len(bob.getrawmempool()), 2)
 
         assert_equal(bob.getbalances()["mine"]["untrusted_pending"], 0)
-        assert_equal(carol.getbalances()["mine"]["untrusted_pending"], Decimal("24.99900000"))
+        assert_equal(carol.getbalances()["mine"]["untrusted_pending"], Decimal("4.99900000"))
 
         # Alice spends first unspent again, conflicting with tx1
-        raw_tx = alice.createrawtransaction(inputs=[unspents[0], unspents[1]], outputs=[{carol.getnewaddress() : 49.99}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[0], unspents[1]], outputs=[{carol.getnewaddress(): Decimal("9.99")}])
         tx1_conflict = alice.signrawtransactionwithwallet(raw_tx)['hex']
         tx1_conflict_txid = alice.sendrawtransaction(tx1_conflict)
 
         self.sync_mempools()
 
         assert_equal(bob.getbalances()["mine"]["untrusted_pending"], 0)
-        assert_equal(carol.getbalances()["mine"]["untrusted_pending"], Decimal("49.99000000"))
+        assert_equal(carol.getbalances()["mine"]["untrusted_pending"], Decimal("9.99000000"))
 
         assert tx1_txid not in bob.getrawmempool()
         assert tx1_child_txid not in bob.getrawmempool()
@@ -389,7 +392,7 @@ class TxConflicts(BitcoinTestFramework):
         assert_equal(bob.gettransaction(tx1_child_txid)["mempoolconflicts"],  [tx1_conflict_txid])
 
         # Now create a conflict to tx1_conflict, so that it gets kicked out of the mempool
-        raw_tx = alice.createrawtransaction(inputs=[unspents[1]], outputs=[{carol.getnewaddress() : 24.9895}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[1]], outputs=[{carol.getnewaddress(): Decimal("4.9895")}])
         tx1_conflict_conflict = alice.signrawtransactionwithwallet(raw_tx)['hex']
         tx1_conflict_conflict_txid = alice.sendrawtransaction(tx1_conflict_conflict)
 
@@ -408,7 +411,7 @@ class TxConflicts(BitcoinTestFramework):
 
         assert_equal(alice.getbalance(), 0)
         assert_equal(bob.getbalances()["mine"]["untrusted_pending"], 0)
-        assert_equal(carol.getbalances()["mine"]["untrusted_pending"], Decimal("24.98950000"))
+        assert_equal(carol.getbalances()["mine"]["untrusted_pending"], Decimal("4.98950000"))
 
         # Both tx1 and tx1_child can now be re-broadcasted
         bob.sendrawtransaction(tx1)

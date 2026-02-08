@@ -155,7 +155,7 @@ public:
     void MakeNewKey(pq::SchemeId scheme_id);
 
     /**
-     * Convert the private key to a CPrivKey (serialized OpenSSL private key data).
+     * Convert the private key to a CPrivKey
      * This is expensive.
      */
     CPrivKey GetPrivKey() const;
@@ -167,8 +167,8 @@ public:
     CPubKey GetPubKey() const;
 
     /**
-     * Create a DER-serialized signature.
-     * The test_case parameter tweaks the deterministic nonce.
+     * Create a signature.
+     * The test_case parameter tweaks deterministic signing test paths.
      */
     bool Sign(const uint256& hash, std::vector<unsigned char>& vchSig, bool grind = true, uint32_t test_case = 0, bool legacy_mode = false) const;
 

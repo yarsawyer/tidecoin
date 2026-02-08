@@ -458,7 +458,8 @@ class UnconfirmedInputTest(BitcoinTestFramework):
         self.assert_beats_target(ancestor_aware_tx)
         resulting_ancestry_fee_rate = self.calc_set_fee_rate([parent_tx, ancestor_aware_tx])
         assert_greater_than_or_equal(resulting_ancestry_fee_rate, self.target_fee_rate)
-        assert_greater_than_or_equal(self.target_fee_rate*1.01, resulting_ancestry_fee_rate)
+        # External-input CPFP can overpay slightly due conservative input weight assumptions.
+        assert_greater_than_or_equal(self.target_fee_rate*1.03, resulting_ancestry_fee_rate)
 
         wallet.unloadwallet()
 

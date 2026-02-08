@@ -15,8 +15,11 @@
 #include <interfaces/node.h>
 #include <key_io.h>
 #include <policy/policy.h>
+#include <pq/pq_scheme.h>
+#include <script/script.h>
 #include <wallet/coincontrol.h>
 #include <wallet/coinselection.h>
+#include <wallet/spend.h>
 #include <wallet/wallet.h>
 
 #include <QApplication>
@@ -28,7 +31,54 @@
 #include <QSettings>
 #include <QTreeWidget>
 
+#include <limits>
+
 using wallet::CCoinControl;
+
+namespace {
+constexpr size_t CompactSizeLen(size_t size)
+{
+    if (size < 253) return 1;
+    if (size <= std::numeric_limits<uint16_t>::max()) return 3;
+    if (size <= std::numeric_limits<uint32_t>::max()) return 5;
+    return 9;
+}
+
+constexpr size_t ScriptPushLen(size_t payload_size)
+{
+    if (payload_size < OP_PUSHDATA1) return 1 + payload_size;
+    if (payload_size <= std::numeric_limits<uint8_t>::max()) return 2 + payload_size;
+    if (payload_size <= std::numeric_limits<uint16_t>::max()) return 3 + payload_size;
+    return 5 + payload_size;
+}
+
+int EstimateInputVSizeConservative(const CTxOut& txout)
+{
+    const size_t sig_len = pq::MaxKnownSigBytesInScript(/*use_max_sig=*/true);
+    const size_t pubkey_len = pq::MaxKnownPubKeyBytesInScript();
+
+    int witnessversion = 0;
+    std::vector<unsigned char> witnessprogram;
+    if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
+        size_t witness_bytes = 0;
+        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
+            witness_bytes = CompactSizeLen(/*stack items=*/2) +
+                CompactSizeLen(sig_len) + sig_len +
+                CompactSizeLen(pubkey_len) + pubkey_len;
+        } else {
+            const size_t witness_script_len = ScriptPushLen(pubkey_len) + 1; // <pubkey> OP_CHECKSIG
+            witness_bytes = CompactSizeLen(/*stack items=*/2) +
+                CompactSizeLen(sig_len) + sig_len +
+                CompactSizeLen(witness_script_len) + witness_script_len;
+        }
+        return 32 + 4 + 1 + static_cast<int>(witness_bytes / WITNESS_SCALE_FACTOR) + 4;
+    }
+
+    const size_t scriptsig_bytes = CompactSizeLen(sig_len) + sig_len +
+        CompactSizeLen(pubkey_len) + pubkey_len;
+    return 32 + 4 + 1 + static_cast<int>(scriptsig_bytes) + 4;
+}
+} // namespace
 
 QList<CAmount> CoinControlDialog::payAmounts;
 bool CoinControlDialog::fSubtractFeeFromAmount = false;
@@ -407,24 +457,21 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
         // Amount
         nAmount += out.txout.nValue;
 
-        // Bytes
+        // Bytes: use descriptor-aware wallet sizing when possible.
+        int input_vsize{-1};
+        if (const auto* cwallet = model->wallet().wallet()) {
+            input_vsize = wallet::CalculateMaximumSignedInputSize(out.txout, cwallet, &m_coin_control);
+        }
+        if (input_vsize <= 0) {
+            // Conservative PQ fallback for unsolved/unknown inputs.
+            input_vsize = EstimateInputVSizeConservative(out.txout);
+        }
+        nBytesInputs += input_vsize;
+
         int witnessversion = 0;
         std::vector<unsigned char> witnessprogram;
-        if (out.txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram))
-        {
-            // add input skeleton bytes (outpoint, scriptSig size, nSequence)
-            nBytesInputs += (32 + 4 + 1 + 4);
-
-            if (witnessversion == 0) { // P2WPKH
-                // 1 WU (witness item count) + 72 WU (ECDSA signature with len byte) + 34 WU (pubkey with len byte)
-                nBytesInputs += 107 / WITNESS_SCALE_FACTOR;
-            } else {
-                throw std::runtime_error("Unsupported segwit version script");
-            }
+        if (out.txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
             fWitness = true;
-        }
-        else {
-            nBytesInputs += 148;
         }
     }
 
@@ -437,9 +484,8 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
         {
             // there is some fudging in these numbers related to the actual virtual transaction size calculation that will keep this estimate from being exact.
             // usually, the result will be an overestimate within a couple of satoshis so that the confirmation dialog ends up displaying a slightly smaller fee.
-            // also, the witness stack size value is a variable sized integer. usually, the number of stack items will be well under the single byte var int limit.
+            // marker+flag are not included in per-input vsize estimates.
             nBytes += 2; // account for the serialized marker and flag bytes
-            nBytes += nQuantity; // account for the witness byte that holds the number of stack items for each input.
         }
 
         // in the subtract fee from amount case, we can tell if zero change already and subtract the bytes, so that fee calculation afterwards is accurate

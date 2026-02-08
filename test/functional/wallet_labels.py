@@ -60,13 +60,13 @@ class WalletLabelsTest(BitcoinTestFramework):
         assert_raises_rpc_error(-8, "Invalid 'purpose' argument, must be a known purpose string, typically 'send', or 'receive'.", node.listlabels, "unknown")
 
         # Note each time we call generate, all generated coins go into
-        # the same address, so we call twice to get two addresses w/50 each
+        # the same address, so we call twice to get two addresses w/40 each.
         self.generatetoaddress(node, nblocks=1, address=node.getnewaddress(label='coinbase'))
         self.generatetoaddress(node, nblocks=COINBASE_MATURITY + 1, address=node.getnewaddress(label='coinbase'))
-        assert_equal(node.getbalance(), 100)
+        assert_equal(node.getbalance(), 80)
 
         # there should be 2 address groups
-        # each with 1 address with a balance of 50 Bitcoins
+        # each with 1 address with a balance of 40 TDC
         address_groups = node.listaddressgroupings()
         assert_equal(len(address_groups), 2)
         # the addresses aren't linked now, but will be after we send to the
@@ -75,14 +75,14 @@ class WalletLabelsTest(BitcoinTestFramework):
         for address_group in address_groups:
             assert_equal(len(address_group), 1)
             assert_equal(len(address_group[0]), 3)
-            assert_equal(address_group[0][1], 50)
+            assert_equal(address_group[0][1], 40)
             assert_equal(address_group[0][2], 'coinbase')
             linked_addresses.add(address_group[0][0])
 
-        # send 50 from each address to a third address not in this wallet
-        common_address = "msf4WtN1YQKXvNtvdFYt9JBnUD2FB41kjr"
+        # send 40 from each address to a third address not in this wallet
+        common_address = self.nodes[1].getnewaddress()
         node.sendmany(
-            amounts={common_address: 100},
+            amounts={common_address: 80},
             subtractfeefrom=[common_address],
             minconf=1,
         )
@@ -163,10 +163,11 @@ class WalletLabelsTest(BitcoinTestFramework):
         self.log.info('Check watchonly labels')
         node.createwallet(wallet_name='watch_only', disable_private_keys=True)
         wallet_watch_only = node.get_wallet_rpc('watch_only')
+        default_wallet = node.get_wallet_rpc(self.default_wallet_name)
         BECH32_VALID = {
-            '✔️_V0_PROG20_1': node.getnewaddress(address_type="bech32"),
-            '✔️_V0_PROG20_2': node.getnewaddress(address_type="bech32"),
-            '✔️_V0_PROG20_3': node.getnewaddress(address_type="bech32"),
+            '✔️_V0_PROG20_1': default_wallet.getnewaddress(address_type="bech32"),
+            '✔️_V0_PROG20_2': default_wallet.getnewaddress(address_type="bech32"),
+            '✔️_V0_PROG20_3': default_wallet.getnewaddress(address_type="bech32"),
         }
         BECH32_INVALID = {
             '❌_VER15_PROG41': 'bcrt1sqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqajlxj8',

@@ -54,7 +54,7 @@ static bool IsSegwit(const Descriptor& desc) {
     return false;
 }
 
-/** Whether to assume ECDSA signatures' will be high-r. */
+/** Whether to use worst-case signature sizes for fee/weight estimation. */
 static bool UseMaxSig(const std::optional<CTxIn>& txin, const CCoinControl* coin_control) {
     // Use max sig if watch only inputs were used or if this particular input is an external input
     // to ensure a sufficient fee is attained for the requested feerate.
@@ -102,10 +102,10 @@ static int FallbackNestedP2WPKHInputSize(const CWallet& wallet, const CCoinContr
 /** Get the size of an input (in witness units) once it's signed.
  *
  * @param desc The output script descriptor of the coin spent by this input.
- * @param txin Optionally the txin to estimate the size of. Used to determine the size of ECDSA signatures.
- * @param coin_control Information about the context to determine the size of ECDSA signatures.
+ * @param txin Optionally the txin to estimate the size of.
+ * @param coin_control Context used to decide fixed-size vs worst-case signature estimation.
  * @param tx_is_segwit Whether the transaction has at least a single input spending a segwit coin.
- * @param can_grind_r Whether the signer will be able to grind the R of the signature.
+ * @param can_grind_r Whether the signer may produce non-maximum-size signatures.
  */
 static std::optional<int64_t> MaxInputWeight(const Descriptor& desc, const std::optional<CTxIn>& txin,
                                              const CCoinControl* coin_control, const bool tx_is_segwit,
@@ -135,7 +135,8 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoin
     if (!provider) return -1;
 
     if (const auto desc = InferDescriptor(txout.scriptPubKey, *provider)) {
-        if (const auto weight = MaxInputWeight(*desc, {}, coin_control, true, can_grind_r)) {
+        const std::optional<CTxIn> txin = outpoint.IsNull() ? std::nullopt : std::optional<CTxIn>{CTxIn(outpoint)};
+        if (const auto weight = MaxInputWeight(*desc, txin, coin_control, true, can_grind_r)) {
             return static_cast<int>(GetVirtualTransactionSize(*weight, 0, 0));
         }
     }
@@ -315,6 +316,8 @@ util::Result<PreSelectedInputs> FetchSelectedInputs(const CWallet& wallet, const
     std::map<COutPoint, CAmount> map_of_bump_fees = wallet.chain().calculateIndividualBumpFees(coin_control.ListSelected(), coin_selection_params.m_effective_feerate);
     for (const COutPoint& outpoint : coin_control.ListSelected()) {
         int64_t input_bytes = coin_control.GetInputWeight(outpoint).value_or(-1);
+        const bool has_custom_weight = input_bytes != -1;
+        int64_t required_input_bytes{-1};
         if (input_bytes != -1) {
             input_bytes = GetVirtualTransactionSize(input_bytes, 0, 0);
         }
@@ -323,6 +326,8 @@ util::Result<PreSelectedInputs> FetchSelectedInputs(const CWallet& wallet, const
             txout = txo->GetTxOut();
             if (input_bytes == -1) {
                 input_bytes = CalculateMaximumSignedInputSize(txout, &wallet, &coin_control);
+            } else {
+                required_input_bytes = CalculateMaximumSignedInputSize(txout, &wallet, &coin_control);
             }
             const CWalletTx& parent_tx = txo->GetWalletTx();
             if (wallet.GetTxDepthInMainChain(parent_tx) == 0) {
@@ -344,10 +349,15 @@ util::Result<PreSelectedInputs> FetchSelectedInputs(const CWallet& wallet, const
 
         if (input_bytes == -1) {
             input_bytes = CalculateMaximumSignedInputSize(txout, outpoint, &coin_control.m_external_provider, can_grind_r, &coin_control);
+        } else if (required_input_bytes == -1) {
+            required_input_bytes = CalculateMaximumSignedInputSize(txout, outpoint, &coin_control.m_external_provider, can_grind_r, &coin_control);
         }
 
         if (input_bytes == -1) {
             return util::Error{strprintf(_("Not solvable pre-selected input %s"), outpoint.ToString())}; // Not solvable, can't estimate size for fee
+        }
+        if (has_custom_weight && required_input_bytes != -1 && input_bytes < required_input_bytes) {
+            return util::Error{strprintf(_("Specified input weight is too low for pre-selected input %s"), outpoint.ToString())};
         }
 
         /* Set some defaults for depth, solvable, safe, time, and from_me as these don't matter for preset inputs since no selection is being done. */
@@ -871,6 +881,12 @@ util::Result<SelectionResult> SelectCoins(const CWallet& wallet, CoinsResult& av
         SelectionResult result(nTargetValue, SelectionAlgorithm::MANUAL);
         result.AddInputs(pre_set_inputs.coins, coin_selection_params.m_subtract_fee_outputs);
         result.RecalculateWaste(coin_selection_params.min_viable_change, coin_selection_params.m_cost_of_change, coin_selection_params.m_change_fee);
+        // Enforce max tx weight for the preset-only path as well. Without this,
+        // very large preselected sets can bypass the normal weight guard.
+        int max_inputs_weight = coin_selection_params.m_max_tx_weight.value_or(MAX_STANDARD_TX_WEIGHT) - (coin_selection_params.tx_noinputs_size * WITNESS_SCALE_FACTOR);
+        if (result.GetWeight() > max_inputs_weight) {
+            return util::Error{_("Transaction too large")};
+        }
         return result;
     }
 

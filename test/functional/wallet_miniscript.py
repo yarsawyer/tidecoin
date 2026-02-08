@@ -22,7 +22,7 @@ class WalletMiniscriptTest(BitcoinTestFramework):
     def watchonly_test(self, desc):
         self.log.info(f"Importing descriptor '{desc}'")
         desc = descsum_create(f"{desc}")
-        assert self.ms_wo_wallet.importdescriptors(
+        result = self.ms_wo_wallet.importdescriptors(
             [
                 {
                     "desc": desc,
@@ -30,7 +30,8 @@ class WalletMiniscriptTest(BitcoinTestFramework):
                     "timestamp": "now",
                 }
             ]
-        )[0]["success"]
+        )[0]
+        assert result["success"], result
 
         self.log.info("Testing we can derive and detect funds for it")
         addr = self.funder.deriveaddresses(desc)[0]
@@ -52,9 +53,7 @@ class WalletMiniscriptTest(BitcoinTestFramework):
             [
                 {
                     "desc": desc,
-                    "active": True,
-                    "range": 0,
-                    "next_index": 0,
+                    "active": False,
                     "timestamp": "now",
                 }
             ]
@@ -95,7 +94,10 @@ class WalletMiniscriptTest(BitcoinTestFramework):
         res = self.ms_sig_wallet.walletprocesspsbt(psbt=psbt, finalize=False)
         psbtin = self.nodes[0].decodepsbt(res["psbt"])["inputs"][0]
         sigs_field_name = "partial_signatures"
-        assert len(psbtin[sigs_field_name]) == sigs_count
+        assert len(psbtin[sigs_field_name]) == sigs_count, (
+            f"unexpected signature count for descriptor {desc}: "
+            f"expected={sigs_count} got={len(psbtin[sigs_field_name])}"
+        )
         res = self.ms_sig_wallet.finalizepsbt(res["psbt"])
         assert res["complete"] == (stack_size is not None)
 
@@ -153,18 +155,18 @@ class WalletMiniscriptTest(BitcoinTestFramework):
 
         priv_keys = [generate_keypair(wif=True) for _ in range(3)]
         tprvs = [k[0] for k in priv_keys]
-        tpubs = [k[1] for k in priv_keys]
-        pubkeys = [generate_keypair(wif=True)[1] for _ in range(7)]
+        tpubs = [k[1].hex() for k in priv_keys]
+        pubkeys = [generate_keypair(wif=True)[1].hex() for _ in range(7)]
 
         p2wsh_miniscripts = [
             # One of two keys
             f"or_b(pk({tpubs[0]}),s:pk({tpubs[1]}))",
             # A script similar (same spending policy) to BOLT3's offered HTLC (with anchor outputs)
-            f\"or_d(pk({tpubs[0]}),and_v(and_v(v:pk({tpubs[1]}),or_c(pk({tpubs[2]}),v:hash160(7f999c905d5e35cefd0a37673f746eb13fba3640))),older(1)))\",
-            # A Revault Unvault policy with the older() replaced by an after()
-            f\"andor(multi(2,{tpubs[0]},{tpubs[1]}),and_v(v:multi(4,{pubkeys[0]},{pubkeys[1]},{pubkeys[2]},{pubkeys[3]}),after(424242)),thresh(4,pkh({tpubs[2]}),a:pkh({tpubs[0]}),a:pkh({tpubs[1]}),a:pkh({tpubs[2]})))\",
-            # Liquid-like federated pegin with emergency recovery keys
-            f\"or_i(and_b(pk({pubkeys[0]}),a:and_b(pk({pubkeys[1]}),a:and_b(pk({pubkeys[2]}),a:and_b(pk({pubkeys[3]}),s:pk({pubkeys[4]}))))),and_v(v:thresh(2,pkh({tpubs[0]}),a:pkh({pubkeys[5]}),a:pkh({pubkeys[6]})),older(4209713)))\",
+            f"or_d(pk({tpubs[0]}),and_v(and_v(v:pk({tpubs[1]}),or_c(pk({tpubs[2]}),v:hash160(7f999c905d5e35cefd0a37673f746eb13fba3640))),older(1)))",
+            # Revault-style policy adapted to PQ sizes with fewer keys
+            f"andor(multi(2,{tpubs[0]},{tpubs[1]}),and_v(v:multi(2,{pubkeys[0]},{pubkeys[1]}),after(424242)),thresh(2,pkh({pubkeys[4]}),a:pkh({pubkeys[5]}),a:pkh({pubkeys[6]})))",
+            # Federated-like branch with emergency recovery, reduced key count for PQ feasibility
+            f"or_i(and_b(pk({pubkeys[2]}),s:pk({pubkeys[3]})),and_v(v:thresh(2,pkh({tpubs[0]}),a:pkh({pubkeys[4]}),a:pkh({pubkeys[5]})),older(4200)))",
         ]
 
         descs = [f"wsh({ms})" for ms in p2wsh_miniscripts]
@@ -172,7 +174,7 @@ class WalletMiniscriptTest(BitcoinTestFramework):
         descs_priv = [
             # One of two keys, of which one private key is known
             {
-                "desc": f"wsh(or_i(pk({tprvs[0]}),pk({tpubs[0]})))",
+                "desc": f"wsh(or_i(pk({tprvs[0]}),pk({tpubs[1]})))",
                 "sequence": None,
                 "locktime": None,
                 "sigs_count": 1,
@@ -223,7 +225,7 @@ class WalletMiniscriptTest(BitcoinTestFramework):
             },
             # We have one key on each branch; Core signs both (can't finalize)
             {
-                "desc": f"wsh(c:andor(pk({tprvs[0]}),pk_k({tpubs[0]}),and_v(v:pk({tprvs[1]}),pk_k({tpubs[1]}))))",
+                "desc": f"wsh(c:andor(pk({tprvs[0]}),pk_k({pubkeys[0]}),and_v(v:pk({tprvs[1]}),pk_k({pubkeys[1]}))))",
                 "sequence": None,
                 "locktime": None,
                 "sigs_count": 2,
@@ -255,11 +257,11 @@ class WalletMiniscriptTest(BitcoinTestFramework):
             },
             # Liquid-like federated pegin with emergency recovery privkeys
             {
-                "desc": f"wsh(or_i(and_b(pk({tpubs[0]}),a:and_b(pk({tpubs[1]}),a:and_b(pk({tpubs[2]}),a:and_b(pk({tpubs[0]}),s:pk({pubkeys[0]}))))),and_v(v:thresh(2,pkh({tprvs[0]}),a:pkh({tprvs[1]}),a:pkh({tpubs[0]})),older(42))))",
-                "sequence": 42,
+                "desc": f"wsh(or_i(and_b(pk({pubkeys[0]}),a:and_b(pk({pubkeys[1]}),a:and_b(pk({pubkeys[2]}),a:and_b(pk({pubkeys[3]}),s:pk({pubkeys[4]}))))),and_v(v:thresh(2,pk({tprvs[0]}),a:pk({tprvs[1]}),a:pk({tpubs[2]})),older(1))))",
+                "sequence": 1,
                 "locktime": None,
-                "sigs_count": 2,
-                "stack_size": 8,
+                "sigs_count": 3,
+                "stack_size": 5,
             },
         ]
 

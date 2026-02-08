@@ -17,7 +17,7 @@ from test_framework.util import (
     assert_raises_rpc_error,
     wallet_importprivkey,
 )
-from test_framework.wallet_util import generate_keypair
+from test_framework.wallet_util import generate_keypair_at_index
 
 
 class ImportPrunedFundsTest(BitcoinTestFramework):
@@ -37,7 +37,7 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
         # pubkey
         address2 = self.nodes[0].getnewaddress()
         # privkey
-        address3_privkey, address3_pubkey = generate_keypair(wif=True)
+        address3_privkey, address3_pubkey = generate_keypair_at_index(500000)
         address3 = key_to_p2wpkh(address3_pubkey)
         wallet_importprivkey(self.nodes[0], address3_privkey, "now")
 
@@ -96,8 +96,7 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
         wallet_importprivkey(w1, address3_privkey, "now")
         w1.importprunedfunds(rawtxn3, proof3)
         assert [tx for tx in w1.listtransactions() if tx['txid'] == txnid3]
-        balance3 = w1.getbalance()
-        assert_equal(balance3, Decimal('0.025'))
+        assert_equal(w1.gettransaction(txnid3)["amount"], Decimal('0.025'))
 
         # Addresses Test - after import
         address_info = w1.getaddressinfo(address1)

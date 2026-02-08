@@ -647,7 +647,7 @@ public:
 
     /** A helper for MaxSatisfactionWeight.
      *
-     * @param use_max_sig Whether to assume ECDSA signatures will have a high-r.
+     * @param use_max_sig Whether to use worst-case signature sizes.
      * @return The maximum size of the satisfaction in raw bytes (with no witness meaning).
      */
     virtual std::optional<int64_t> MaxSatSize(bool use_max_sig) const { return {}; }
@@ -768,6 +768,38 @@ public:
     }
 };
 
+size_t PushDataLen(size_t data_len)
+{
+    if (data_len < OP_PUSHDATA1) return 1;
+    if (data_len <= 0xff) return 2;
+    if (data_len <= 0xffff) return 3;
+    return 5;
+}
+
+size_t SigLenInScript(const PubkeyProvider& pubkey, bool use_max_sig)
+{
+    if (const auto pfx = pubkey.GetSchemePrefix()) {
+        if (const auto* scheme = pq::SchemeFromPrefix(*pfx)) {
+            return (use_max_sig ? scheme->sig_bytes_max : scheme->sig_bytes_fixed) + 1;
+        }
+    }
+
+    // Descriptors are PQ-only. If provider metadata is missing here, overestimate
+    // with the largest supported PQ scheme to avoid underestimating fees.
+    return pq::MaxKnownSigBytesInScript(use_max_sig);
+}
+
+size_t SigElemSize(const PubkeyProvider& pubkey, bool use_max_sig)
+{
+    const size_t sig_len = SigLenInScript(pubkey, use_max_sig);
+    return PushDataLen(sig_len) + sig_len;
+}
+
+size_t DataElemSize(size_t data_len)
+{
+    return PushDataLen(data_len) + data_len;
+}
+
 /** A parsed pk(P) descriptor. */
 class PKDescriptor final : public DescriptorImpl
 {
@@ -786,8 +818,7 @@ public:
     }
 
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
-        const auto ecdsa_sig_size = use_max_sig ? 72 : 71;
-        return 1 + ecdsa_sig_size;
+        return SigElemSize(*m_pubkey_args[0], use_max_sig);
     }
 
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
@@ -819,8 +850,7 @@ public:
     std::optional<int64_t> ScriptSize() const override { return 1 + 1 + 1 + 20 + 1 + 1; }
 
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
-        const auto sig_size = use_max_sig ? 72 : 71;
-        return 1 + sig_size + 1 + m_pubkey_args[0]->GetSize();
+        return SigElemSize(*m_pubkey_args[0], use_max_sig) + DataElemSize(m_pubkey_args[0]->GetSize());
     }
 
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
@@ -852,8 +882,7 @@ public:
     std::optional<int64_t> ScriptSize() const override { return 1 + 1 + 20; }
 
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
-        const auto sig_size = use_max_sig ? 72 : 71;
-        return (1 + sig_size + 1 + 33);
+        return SigElemSize(*m_pubkey_args[0], use_max_sig) + DataElemSize(m_pubkey_args[0]->GetSize());
     }
 
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
@@ -920,8 +949,19 @@ public:
     }
 
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
-        const auto sig_size = use_max_sig ? 72 : 71;
-        return (1 + (1 + sig_size) * m_threshold);
+        std::vector<size_t> sig_elem_sizes;
+        sig_elem_sizes.reserve(m_pubkey_args.size());
+        for (const auto& key_arg : m_pubkey_args) {
+            sig_elem_sizes.push_back(SigElemSize(*key_arg, use_max_sig));
+        }
+        std::sort(sig_elem_sizes.begin(), sig_elem_sizes.end(), std::greater<size_t>());
+
+        // Leading OP_0 dummy element for CHECKMULTISIG bug compatibility.
+        size_t sat_size = 1;
+        for (size_t i = 0; i < static_cast<size_t>(m_threshold) && i < sig_elem_sizes.size(); ++i) {
+            sat_size += sig_elem_sizes[i];
+        }
+        return sat_size;
     }
 
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
@@ -1173,7 +1213,7 @@ public:
     std::optional<int64_t> ScriptSize() const override { return m_node->ScriptSize(); }
 
     std::optional<int64_t> MaxSatSize(bool) const override {
-        // For Miniscript we always assume high-R ECDSA signatures.
+        // Miniscript internally computes witness sizes using worst-case signatures.
         return m_node->GetWitnessSize();
     }
 

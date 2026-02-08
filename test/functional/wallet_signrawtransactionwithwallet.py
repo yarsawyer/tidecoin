@@ -26,6 +26,9 @@ from test_framework.script import (
     OP_DROP,
     OP_TRUE,
 )
+from test_framework.wallet_util import (
+    get_generate_key,
+)
 
 from decimal import (
     Decimal,
@@ -64,7 +67,9 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         5) Script verification errors have certain properties ("txid", "vout", "scriptSig", "sequence", "error")
         6) The verification errors refer to the invalid (vin 1) and missing input (vin 2)"""
         self.log.info("Test script verification errors")
-        privKeys = ['cUeKHd5orzT3mz8P9pxyREHfsWtVfgsfDjiZZBcjUBAaGk1BTj7N']
+        # Build one valid offline-signing vector from a chain-native PQ key.
+        signing_key = get_generate_key()
+        privKeys = [signing_key.privkey]
 
         inputs = [
             # Valid pay-to-pubkey script
@@ -78,13 +83,13 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         scripts = [
             # Valid pay-to-pubkey script
             {'txid': '9b907ef1e3c26fc71fe4a4b3580bc75264112f95050014157059c736f0202e71', 'vout': 0,
-             'scriptPubKey': '76a91460baa0f494b38ce3c940dea67f3804dc52d1fb9488ac'},
+             'scriptPubKey': signing_key.p2pkh_script},
             # Invalid script
             {'txid': '5b8673686910442c644b1f4993d8f7753c7c8fcb5c87ee40d56eaeef25204547', 'vout': 7,
              'scriptPubKey': 'badbadbadbad'}
         ]
 
-        outputs = {'mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB': 0.1}
+        outputs = {self.nodes[1].getnewaddress(): 0.1}
 
         rawTx = self.nodes[0].createrawtransaction(inputs, outputs)
 

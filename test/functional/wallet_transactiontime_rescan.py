@@ -6,6 +6,7 @@
 """
 
 import time
+from decimal import Decimal
 
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.test_framework import BitcoinTestFramework
@@ -20,6 +21,8 @@ class TransactionTimeRescanTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = False
         self.num_nodes = 3
+        # PQ wallet initialization may exceed the default 30s RPC timeout.
+        self.rpc_timeout = 180
         self.extra_args = [["-keypool=400"],
                            ["-keypool=400"],
                            []
@@ -77,13 +80,20 @@ class TransactionTimeRescanTest(BitcoinTestFramework):
         initial_mine = COINBASE_MATURITY + 1
         self.generatetoaddress(minernode, initial_mine, m1)
         assert_equal(minernode.getblockcount(), initial_mine + 200)
+        available_balance = miner_wallet.getbalance()
+        assert available_balance > 0
+        quant = Decimal("0.00000001")
+        send_amt_1 = (available_balance / Decimal(3)).quantize(quant)
+        send_amt_2 = (available_balance / Decimal(6)).quantize(quant)
+        send_amt_3 = (available_balance / Decimal(12)).quantize(quant)
+        total_sent = send_amt_1 + send_amt_2 + send_amt_3
 
         # synchronize nodes and time
         self.sync_all()
         set_node_times(self.nodes, cur_time + ten_days)
-        # send 10 btc to user's first watch-only address
-        self.log.info('Send 10 btc to user')
-        miner_wallet.sendtoaddress(wo1, 10)
+        # send to user's first watch-only address
+        self.log.info(f'Send {send_amt_1} to user')
+        miner_wallet.sendtoaddress(wo1, send_amt_1)
 
         # generate blocks and check blockcount
         self.generatetoaddress(minernode, COINBASE_MATURITY, m1)
@@ -92,9 +102,9 @@ class TransactionTimeRescanTest(BitcoinTestFramework):
         # synchronize nodes and time
         self.sync_all()
         set_node_times(self.nodes, cur_time + ten_days + ten_days)
-        # send 5 btc to our second watch-only address
-        self.log.info('Send 5 btc to user')
-        miner_wallet.sendtoaddress(wo2, 5)
+        # send to our second watch-only address
+        self.log.info(f'Send {send_amt_2} to user')
+        miner_wallet.sendtoaddress(wo2, send_amt_2)
 
         # generate blocks and check blockcount
         self.generatetoaddress(minernode, COINBASE_MATURITY, m1)
@@ -103,16 +113,16 @@ class TransactionTimeRescanTest(BitcoinTestFramework):
         # synchronize nodes and time
         self.sync_all()
         set_node_times(self.nodes, cur_time + ten_days + ten_days + ten_days)
-        # send 1 btc to our third watch-only address
-        self.log.info('Send 1 btc to user')
-        miner_wallet.sendtoaddress(wo3, 1)
+        # send to our third watch-only address
+        self.log.info(f'Send {send_amt_3} to user')
+        miner_wallet.sendtoaddress(wo3, send_amt_3)
 
         # generate more blocks and check blockcount
         self.generatetoaddress(minernode, COINBASE_MATURITY, m1)
         assert_equal(minernode.getblockcount(), initial_mine + 500)
 
         self.log.info('Check user\'s final balance and transaction count')
-        assert_equal(wo_wallet.getbalance(), 16)
+        assert_equal(wo_wallet.getbalance(), total_sent)
         assert_equal(len(wo_wallet.listtransactions()), 3)
 
         self.log.info('Check transaction times')
@@ -162,7 +172,7 @@ class TransactionTimeRescanTest(BitcoinTestFramework):
         restorewo_wallet.rescanblockchain()
 
         self.log.info('Check user\'s final balance and transaction count after restoration')
-        assert_equal(restorewo_wallet.getbalance(), 16)
+        assert_equal(restorewo_wallet.getbalance(), total_sent)
         assert_equal(len(restorewo_wallet.listtransactions()), 3)
 
         self.log.info('Check transaction times after restoration')

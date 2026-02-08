@@ -12,6 +12,7 @@ import time
 from test_framework.messages import (
     COIN,
 )
+from test_framework.authproxy import JSONRPCException
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_not_equal,
@@ -287,7 +288,15 @@ class EstimateFeeTest(BitcoinTestFramework):
             while len(utxos_to_respend) > 0:
                 u = utxos_to_respend.pop(0)
                 tx = make_tx(self.wallet, u, high_feerate)
-                node.sendrawtransaction(tx["hex"])
+                try:
+                    node.sendrawtransaction(tx["hex"])
+                except JSONRPCException as e:
+                    # Some low-feerate spenders can still confirm depending on
+                    # block template selection and policy ordering. In that case,
+                    # the original prevout is spent and replacement is impossible.
+                    if e.error["code"] == -25 and "missingorspent" in e.error["message"]:
+                        continue
+                    raise
                 txs.append(tx)
             dec_txs = [res["result"] for res in node.batch([node.decoderawtransaction.get_request(tx["hex"]) for tx in txs])]
             self.wallet.scan_txs(dec_txs)

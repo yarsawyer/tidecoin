@@ -29,11 +29,8 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
 
     @staticmethod
     def _get_pubkey(wallet, internal):
-        """Extract a single pubkey from the wallet for miniscript descriptors."""
-        if internal:
-            addr = wallet.getrawchangeaddress()
-        else:
-            addr = wallet.getnewaddress()
+        """Extract a raw PQ pubkey from a wallet address."""
+        addr = wallet.getrawchangeaddress() if internal else wallet.getnewaddress()
         return wallet.getaddressinfo(addr)["pubkey"]
 
     def create_multisig(self, external_pubkeys, internal_pubkeys):
@@ -58,7 +55,7 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
                 "timestamp": "now",
             },
         ])
-        assert all(r["success"] for r in result)
+        assert all(r["success"] for r in result), result
         return multisig, external["descriptor"], internal["descriptor"]
 
     def run_test(self):
@@ -85,8 +82,7 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
 
         self.log.info("Send funds to the multisig's receiving address...")
         deposit_amount = 6.15
-        recv_addr = coordinator_wallet.deriveaddresses(external_desc)[0]
-        change_addr = coordinator_wallet.deriveaddresses(internal_desc)[0]
+        recv_addr = multisig.deriveaddresses(external_desc)[0]
         coordinator_wallet.sendtoaddress(recv_addr, deposit_amount)
         self.generate(self.node, 1)
         assert_approx(multisig.getbalance(), deposit_amount, vspan=0.001)
@@ -99,19 +95,14 @@ class WalletMiniscriptDecayingMultisigDescriptorPSBTTest(BitcoinTestFramework):
             self.log.info(f"At block height >= {locktime} this multisig is {self.M}-of-{self.N}")
             current_height = self.node.getblock(self.node.getbestblockhash())['height']
 
-            # in this test each signer signs the same psbt "in series" one after the other.
-            # Another option is for each signer to sign the original psbt, and then combine
-            # and finalize these. In some cases this may be more optimal for coordination.
+            # In this test each signer signs the same PSBT one after the other.
+            change_addr = multisig.deriveaddresses(internal_desc)[0]
             psbt = multisig.walletcreatefundedpsbt(
                 inputs=[],
                 outputs={receiver.getnewaddress(): amount},
-                feeRate=0.00010,
                 locktime=locktime,
-                options={"changeAddress": change_addr},
+                options={"changeAddress": change_addr, "feeRate": 0.00010},
             )
-            # the random sample asserts that any of the signing keys can sign for the 3-of-4,
-            # 2-of-4, and 1-of-4. While this is basic behavior of the miniscript thresh primitive,
-            # it is a critical property of this wallet.
             for i, m in enumerate(random.sample(range(self.M), self.M)):
                 psbt = signers[m].walletprocesspsbt(psbt["psbt"])
                 assert_equal(psbt["complete"], i == self.M - 1)

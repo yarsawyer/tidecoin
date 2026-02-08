@@ -126,8 +126,6 @@ def get_generate_key():
     """Generate a fresh key
 
     Returns a named tuple of privkey, pubkey and all address and scripts."""
-    if _keygen_node is not None:
-        return get_key(_keygen_node)
     privkey, pubkey = generate_keypair(wif=True)
     return Key(privkey=privkey,
                pubkey=pubkey.hex(),

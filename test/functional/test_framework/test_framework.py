@@ -778,9 +778,22 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         send_res = node.send(outputs)
         assert send_res["complete"]
         utxos = []
+        decoded_wallet_tx = None
         for output in outputs:
             address = list(output.keys())[0]
-            vout = find_vout_for_address(node, send_res["txid"], address)
+            try:
+                vout = find_vout_for_address(node, send_res["txid"], address)
+            except JSONRPCException as e:
+                # On Tidecoin, getrawtransaction without txindex can fail for
+                # wallet-owned transactions after they leave mempool. Fallback
+                # to decoded wallet transaction data.
+                if e.error.get("code") != -5:
+                    raise
+                if decoded_wallet_tx is None:
+                    decoded_wallet_tx = node.gettransaction(txid=send_res["txid"], verbose=True)["decoded"]
+                matches = [v for v in decoded_wallet_tx["vout"] if v["scriptPubKey"].get("address") == address]
+                assert len(matches) == 1, f"Address {address} not found uniquely in tx {send_res['txid']}"
+                vout = matches[0]["n"]
             utxos.append({"txid": send_res["txid"], "vout": vout})
         return utxos
 

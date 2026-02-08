@@ -27,6 +27,7 @@ but still know when to expect mixing due to the wallet being close to empty.
 """
 
 import random
+from decimal import Decimal
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.blocktools import COINBASE_MATURITY
 
@@ -151,7 +152,11 @@ class AddressInputTypeGrouping(BitcoinTestFramework):
             self.generate(A, 1)
             assert is_same_type(B, tx)
 
-        tx = self.make_payment(A, B, 30.99, random.choice(ADDRESS_TYPES))
+        # Upstream uses 30.99 with four output types (40 BTC initial inflow).
+        # Tidecoin runs three output types in this test, so use the analogous
+        # threshold (> any single 10 BTC bucket) while keeping deterministic headroom.
+        final_payment = Decimal(10 * (len(ADDRESS_TYPES) - 1)) + Decimal("0.99")
+        tx = self.make_payment(A, B, final_payment, random.choice(ADDRESS_TYPES))
         assert not is_same_type(B, tx)
 
 

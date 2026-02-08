@@ -390,7 +390,9 @@ class ToolWalletTest(BitcoinTestFramework):
         self.generate(self.nodes[0], 101)
         def_wallet = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
         outputs = {}
-        for i in range(500):
+        # PQ signatures make 500-input sendall transactions exceed standard tx weight.
+        # 60 inputs are still enough to create >70KB transaction records for dump coverage.
+        for i in range(60):
             outputs[wallet.getnewaddress(address_type="p2sh-segwit")] = 0.01
         def_wallet.sendmany(amounts=outputs)
         self.generate(self.nodes[0], 1)

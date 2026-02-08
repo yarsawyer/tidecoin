@@ -210,7 +210,8 @@ class ValidWitnessMalleatedTx:
 
 class TestFrameworkScriptUtil(unittest.TestCase):
     def test_multisig(self):
-        fake_pubkey = bytes([0]*33)
+        # Minimal valid PQ-encoded key blob for script builder tests.
+        fake_pubkey = bytes([0x07] + [0] * 32)
         # check correct encoding of P2MS script with n,k <= 16
         normal_ms_script = keys_to_multisig_script([fake_pubkey]*16, k=15)
         self.assertEqual(len(normal_ms_script), 1 + 16*34 + 1 + 1)

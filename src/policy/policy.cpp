@@ -13,6 +13,7 @@
 #include <consensus/validation.h>
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
+#include <pq/pq_scheme.h>
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <script/solver.h>
@@ -21,7 +22,56 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <vector>
+
+namespace {
+constexpr size_t CompactSizeLen(size_t size)
+{
+    if (size < 253) return 1;
+    if (size <= std::numeric_limits<uint16_t>::max()) return 3;
+    if (size <= std::numeric_limits<uint32_t>::max()) return 5;
+    return 9;
+}
+
+constexpr size_t ScriptPushLen(size_t payload_size)
+{
+    if (payload_size < OP_PUSHDATA1) return 1 + payload_size;
+    if (payload_size <= std::numeric_limits<uint8_t>::max()) return 2 + payload_size;
+    if (payload_size <= std::numeric_limits<uint16_t>::max()) return 3 + payload_size;
+    return 5 + payload_size;
+}
+
+// Tidecoin scriptSig spend proxy for non-witness key spends.
+constexpr size_t NonWitnessPQScriptSigBytes()
+{
+    const size_t sig_len = pq::MaxKnownSigBytesInScript(/*use_max_sig=*/true);
+    const size_t pubkey_len = pq::MaxKnownPubKeyBytesInScript();
+    return CompactSizeLen(sig_len) + sig_len +
+        CompactSizeLen(pubkey_len) + pubkey_len;
+}
+
+// Tidecoin witness spend proxy for standard v0 keyhash outputs.
+constexpr size_t P2WPKHPQWitnessBytes()
+{
+    const size_t sig_len = pq::MaxKnownSigBytesInScript(/*use_max_sig=*/true);
+    const size_t pubkey_len = pq::MaxKnownPubKeyBytesInScript();
+    return CompactSizeLen(/*stack items=*/2) +
+        CompactSizeLen(sig_len) + sig_len +
+        CompactSizeLen(pubkey_len) + pubkey_len;
+}
+
+// Tidecoin witness spend proxy for standard script-hash outputs.
+constexpr size_t P2WSHPQWitnessBytes()
+{
+    const size_t sig_len = pq::MaxKnownSigBytesInScript(/*use_max_sig=*/true);
+    const size_t pubkey_len = pq::MaxKnownPubKeyBytesInScript();
+    const size_t witness_script_len = ScriptPushLen(pubkey_len) + 1; // <pubkey> OP_CHECKSIG
+    return CompactSizeLen(/*stack items=*/2) +
+        CompactSizeLen(sig_len) + sig_len +
+        CompactSizeLen(witness_script_len) + witness_script_len;
+}
+} // namespace
 
 CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 {
@@ -29,16 +79,8 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // which has units satoshis-per-kilobyte.
     // If you'd pay more in fees than the value of the output
     // to spend something, then we consider it dust.
-    // A typical spendable non-segwit txout is 34 bytes big, and will
-    // need a CTxIn of at least 148 bytes to spend:
-    // so dust is a spendable txout less than
-    // 182*dustRelayFee/1000 (in satoshis).
-    // 546 satoshis at the default rate of 3000 sat/kvB.
-    // A typical spendable segwit P2WPKH txout is 31 bytes big, and will
-    // need a CTxIn of at least 67 bytes to spend:
-    // so dust is a spendable txout less than
-    // 98*dustRelayFee/1000 (in satoshis).
-    // 294 satoshis at the default rate of 3000 sat/kvB.
+    // Tidecoin policy uses conservative PQ-sized spend proxies for non-witness
+    // and witness outputs, based on largest known supported key/signature sizes.
     if (txout.scriptPubKey.IsUnspendable())
         return 0;
 
@@ -46,14 +88,20 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     int witnessversion = 0;
     std::vector<unsigned char> witnessprogram;
 
-    // Note this computation is for spending a Segwit v0 P2WPKH output (a 33 bytes
-    // public key + an ECDSA signature).
+    // Tidecoin uses PQ signatures/keys for witness spends. Apply scheme-aware,
+    // conservative witness proxies for v0 and v1 script types.
     if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
-        // sum the sizes of the parts of a transaction input
-        // with 75% segwit discount applied to the script size.
-        nSize += (32 + 4 + 1 + (107 / WITNESS_SCALE_FACTOR) + 4);
+        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
+            nSize += (32 + 4 + 1 + (P2WPKHPQWitnessBytes() / WITNESS_SCALE_FACTOR) + 4);
+        } else if ((witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) ||
+                   (witnessversion == 1 && witnessprogram.size() == WITNESS_V1_SCRIPTHASH_512_SIZE)) {
+            nSize += (32 + 4 + 1 + (P2WSHPQWitnessBytes() / WITNESS_SCALE_FACTOR) + 4);
+        } else {
+            // Unknown witness shapes use a conservative PQ witness script proxy.
+            nSize += (32 + 4 + 1 + (P2WSHPQWitnessBytes() / WITNESS_SCALE_FACTOR) + 4);
+        }
     } else {
-        nSize += (32 + 4 + 1 + 107 + 4); // the 148 mentioned above
+        nSize += (32 + 4 + 1 + NonWitnessPQScriptSigBytes() + 4);
     }
 
     return dustRelayFeeIn.GetFee(nSize);

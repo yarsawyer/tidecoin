@@ -52,12 +52,14 @@ class ReorgsRestoreTest(BitcoinTestFramework):
 
         # Mine 100 blocks on top to mature the coinbase and create a descendant
         self.generate(self.nodes[0], 101, sync_fun=self.no_op)
-        # Make descendant, send-to-self
-        descendant_tx_id = wallet0.sendtoaddress(wallet0.getnewaddress(), 1)
-
         # Verify balance
         wallet0.syncwithvalidationinterfacequeue()
-        assert(wallet0.getbalances()['mine']['trusted'] > 0)
+        trusted_balance = wallet0.getbalances()['mine']['trusted']
+        assert(trusted_balance > 0)
+        # Reward schedule differs from Bitcoin; pick a safe amount below available trusted balance.
+        descendant_amount = min(Decimal("1"), trusted_balance / 2)
+        # Make descendant, send-to-self
+        descendant_tx_id = wallet0.sendtoaddress(wallet0.getnewaddress(), descendant_amount)
 
         # Now create a fork in node1. This will be used to replace node0's chain later.
         self.nodes[1].createwallet(wallet_name="w1", load_on_startup=True)

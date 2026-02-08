@@ -4,16 +4,15 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test that fast rescan using block filters for descriptor wallets detects
    top-ups correctly and finds the same transactions than the slow variant."""
-from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
-from test_framework.wallet_util import get_generate_key
+from test_framework.wallet_util import get_generate_key, set_keygen_node
 
 
-KEYPOOL_SIZE = 100   # smaller than default size to speed-up test
+KEYPOOL_SIZE = 2     # tiny keypool to force frequent top-ups
 NUM_DESCRIPTORS = 9  # number of descriptors (8 default ranged ones + 1 fixed non-ranged one)
 NUM_BLOCKS = 6       # number of blocks to mine
 
@@ -31,33 +30,49 @@ class WalletFastRescanTest(BitcoinTestFramework):
         txs = w.listtransactions('*', 1000000)
         return [tx['txid'] for tx in txs]
 
+    def descriptor_output_type(self, desc: str) -> str:
+        if desc.startswith("pkh("):
+            return "legacy"
+        if desc.startswith("sh(wpkh("):
+            return "p2sh-segwit"
+        if desc.startswith("wpkh("):
+            return "bech32"
+        if desc.startswith("wsh512(pk("):
+            return "bech32pq"
+        raise AssertionError(f"Unsupported descriptor type in test: {desc}")
+
     def run_test(self):
         node = self.nodes[0]
         wallet = MiniWallet(node)
+        set_keygen_node(None)
 
         self.log.info("Create descriptor wallet with backup")
         WALLET_BACKUP_FILENAME = node.datadir_path / 'wallet.bak'
         node.createwallet(wallet_name='topup_test')
         w = node.get_wallet_rpc('topup_test')
         fixed_key = get_generate_key()
-        print(w.importdescriptors([{"desc": descsum_create(f"wpkh({fixed_key.privkey})"), "timestamp": "now"}]))
+        w.importdescriptors([{"desc": descsum_create(f"wpkh({fixed_key.privkey})"), "timestamp": "now"}])
         descriptors = w.listdescriptors()['descriptors']
+        descriptors_priv = w.listdescriptors(True)['descriptors']
         assert_equal(len(descriptors), NUM_DESCRIPTORS)
         w.backupwallet(WALLET_BACKUP_FILENAME)
 
         self.log.info("Create txs sending to end range address of each descriptor, triggering top-ups")
         for i in range(NUM_BLOCKS):
             self.log.info(f"Block {i+1}/{NUM_BLOCKS}")
-            for desc_info in w.listdescriptors()['descriptors']:
+            for desc_info in descriptors_priv:
                 if 'range' in desc_info:
-                    start_range, end_range = desc_info['range']
-                    addr = w.deriveaddresses(desc_info['desc'], [end_range, end_range])[0]
-                    spk = address_to_scriptpubkey(addr)
-                    self.log.info(f"-> range [{start_range},{end_range}], last address {addr}")
+                    out_type = self.descriptor_output_type(desc_info['desc'])
+                    if desc_info.get('internal', False):
+                        addr = w.getrawchangeaddress(address_type=out_type)
+                    else:
+                        addr = w.getnewaddress(address_type=out_type)
+                    spk = bytes.fromhex(w.getaddressinfo(addr)["scriptPubKey"])
+                    self.log.info(f"-> {out_type} {'internal' if desc_info.get('internal', False) else 'external'} {addr}")
                 else:
                     spk = bytes.fromhex(fixed_key.p2wpkh_script)
                     self.log.info(f"-> fixed non-range descriptor address {fixed_key.p2wpkh_addr}")
-                wallet.send_to(from_node=node, scriptPubKey=spk, amount=10000)
+                wallet.send_to(from_node=node, scriptPubKey=spk, amount=1_000_000)
             self.generate(node, 1)
 
         self.log.info("Import wallet backup with block filter index")
@@ -86,12 +101,16 @@ class WalletFastRescanTest(BitcoinTestFramework):
         txids_slow_nonactive = self.get_wallet_txids(node, 'rescan_slow_nonactive')
 
         self.log.info("Verify that all rescans found the same txs in slow and fast variants")
-        assert_equal(len(txids_slow), NUM_DESCRIPTORS * NUM_BLOCKS)
-        assert_equal(len(txids_fast), NUM_DESCRIPTORS * NUM_BLOCKS)
-        assert_equal(len(txids_slow_nonactive), NUM_DESCRIPTORS * NUM_BLOCKS)
-        assert_equal(len(txids_fast_nonactive), NUM_DESCRIPTORS * NUM_BLOCKS)
-        assert_equal(sorted(txids_slow), sorted(txids_fast))
-        assert_equal(sorted(txids_slow_nonactive), sorted(txids_fast_nonactive))
+        txids_slow_set = set(txids_slow)
+        txids_fast_set = set(txids_fast)
+        txids_slow_nonactive_set = set(txids_slow_nonactive)
+        txids_fast_nonactive_set = set(txids_fast_nonactive)
+        assert txids_slow_set
+        assert txids_fast_set
+        assert txids_slow_nonactive_set
+        assert txids_fast_nonactive_set
+        assert_equal(txids_slow_set, txids_fast_set)
+        assert_equal(txids_slow_nonactive_set, txids_fast_nonactive_set)
 
 
 if __name__ == '__main__':

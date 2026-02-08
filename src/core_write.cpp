@@ -103,26 +103,6 @@ bool HasKnownSighashByte(const std::vector<unsigned char>& sig_with_hashtype)
     return mapSigHashTypes.find(hash_type) != mapSigHashTypes.end();
 }
 
-bool LooksLikeDERSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
-{
-    // Matches Bitcoin's DER signature shape check (excluding strict-value checks).
-    // The last byte is the sighash type and is excluded from DER length checks.
-    const size_t total_size = sig_with_hashtype.size();
-    if (total_size < 10 || total_size > 74) return false;
-    const size_t der_len = total_size - 1;
-
-    if (sig_with_hashtype[0] != 0x30) return false;
-    if (sig_with_hashtype[1] != der_len - 2) return false;
-    if (sig_with_hashtype[2] != 0x02) return false;
-
-    const size_t len_r = sig_with_hashtype[3];
-    if (4 + len_r >= der_len) return false;
-    if (sig_with_hashtype[4 + len_r] != 0x02) return false;
-
-    const size_t len_s = sig_with_hashtype[5 + len_r];
-    return len_r + len_s + 6 == der_len;
-}
-
 bool LooksLikePQSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
 {
     if (!HasKnownSighashByte(sig_with_hashtype)) {
@@ -148,9 +128,7 @@ bool LooksLikePQSignatureWithSighash(const std::vector<unsigned char>& sig_with_
 
 bool LooksLikeSignatureWithSighash(const std::vector<unsigned char>& sig_with_hashtype)
 {
-    if (!HasKnownSighashByte(sig_with_hashtype)) return false;
-    return LooksLikeDERSignatureWithSighash(sig_with_hashtype) ||
-           LooksLikePQSignatureWithSighash(sig_with_hashtype);
+    return LooksLikePQSignatureWithSighash(sig_with_hashtype);
 }
 } // namespace
 

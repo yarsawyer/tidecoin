@@ -10,7 +10,7 @@ See also rpc_signer.py for tests without wallet context.
 import os
 import sys
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinTestFramework, SkipTest
 from test_framework.descriptors import descsum_create
 from test_framework.util import (
     assert_equal,
@@ -48,7 +48,7 @@ class WalletSignerTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_external_signer()
         self.skip_if_no_wallet()
-        self.skip("external signer flow relies on xpub-based ranged descriptors, not supported in PQ-only builds")
+        raise SkipTest("external signer flow relies on xpub-based ranged descriptors, not supported in PQ-only builds")
 
     def set_mock_result(self, node, res):
         with open(os.path.join(node.cwd, "mock_result"), "w", encoding="utf8") as f:

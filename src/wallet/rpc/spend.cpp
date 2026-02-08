@@ -815,8 +815,8 @@ RPCHelpMan fundrawtransaction()
                                             {"vout", RPCArg::Type::NUM, RPCArg::Optional::NO, "The output index"},
                                             {"weight", RPCArg::Type::NUM, RPCArg::Optional::NO, "The maximum weight for this input, "
                                                 "including the weight of the outpoint and sequence number. "
-                                                "Note that serialized signature sizes are not guaranteed to be consistent, "
-                                                "so the maximum DER signatures size of 73 bytes should be used when considering ECDSA signatures."
+                                                "Note that serialized signature sizes are not guaranteed to be consistent and depend on script type and PQ scheme. "
+                                                "Use a conservative worst-case signature size for the expected signing path."
                                                 "Remember to convert serialized sizes to weight units when necessary."},
                                         },
                                     },
@@ -1267,8 +1267,8 @@ RPCHelpMan send()
                             {"sequence", RPCArg::Type::NUM, RPCArg::DefaultHint{"depends on the value of the 'replaceable' and 'locktime' arguments"}, "The sequence number"},
                             {"weight", RPCArg::Type::NUM, RPCArg::DefaultHint{"Calculated from wallet and solving data"}, "The maximum weight for this input, "
                                         "including the weight of the outpoint and sequence number. "
-                                        "Note that signature sizes are not guaranteed to be consistent, "
-                                        "so the maximum DER signatures size of 73 bytes should be used when considering ECDSA signatures."
+                                        "Note that serialized signature sizes are not guaranteed to be consistent and depend on script type and PQ scheme. "
+                                        "Use a conservative worst-case signature size for the expected signing path."
                                         "Remember to convert serialized sizes to weight units when necessary."},
                           }},
                         },
@@ -1736,8 +1736,8 @@ RPCHelpMan walletcreatefundedpsbt()
                                     {"sequence", RPCArg::Type::NUM, RPCArg::DefaultHint{"depends on the value of the 'locktime' and 'options.replaceable' arguments"}, "The sequence number"},
                                     {"weight", RPCArg::Type::NUM, RPCArg::DefaultHint{"Calculated from wallet and solving data"}, "The maximum weight for this input, "
                                         "including the weight of the outpoint and sequence number. "
-                                        "Note that signature sizes are not guaranteed to be consistent, "
-                                        "so the maximum DER signatures size of 73 bytes should be used when considering ECDSA signatures."
+                                        "Note that serialized signature sizes are not guaranteed to be consistent and depend on script type and PQ scheme. "
+                                        "Use a conservative worst-case signature size for the expected signing path."
                                         "Remember to convert serialized sizes to weight units when necessary."},
                                 },
                             },

@@ -3,6 +3,7 @@
 
 #include <consensus/params.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -97,6 +98,43 @@ inline constexpr SchemeInfo kMLDSA87Info{
     PQCLEAN_MLDSA87_CLEAN_CRYPTO_BYTES,
     "ML-DSA-87",
 };
+
+inline constexpr std::array<const SchemeInfo*, 5> kKnownSchemes{
+    &kFalcon512Info,
+    &kFalcon1024Info,
+    &kMLDSA44Info,
+    &kMLDSA65Info,
+    &kMLDSA87Info,
+};
+
+constexpr size_t MaxKnownSigBytes(bool use_max_sig)
+{
+    size_t max_len = 0;
+    for (const auto* info : kKnownSchemes) {
+        const size_t sig_len = use_max_sig ? info->sig_bytes_max : info->sig_bytes_fixed;
+        if (sig_len > max_len) max_len = sig_len;
+    }
+    return max_len;
+}
+
+constexpr size_t MaxKnownSigBytesInScript(bool use_max_sig)
+{
+    return MaxKnownSigBytes(use_max_sig) + 1; // +1 for sighash byte
+}
+
+constexpr size_t MaxKnownPubKeyBytes()
+{
+    size_t max_len = 0;
+    for (const auto* info : kKnownSchemes) {
+        if (info->pubkey_bytes > max_len) max_len = info->pubkey_bytes;
+    }
+    return max_len;
+}
+
+constexpr size_t MaxKnownPubKeyBytesInScript()
+{
+    return MaxKnownPubKeyBytes() + 1; // +1 for scheme prefix
+}
 
 constexpr bool IsExperimentalPrefix(uint8_t prefix)
 {

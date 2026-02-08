@@ -6,6 +6,7 @@
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal
+from decimal import Decimal
 
 class OrphanedBlockRewardTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -26,13 +27,14 @@ class OrphanedBlockRewardTest(BitcoinTestFramework):
         # it later.
         self.sync_blocks()
         blk = self.generate(self.nodes[1], 1)[0]
+        reward = Decimal(str(self.nodes[1].getblock(blk, 2)["tx"][0]["vout"][0]["value"]))
 
         # Let the block reward mature and send coins including both
         # the existing balance and the block reward.
         self.generate(self.nodes[0], 150)
-        assert_equal(self.nodes[1].getbalance(), 10 + 25)
+        assert_equal(self.nodes[1].getbalance(), Decimal("10") + reward)
         pre_reorg_conf_bals = self.nodes[1].getbalances()
-        txid = self.nodes[1].sendtoaddress(self.nodes[0].getnewaddress(), 30)
+        txid = self.nodes[1].sendtoaddress(self.nodes[0].getnewaddress(), Decimal("10") + reward - Decimal("0.01"))
         orig_chain_tip = self.nodes[0].getbestblockhash()
         self.sync_mempools()
 

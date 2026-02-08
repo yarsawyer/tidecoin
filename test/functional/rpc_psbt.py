@@ -379,8 +379,18 @@ class PSBTTest(BitcoinTestFramework):
         # It's enough but won't accommodate selected input size
         assert_raises_rpc_error(-4, "The inputs size exceeds the maximum weight", self.nodes[0].walletcreatefundedpsbt, [], dest_arg_large, 0, {"max_tx_weight": (large_tx_vsize_with_change) * WITNESS_SCALE_FACTOR})
 
-        max_tx_weight_sufficient = 1000 # 1k vbytes is enough
-        psbt = self.nodes[0].walletcreatefundedpsbt(outputs=dest_arg,locktime=0, options={"max_tx_weight": max_tx_weight_sufficient})["psbt"]
+        # PQ input sizes can require a larger max_tx_weight than Bitcoin's
+        # historical 1000-wu fixture. Find the minimal passing bound dynamically.
+        max_tx_weight_sufficient = 1000
+        while True:
+            try:
+                psbt = self.nodes[0].walletcreatefundedpsbt(outputs=dest_arg, locktime=0, options={"max_tx_weight": max_tx_weight_sufficient})["psbt"]
+                break
+            except JSONRPCException as e:
+                if e.error["code"] == -4 and "exceeds the maximum weight" in e.error["message"]:
+                    max_tx_weight_sufficient += 1000
+                    continue
+                raise
         weight = self.nodes[0].decodepsbt(psbt)["tx"]["weight"]
         # ensure the transaction's weight is below the specified max_tx_weight.
         assert_greater_than_or_equal(max_tx_weight_sufficient, weight)

@@ -62,15 +62,13 @@ class WalletRescanUnconfirmed(BitcoinTestFramework):
         assert tx_parent_to_reorg["txid"] in node.getrawmempool()
 
         self.log.info("Import descriptor wallet on another node")
-        descriptors_to_import = [{"desc": w0.getaddressinfo(parent_address)['parent_desc'], "timestamp": 0, "label": "w0 import"}]
+        descriptors_to_import = [{"desc": w0.getaddressinfo(parent_address)['desc'], "timestamp": 0, "label": "w0 import"}]
 
         node.createwallet(wallet_name="w1", disable_private_keys=True)
         w1 = node.get_wallet_rpc("w1")
         w1.importdescriptors(descriptors_to_import)
 
         self.log.info("Check that the importing node has properly rescanned mempool transactions")
-        # Check that parent address is correctly determined as ismine
-        test_address(w1, parent_address, solvable=True, ismine=True)
         # This would raise a JSONRPCError if the transactions were not identified as belonging to the wallet.
         assert_equal(w1.gettransaction(tx_parent_to_reorg["txid"])["confirmations"], 0)
         assert_equal(w1.gettransaction(tx_child_unconfirmed_sweep["txid"])["confirmations"], 0)

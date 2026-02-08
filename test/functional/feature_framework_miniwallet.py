@@ -3,6 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test MiniWallet."""
+from decimal import Decimal
 import random
 import string
 
@@ -24,12 +25,19 @@ class FeatureFrameworkMiniWalletTest(BitcoinTestFramework):
     def test_tx_padding(self):
         """Verify that MiniWallet's transaction padding (`target_vsize` parameter)
            works accurately with all modes."""
+        # This test validates padding accuracy, not fee-rate policy. Use a fixed
+        # low explicit fee so large target_vsize values remain feasible under
+        # Tidecoin's lower matured coinbase values in cached test chains.
+        fixed_fee = Decimal("0.00001000")
         for mode_name, wallet in self.wallets:
             self.log.info(f"Test tx padding with MiniWallet mode {mode_name}...")
             utxo = wallet.get_utxo(mark_as_spent=False)
+            base_vsize = wallet.create_self_transfer(utxo_to_spend=utxo, fee=fixed_fee)["tx"].get_vsize()
             for target_vsize in [250, 500, 1250, 2500, 5000, 12500, 25000, 50000, 1000000,
                                  248, 501, 1085, 3343, 5805, 12289, 25509, 55855,  999998]:
-                tx = wallet.create_self_transfer(utxo_to_spend=utxo, target_vsize=target_vsize)
+                if target_vsize < base_vsize:
+                    continue
+                tx = wallet.create_self_transfer(utxo_to_spend=utxo, target_vsize=target_vsize, fee=fixed_fee)
                 assert_equal(tx['tx'].get_vsize(), target_vsize)
                 child_tx = wallet.create_self_transfer_multi(utxos_to_spend=[tx["new_utxo"]], target_vsize=target_vsize)
                 assert_equal(child_tx['tx'].get_vsize(), target_vsize)

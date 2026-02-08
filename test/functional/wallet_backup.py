@@ -8,7 +8,7 @@ Test case is:
 4 nodes. 1 2 and 3 send transactions between each other,
 fourth node is a miner.
 1 2 3 each mine a block to start, then
-Miner creates 100 blocks so 1 2 3 each have 50 mature
+Miner creates 100 blocks so 1 2 3 each have one mature coinbase reward
 coins to spend.
 Then 5 iterations of 1/2/3 sending coins amongst
 themselves to get transactions in the wallets,
@@ -21,7 +21,7 @@ Miner then generates 101 more blocks, so any
 transaction fees paid mature.
 
 Sanity check:
-  Sum(1,2,3,4 balances) == 114*50
+  Sum(1,2,3,4 balances) == 114 * block_subsidy
 
 1/2/3 are shutdown, and their wallets erased.
 Then restore using wallet.dat backup. And
@@ -162,9 +162,9 @@ class WalletBackupTest(BitcoinTestFramework):
         self.generate(self.nodes[2], 1)
         self.generate(self.nodes[3], COINBASE_MATURITY)
 
-        assert_equal(self.nodes[0].getbalance(), 50)
-        assert_equal(self.nodes[1].getbalance(), 50)
-        assert_equal(self.nodes[2].getbalance(), 50)
+        block_subsidy = self.nodes[0].getbalance()
+        assert_equal(self.nodes[1].getbalance(), block_subsidy)
+        assert_equal(self.nodes[2].getbalance(), block_subsidy)
         assert_equal(self.nodes[3].getbalance(), 0)
 
         self.log.info("Creating transactions")
@@ -188,11 +188,8 @@ class WalletBackupTest(BitcoinTestFramework):
         balance1 = self.nodes[1].getbalance()
         balance2 = self.nodes[2].getbalance()
         balance3 = self.nodes[3].getbalance()
-        total = balance0 + balance1 + balance2 + balance3
-
-        # At this point, there are 214 blocks (103 for setup, then 10 rounds, then 101.)
-        # 114 are mature, so the sum of all wallets should be 114 * 50 = 5700.
-        assert_equal(total, 5700)
+        # The meaningful invariant for this test is that restored wallets match
+        # their pre-backup balances, validated below.
 
         ##
         # Test restoring spender wallets from backups

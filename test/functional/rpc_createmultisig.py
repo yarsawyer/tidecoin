@@ -113,7 +113,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
             assert_equal(addr_info["witness_version"], 0)
 
         spk = address_to_scriptpubkey(madd)
-        value = decimal.Decimal("0.00004000")
+        value = decimal.Decimal("0.00100000")
         tx = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=spk, amount=int(value * COIN))
         prevtxs = [{"txid": tx["txid"], "vout": tx["sent_vout"], "scriptPubKey": spk.hex(), "redeemScript": mredeem, "amount": value}]
 

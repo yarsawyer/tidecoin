@@ -359,6 +359,10 @@ public:
     {
         return GetSigningProvider(index, include_private);
     }
+    std::unique_ptr<FlatSigningProvider> GetSigningProviderForScript(const CScript& script, bool include_private = false) const
+    {
+        return GetSigningProvider(script, include_private);
+    }
 
     bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors, std::optional<unsigned int> script_verify_flags = std::nullopt) const override;
     SigningResult SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const override;

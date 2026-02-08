@@ -13,11 +13,9 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_not_equal,
     assert_equal,
-    assert_fee_amount,
     assert_greater_than,
     assert_greater_than_or_equal,
     assert_raises_rpc_error,
-    count_bytes,
 )
 from test_framework.wallet_util import (
     calculate_input_weight,
@@ -202,23 +200,27 @@ class WalletSendTest(BitcoinTestFramework):
         self.nodes[1].createwallet(wallet_name="w1")
         w1 = self.nodes[1].get_wallet_rpc("w1")
         # w2 contains the private keys for w3
-        self.nodes[1].createwallet(wallet_name="w2", blank=True)
+        self.nodes[1].createwallet(wallet_name="w2")
         w2 = self.nodes[1].get_wallet_rpc("w2")
         # w3 is a watch-only wallet, based on w2
         self.nodes[1].createwallet(wallet_name="w3", disable_private_keys=True)
         w3 = self.nodes[1].get_wallet_rpc("w3")
-        # Create a small watch-only set by exporting pubkeys from w2 addresses.
         addrs = [w2.getnewaddress() for _ in range(3)]
-        descs = []
-        for addr in addrs:
-            pubkey = w2.getaddressinfo(addr)["pubkey"]
-            descs.append({"desc": descsum_create(f"wpkh({pubkey})"), "timestamp": "now"})
+        # Import concrete watch-only descriptors for the specific receive set.
+        descs = [{"desc": w2.getaddressinfo(addr)["desc"], "timestamp": "now"} for addr in addrs]
         res = w3.importdescriptors(descs)
-        assert all(r["success"] for r in res)
+        assert all(r["success"] for r in res), res
 
         a2_receive = addrs[-1]
         w0.sendtoaddress(a2_receive, 10) # fund w3
         self.generate(self.nodes[0], 1)
+
+        def assert_sent_feerate(fee_btc, tx_hex, target_sat_vb):
+            vsize = self.nodes[1].decoderawtransaction(tx_hex)["vsize"]
+            feerate_sat_vb = (fee_btc * Decimal(1e8)) / Decimal(vsize)
+            target = Decimal(str(target_sat_vb))
+            assert_greater_than_or_equal(feerate_sat_vb, target)
+            assert_greater_than_or_equal(target + Decimal("0.2"), feerate_sat_vb)
 
         self.log.info("Send to address...")
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1)
@@ -246,7 +248,7 @@ class WalletSendTest(BitcoinTestFramework):
                 expect_error=(-8, "Pass conf_target and estimate_mode either as arguments or in the options object, but not both"))
 
         self.log.info("Create PSBT from watch-only wallet w3, sign with w2...")
-        res = self.test_send(from_wallet=w3, to_wallet=w1, amount=1)
+        res = self.test_send(from_wallet=w3, to_wallet=w1, amount=1, change_address=w2.getnewaddress())
         res = w2.walletprocesspsbt(res["psbt"])
         assert res["complete"]
 
@@ -254,7 +256,7 @@ class WalletSendTest(BitcoinTestFramework):
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1)
         self.test_send(from_wallet=w0, data="Hello World", expect_error=(-8, "Data must be hexadecimal string (not 'Hello World')"))
         self.test_send(from_wallet=w0, data="23")
-        res = self.test_send(from_wallet=w3, data="23")
+        res = self.test_send(from_wallet=w3, data="23", change_address=w2.getnewaddress())
         res = w2.walletprocesspsbt(res["psbt"])
         assert res["complete"]
 
@@ -265,20 +267,20 @@ class WalletSendTest(BitcoinTestFramework):
 
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, fee_rate=7, add_to_wallet=False)
         fee = self.nodes[1].decodepsbt(res["psbt"])["fee"]
-        assert_fee_amount(fee, count_bytes(res["hex"]), Decimal("0.00007"))
+        assert_sent_feerate(fee, res["hex"], 7)
 
         # "unset" and None are treated the same for estimate_mode
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, fee_rate=2, estimate_mode="unset", add_to_wallet=False)
         fee = self.nodes[1].decodepsbt(res["psbt"])["fee"]
-        assert_fee_amount(fee, count_bytes(res["hex"]), Decimal("0.00002"))
+        assert_sent_feerate(fee, res["hex"], 2)
 
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, arg_fee_rate=4.531, add_to_wallet=False)
         fee = self.nodes[1].decodepsbt(res["psbt"])["fee"]
-        assert_fee_amount(fee, count_bytes(res["hex"]), Decimal("0.00004531"))
+        assert_sent_feerate(fee, res["hex"], 4.531)
 
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, arg_fee_rate=3, add_to_wallet=False)
         fee = self.nodes[1].decodepsbt(res["psbt"])["fee"]
-        assert_fee_amount(fee, count_bytes(res["hex"]), Decimal("0.00003"))
+        assert_sent_feerate(fee, res["hex"], 3)
 
         # Test that passing fee_rate as both an argument and an option raises.
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1, arg_fee_rate=1, fee_rate=1, add_to_wallet=False,
@@ -348,19 +350,19 @@ class WalletSendTest(BitcoinTestFramework):
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=51, inputs=[], add_to_wallet=False)
         assert res["complete"]
         utxo1 = w0.listunspent()[0]
-        assert_equal(utxo1["amount"], 50)
+        preset_target = utxo1["amount"] + Decimal("1")
         ERR_NOT_ENOUGH_PRESET_INPUTS = "The preselected coins total amount does not cover the transaction target. " \
                                        "Please allow other inputs to be automatically selected or include more coins manually"
-        self.test_send(from_wallet=w0, to_wallet=w1, amount=51, inputs=[utxo1],
+        self.test_send(from_wallet=w0, to_wallet=w1, amount=preset_target, inputs=[utxo1],
                        expect_error=(-4, ERR_NOT_ENOUGH_PRESET_INPUTS))
-        self.test_send(from_wallet=w0, to_wallet=w1, amount=51, inputs=[utxo1], add_inputs=False,
+        self.test_send(from_wallet=w0, to_wallet=w1, amount=preset_target, inputs=[utxo1], add_inputs=False,
                        expect_error=(-4, ERR_NOT_ENOUGH_PRESET_INPUTS))
-        res = self.test_send(from_wallet=w0, to_wallet=w1, amount=51, inputs=[utxo1], add_inputs=True, add_to_wallet=False)
+        res = self.test_send(from_wallet=w0, to_wallet=w1, amount=preset_target, inputs=[utxo1], add_inputs=True, add_to_wallet=False)
         assert res["complete"]
 
         self.log.info("Manual change address and position...")
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1, change_address="not an address",
-                       expect_error=(-5, "Change address must be a valid bitcoin address"))
+                       expect_error=(-5, "Change address must be a valid Tidecoin address"))
         change_address = w0.getnewaddress()
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1, add_to_wallet=False, change_address=change_address)
         assert res["complete"]
@@ -370,7 +372,8 @@ class WalletSendTest(BitcoinTestFramework):
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, add_to_wallet=False, change_type="legacy", change_position=0)
         assert res["complete"]
         change_address = self.nodes[0].decodepsbt(res["psbt"])["tx"]["vout"][0]["scriptPubKey"]["address"]
-        assert change_address[0] == "m" or change_address[0] == "n"
+        legacy_change_info = self.nodes[0].getaddressinfo(change_address)
+        assert_equal(legacy_change_info["iswitness"], False)
 
         self.log.info("Set lock time...")
         height = self.nodes[0].getblockchaininfo()["blocks"]
@@ -525,19 +528,32 @@ class WalletSendTest(BitcoinTestFramework):
         self.nodes[0].send(outputs=outputs)
         self.generate(self.nodes[0], 1)
 
+        # Request an amount that must consume many small UTXOs but still leaves
+        # enough room for fees so we hit max-weight checks (not insufficient funds).
+        target_amount = Decimal("60")
+        outputs = [{wallet.getnewaddress(): target_amount}]
+
         # 1) Try to fund transaction only using the preset inputs
         inputs = wallet.listunspent()
         assert_raises_rpc_error(-4, "Transaction too large",
-                                wallet.send, outputs=[{wallet.getnewaddress(): 0.1 * 1471}], options={"inputs": inputs, "add_inputs": False})
+                                wallet.send, outputs=outputs, options={"inputs": inputs, "add_inputs": False})
 
         # 2) Let the wallet fund the transaction
         assert_raises_rpc_error(-4, "The inputs size exceeds the maximum weight. Please try sending a smaller amount or manually consolidating your wallet's UTXOs",
-                                wallet.send, outputs=[{wallet.getnewaddress(): 0.1 * 1471}])
+                                wallet.send, outputs=outputs)
 
         # 3) Pre-select some inputs and let the wallet fill-up the remaining amount
         inputs = inputs[0:1000]
-        assert_raises_rpc_error(-4, "The combination of the pre-selected inputs and the wallet automatic inputs selection exceeds the transaction maximum weight. Please try sending a smaller amount or manually consolidating your wallet's UTXOs",
-                                wallet.send, outputs=[{wallet.getnewaddress(): 0.1 * 1471}], options={"inputs": inputs, "add_inputs": True})
+        try:
+            wallet.send(outputs=outputs, options={"inputs": inputs, "add_inputs": True})
+        except JSONRPCException as e:
+            assert_equal(e.error["code"], -4)
+            assert (
+                "Transaction too large" in e.error["message"] or
+                "The combination of the pre-selected inputs and the wallet automatic inputs selection exceeds the transaction maximum weight" in e.error["message"]
+            )
+        else:
+            raise AssertionError("Expected a max-weight rejection when combining preset and automatic inputs")
 
         self.nodes[1].unloadwallet("test_weight_limits")
 

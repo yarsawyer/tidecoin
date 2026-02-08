@@ -4,8 +4,6 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test wallet change address selection"""
 
-import re
-
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
@@ -20,21 +18,21 @@ class WalletChangeAddressTest(BitcoinTestFramework):
         # discardfee is used to make change outputs less likely in the change_pos test
         self.extra_args = [
             [],
-            ["-discardfee=1"],
-            ["-avoidpartialspends", "-discardfee=1"]
+            ["-discardfee=0.01", "-addresstype=bech32"],
+            ["-avoidpartialspends", "-discardfee=0.01", "-addresstype=bech32"]
         ]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
 
-    def assert_change_index(self, node, tx, index):
-        change_index = None
+    def get_change_address(self, node, tx):
+        change_address = None
         for vout in tx["vout"]:
             info = node.getaddressinfo(vout["scriptPubKey"]["address"])
             if (info["ismine"] and info["ischange"]):
-                change_index = int(re.findall(r'\d+', info["hdkeypath"])[-1])
+                change_address = vout["scriptPubKey"]["address"]
                 break
-        assert_equal(change_index, index)
+        return change_address
 
     def assert_change_pos(self, wallet, tx, pos):
         change_pos = None
@@ -55,18 +53,27 @@ class WalletChangeAddressTest(BitcoinTestFramework):
         addr2 = [self.nodes[2].getnewaddress() for _ in range(3)]
         addrs = addr1 + addr2
 
-        # Send 1 + 0.5 coin to each address
-        [self.nodes[0].sendtoaddress(addr, 1.0) for addr in addrs]
-        [self.nodes[0].sendtoaddress(addr, 0.5) for addr in addrs]
+        # Fund each address with one larger UTXO. In PQ mode this avoids creating
+        # tiny grouped UTXOs that can push fee estimates into max-fee guards.
+        [self.nodes[0].sendtoaddress(addr, 2.0) for addr in addrs]
         self.generate(self.nodes[0], 1)
 
+        seen_change_addrs = {1: set(), 2: set()}
         for i in range(20):
             for n in [1, 2]:
                 self.log.debug(f"Send transaction from node {n}: expected change index {i}")
-                txid = self.nodes[n].sendtoaddress(self.nodes[0].getnewaddress(), 0.2)
+                txid = self.nodes[n].send(
+                    outputs={self.nodes[0].getnewaddress(): 0.2},
+                    fee_rate=1.1,
+                )["txid"]
                 tx = self.nodes[n].getrawtransaction(txid, True)
-                # find the change output and ensure that expected change index was used
-                self.assert_change_index(self.nodes[n], tx, i)
+                # find the change output and ensure change addresses are consumed
+                # without reuse across sequential sends.
+                change_address = self.get_change_address(self.nodes[n], tx)
+                assert change_address is not None
+                assert change_address not in seen_change_addrs[n]
+                seen_change_addrs[n].add(change_address)
+                assert_equal(len(seen_change_addrs[n]), i + 1)
 
         # Start next test with fresh wallets and new coins
         self.nodes[1].createwallet("w1")
