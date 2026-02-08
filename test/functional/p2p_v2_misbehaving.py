@@ -21,7 +21,7 @@ class TestType(Enum):
     """ Scenarios to be tested:
 
     1. EARLY_KEY_RESPONSE - The responder needs to wait until one byte is received which does not match the 16 bytes
-    consisting of network magic followed by "version\x00\x00\x00\x00\x00" before sending out its ellswift + garbage bytes
+    consisting of network magic followed by "version\x00\x00\x00\x00\x00" before sending out its ML-KEM public key + garbage bytes
     2. EXCESS_GARBAGE - Disconnection happens when > MAX_GARBAGE_LEN bytes garbage is sent
     3. WRONG_GARBAGE_TERMINATOR - Disconnection happens when incorrect garbage terminator is sent
     4. WRONG_GARBAGE - Disconnection happens when garbage bytes that is sent is different from what the peer receives
@@ -43,7 +43,7 @@ class EarlyKeyResponseState(EncryptedP2PState):
         self.can_data_be_received = False  # variable used to assert if data is received on recvbuf.
 
     def initiate_v2_handshake(self):
-        """Send ellswift and garbage bytes in 2 parts when TestType = (EARLY_KEY_RESPONSE)"""
+        """Send ML-KEM public key and garbage bytes in 2 parts when TestType = (EARLY_KEY_RESPONSE)"""
         self.generate_keypair_and_garbage()
         return b""
 
@@ -72,9 +72,9 @@ class WrongGarbageState(EncryptedP2PState):
     """Generate tampered garbage bytes"""
     def generate_keypair_and_garbage(self):
         garbage_len = random.randrange(1, MAX_GARBAGE_LEN)
-        ellswift_garbage_bytes = super().generate_keypair_and_garbage(garbage_len)
+        key_garbage_bytes = super().generate_keypair_and_garbage(garbage_len)
         # assume that garbage bytes sent to TestNode were tampered with
-        return ellswift_garbage_bytes[:64] + random_bitflip(ellswift_garbage_bytes[64:])
+        return key_garbage_bytes[:v2_p2p.KEM_PUBLIC_KEY_LEN] + random_bitflip(key_garbage_bytes[v2_p2p.KEM_PUBLIC_KEY_LEN:])
 
 
 class NoAADState(EncryptedP2PState):
@@ -143,16 +143,16 @@ class EncryptedP2PMisbehaving(BitcoinTestFramework):
         self.test_v2disconnection()
 
     def test_earlykeyresponse(self):
-        self.log.info('Sending ellswift bytes in parts to ensure that response from responder is received only when')
-        self.log.info('ellswift bytes have a mismatch from the 16 bytes(network magic followed by "version\\x00\\x00\\x00\\x00\\x00")')
+        self.log.info('Sending ML-KEM public key bytes in parts to ensure that response from responder is received only when')
+        self.log.info('ML-KEM public key bytes have a mismatch from the 16 bytes(network magic followed by "version\\x00\\x00\\x00\\x00\\x00")')
         node0 = self.nodes[0]
         node0.setmocktime(int(time.time()))
-        self.log.info('Sending first 4 bytes of ellswift which match network magic')
+        self.log.info('Sending first 4 bytes of ML-KEM public key which match network magic')
         self.log.info('If a response is received, assertion failure would happen in our custom data_received() function')
         with node0.wait_for_new_peer():
             peer1 = node0.add_p2p_connection(MisbehavingV2Peer(TestType.EARLY_KEY_RESPONSE), wait_for_verack=False, send_version=False, supports_v2_p2p=True, wait_for_v2_handshake=False)
         peer1.send_raw_message(MAGIC_BYTES['regtest'])
-        self.log.info('Sending remaining ellswift and garbage which are different from V1_PREFIX. Since a response is')
+        self.log.info('Sending remaining ML-KEM public key and garbage which are different from V1_PREFIX. Since a response is')
         self.log.info('expected now, our custom data_received() function wouldn\'t result in assertion failure')
         peer1.v2_state.can_data_be_received = True
         self.wait_until(lambda: peer1.v2_state.ellswift_ours)
@@ -163,7 +163,7 @@ class EncryptedP2PMisbehaving(BitcoinTestFramework):
         with node0.assert_debug_log(['V2 handshake timeout, disconnecting peer=0']):
             node0.bumpmocktime(4)  # `InactivityCheck()` triggers now
             peer1.wait_for_disconnect(timeout=1)
-        self.log.info('successful disconnection since modified ellswift was sent as response')
+        self.log.info('successful disconnection since modified ML-KEM public key was sent as response')
 
     def test_v2disconnection(self):
         # test v2 disconnection scenarios

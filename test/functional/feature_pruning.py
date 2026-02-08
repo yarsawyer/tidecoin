@@ -487,14 +487,17 @@ class PruneTest(BitcoinTestFramework):
 
     def test_scanblocks_pruned(self):
         node = self.nodes[5]
+        # Use a real scriptPubKey from the genesis block (from a non-pruned node)
+        # so this test does not depend on Bitcoin-specific hardcoded false positives.
+        source_node = self.nodes[1]
         genesis_blockhash = node.getblockhash(0)
-        false_positive_spk = bytes.fromhex("001400000000000000000000000000000000000cadcb")
+        genesis_scriptpubkey = source_node.getblock(genesis_blockhash, 2)['tx'][0]['vout'][0]['scriptPubKey']['hex']
 
         assert genesis_blockhash in node.scanblocks(
-            "start", [{"desc": f"raw({false_positive_spk.hex()})"}], 0, 0)['relevant_blocks']
+            "start", [{"desc": f"raw({genesis_scriptpubkey})"}], 0, 0)['relevant_blocks']
 
         assert_raises_rpc_error(-1, "Block not available (pruned data)", node.scanblocks,
-            "start", [{"desc": f"raw({false_positive_spk.hex()})"}], 0, 0, "basic", {"filter_false_positives": True})
+            "start", [{"desc": f"raw({genesis_scriptpubkey})"}], 0, 0, "basic", {"filter_false_positives": True})
 
     def test_pruneheight_undo_presence(self):
         node = self.nodes[5]

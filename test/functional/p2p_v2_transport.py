@@ -151,11 +151,15 @@ class V2TransportTest(BitcoinTestFramework):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             with self.nodes[0].wait_for_new_peer():
                 s.connect(("127.0.0.1", p2p_port(0)))
-            with self.nodes[0].assert_debug_log(["V2 transport error: V1 peer with wrong MessageStart"]):
+            peer_id = self.nodes[0].getpeerinfo()[-1]["id"]
+            # Tide can reject this either in v2 detection (wrong MessageStart) or after falling
+            # back to v1 header parsing. Both paths must disconnect the peer.
+            with self.nodes[0].assert_debug_log(["disconnecting peer"]):
                 s.sendall(wrong_network_magic_prefix + b"somepayload")
+                self.wait_until(lambda: peer_id not in [p["id"] for p in self.nodes[0].getpeerinfo()])
 
         # Check detection of missing garbage terminator (hits after fixed amount of data if terminator never matches garbage)
-        MAX_KEY_GARB_AND_GARBTERM_LEN = 64 + 4095 + 16
+        MAX_KEY_GARB_AND_GARBTERM_LEN = 800 + 4095 + 16
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             with self.nodes[0].wait_for_new_peer():
                 s.connect(("127.0.0.1", p2p_port(0)))

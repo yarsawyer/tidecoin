@@ -339,17 +339,21 @@ public:
         fDefaultConsistencyChecks = true;
         m_is_mockable_chain = true;
 
-        // AssumeUTXO data for the deterministic regtest chain produced by our unit-test
-        // harness (TestChain100Setup mines to height 110 with deterministic PQ coinbase).
-        //
-        // To regenerate:
-        //   ./build/bin/test_tidecoin --run_test=validation_chainstatemanager_tests/chainstatemanager_activate_snapshot --report_level=detailed -- --printtoconsole=1
-        // and use the printed "txoutset_hash" / "nchaintx" / "base_hash" values.
+        // AssumeUTXO data for deterministic regtest test vectors.
+        // The height-299 entry is used by feature_assumeutxo.py.
         m_assumeutxo_data = {
             {.height = 110,
-             .hash_serialized = AssumeutxoHash{uint256{"6cdd7e279d1552f1bee12232d1ab64465d9d34b8bc952da931419e33b5f2f8e5"}},
+             .hash_serialized = AssumeutxoHash{uint256{"c53964175a3d9b895e42c25b61198ee8a44f911a0f1f197bca5dfac9e58b850a"}},
              .m_chain_tx_count = 111,
-             .blockhash = consteval_ctor(uint256{"28c79d24d42b39e86e9cd981e3b08c940c0d1413225e4eb49d2911ed721a0b99"})},
+             .blockhash = consteval_ctor(uint256{"8539521c6af61090248ff075b0ca15b876ab49b72919097fffe1295751599cb9"})},
+            {.height = 200,
+             .hash_serialized = AssumeutxoHash{uint256{"30e3eb80545e3c4c12ab6528a9f32ddd09644822ce9d1fd3fd0fee04ab0d1af0"}},
+             .m_chain_tx_count = 202,
+             .blockhash = consteval_ctor(uint256{"2b322de3c65d567ccbd15cb84724fcfbc4f82520bc287bedcb7d1652fe98a754"})},
+            {.height = 299,
+             .hash_serialized = AssumeutxoHash{uint256{"127bbb92ff31cd9bc4a23f63d15841f2c1b9eac91b43db9a9a10853365f25c9e"}},
+             .m_chain_tx_count = 334,
+             .blockhash = consteval_ctor(uint256{"919971d2ad79095dc0aaaed1a135062b61d14d4f533104d1b23658cbe8dd359e"})},
         };
 
         chainTxData = ChainTxData{};

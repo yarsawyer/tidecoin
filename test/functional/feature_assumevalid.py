@@ -16,15 +16,15 @@ transactions:
               output can be spent
     102:      a block containing a transaction spending the coinbase
               transaction output. The transaction has an invalid signature.
-    103-2202: bury the bad block with just over two weeks' worth of blocks
-              (2100 blocks)
+    103-22102: bury the bad block with just over two weeks' worth of blocks
+               for Tidecoin's 60-second target spacing (~20160 blocks)
 
 Start three nodes:
 
-    - node0 has no -assumevalid parameter. Try to sync to block 2202. It will
+    - node0 has no -assumevalid parameter. Try to sync to the final tip. It will
       reject block 102 and only sync as far as block 101
     - node1 has -assumevalid set to the hash of block 102. Try to sync to
-      block 2202. node1 will sync all the way to block 2202.
+      the final tip. node1 will sync all the way.
     - node2 has -assumevalid set to the hash of block 102. Try to sync to
       block 200. node2 will reject block 102 since it's assumed valid, but it
       isn't buried by at least two weeks' work.
@@ -85,6 +85,11 @@ class AssumeValidTest(BitcoinTestFramework):
                 assert not p2p_conn.is_connected
                 break
 
+    @staticmethod
+    def send_headers_in_chunks(p2p_conn, blocks, chunk_size=2000):
+        for i in range(0, len(blocks), chunk_size):
+            p2p_conn.send_header_for_blocks(blocks[i:i + chunk_size])
+
     def run_test(self):
         # Build the blockchain
         self.tip = int(self.nodes[0].getbestblockhash(), 16)
@@ -118,7 +123,9 @@ class AssumeValidTest(BitcoinTestFramework):
         # Create a transaction spending the coinbase output with an invalid (null) signature
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(self.block1.vtx[0].txid_int, 0), scriptSig=b""))
-        tx.vout.append(CTxOut(49 * 100000000, CScript([OP_TRUE])))
+        # Keep this tx value-valid on Tidecoin (40-coin subsidy at height 1),
+        # so the intended failure mode remains "bad signature", not bad amount.
+        tx.vout.append(CTxOut(39 * 100000000, CScript([OP_TRUE])))
 
         block102 = create_block(self.tip, create_coinbase(height), self.block_time, txlist=[tx])
         self.block_time += 1
@@ -128,8 +135,9 @@ class AssumeValidTest(BitcoinTestFramework):
         self.block_time += 1
         height += 1
 
-        # Bury the assumed valid block 2100 deep
-        for _ in range(2100):
+        # Bury the assumed-valid block deep enough for Tidecoin's 60s target spacing.
+        ASSUMEVALID_BURY_DEPTH = 22000
+        for _ in range(ASSUMEVALID_BURY_DEPTH):
             block = create_block(self.tip, create_coinbase(height), self.block_time)
             block.solve()
             self.blocks.append(block)
@@ -142,8 +150,7 @@ class AssumeValidTest(BitcoinTestFramework):
         self.start_node(2, extra_args=["-assumevalid=" + block102.hash_hex])
 
         p2p0 = self.nodes[0].add_p2p_connection(BaseNode())
-        p2p0.send_header_for_blocks(self.blocks[0:2000])
-        p2p0.send_header_for_blocks(self.blocks[2000:])
+        self.send_headers_in_chunks(p2p0, self.blocks)
 
         # Send blocks to node0. Block 102 will be rejected.
         self.send_blocks_until_disconnected(p2p0)
@@ -151,15 +158,14 @@ class AssumeValidTest(BitcoinTestFramework):
         assert_equal(self.nodes[0].getblockcount(), COINBASE_MATURITY + 1)
 
         p2p1 = self.nodes[1].add_p2p_connection(BaseNode())
-        p2p1.send_header_for_blocks(self.blocks[0:2000])
-        p2p1.send_header_for_blocks(self.blocks[2000:])
+        self.send_headers_in_chunks(p2p1, self.blocks)
         with self.nodes[1].assert_debug_log(expected_msgs=['Disabling signature validations at block #1', 'Enabling signature validations at block #103']):
             # Send all blocks to node1. All blocks will be accepted.
-            for i in range(2202):
+            for i in range(len(self.blocks)):
                 p2p1.send_without_ping(msg_block(self.blocks[i]))
-            # Syncing 2200 blocks can take a while on slow systems. Give it plenty of time to sync.
+            # Syncing this chain can take a while on slow systems. Give it plenty of time to sync.
             p2p1.sync_with_ping(timeout=960)
-        assert_equal(self.nodes[1].getblock(self.nodes[1].getbestblockhash())['height'], 2202)
+        assert_equal(self.nodes[1].getblock(self.nodes[1].getbestblockhash())['height'], len(self.blocks))
 
         p2p2 = self.nodes[2].add_p2p_connection(BaseNode())
         p2p2.send_header_for_blocks(self.blocks[0:200])

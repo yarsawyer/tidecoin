@@ -87,6 +87,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         confirmed - txout created will be confirmed in the blockchain;
                     unconfirmed otherwise.
         """
+        self._ensure_spendable_capacity(node, amount + 1000)
         tx = self.wallet.send_to(from_node=node, scriptPubKey=scriptPubKey or self.wallet.get_output_script(), amount=amount)
 
         if confirmed:
@@ -100,6 +101,39 @@ class ReplaceByFeeTest(BitcoinTestFramework):
                 mempool_size = new_size
 
         return self.wallet.get_utxo(txid=tx["txid"], vout=tx["sent_vout"])
+
+    def _ensure_spendable_capacity(self, node, required_sats):
+        """Ensure MiniWallet has at least one confirmed UTXO large enough for `required_sats`."""
+        for _ in range(12):
+            confirmed_utxos = self.wallet.get_utxos(mark_as_spent=False, confirmed_only=True)
+            if not confirmed_utxos:
+                # Mine enough blocks so at least one fresh coinbase becomes spendable.
+                self.generate(node, 110)
+                continue
+            largest = max(int(utxo["value"] * COIN) for utxo in confirmed_utxos)
+            if largest >= required_sats:
+                return
+
+            # Consolidate multiple confirmed UTXOs into one larger confirmed UTXO.
+            selected_utxos = []
+            total_value = 0
+            for utxo in sorted(confirmed_utxos, key=lambda x: x["value"], reverse=True):
+                selected_utxos.append(utxo)
+                total_value += int(utxo["value"] * COIN)
+                if total_value >= required_sats + 1000:
+                    break
+
+            if len(selected_utxos) < 2:
+                self.generate(node, 110)
+                continue
+
+            self.wallet.send_self_transfer_multi(
+                from_node=node,
+                utxos_to_spend=selected_utxos,
+                num_outputs=1,
+            )
+            self.generate(node, 1)
+        raise AssertionError(f"Unable to construct spendable UTXO >= {required_sats} sat for feature_rbf")
 
     def test_simple_doublespend(self):
         """Simple doublespend"""
@@ -137,7 +171,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
     def test_doublespend_chain(self):
         """Doublespend of a long chain"""
 
-        initial_nValue = 5 * COIN
+        initial_nValue = 2 * COIN
         tx0_outpoint = self.make_utxo(self.nodes[0], initial_nValue)
 
         prevout = tx0_outpoint
@@ -155,16 +189,18 @@ class ReplaceByFeeTest(BitcoinTestFramework):
 
         # Whether the double-spend is allowed is evaluated by including all
         # child fees - 4 BTC - so this attempt is rejected.
+        total_conflict_fees = Decimal("0.1") * len(chain_txids)
+        dbl_tx_fee = total_conflict_fees - Decimal("0.1")
         dbl_tx = self.wallet.create_self_transfer(
             utxo_to_spend=tx0_outpoint,
             sequence=0,
-            fee=Decimal("3"),
+            fee=dbl_tx_fee,
         )["tx"]
         dbl_tx_hex = dbl_tx.serialize().hex()
 
         # This will raise an exception due to insufficient fee
         reject_reason = "insufficient fee"
-        reject_details = f"{reject_reason}, rejecting replacement {dbl_tx.txid_hex}, less fees than conflicting txs; 3.00 < 4.00"
+        reject_details = f"{reject_reason}, rejecting replacement {dbl_tx.txid_hex}, less fees than conflicting txs; {dbl_tx_fee:.2f} < {total_conflict_fees:.2f}"
         res = self.nodes[0].testmempoolaccept(rawtxs=[dbl_tx_hex])[0]
         assert_equal(res["reject-reason"], reject_reason)
         assert_equal(res["reject-details"], reject_details)
@@ -184,7 +220,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
     def test_doublespend_tree(self):
         """Doublespend of a big tree of transactions"""
 
-        initial_nValue = 5 * COIN
+        initial_nValue = 2 * COIN
         tx0_outpoint = self.make_utxo(self.nodes[0], initial_nValue)
 
         def branch(prevout, initial_value, max_txs, tree_width=5, fee=0.00001 * COIN, _total_txs=None):
@@ -263,7 +299,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
 
     def test_replacement_feeperkb(self):
         """Replacement requires fee-per-KB to be higher"""
-        tx0_outpoint = self.make_utxo(self.nodes[0], int(1.1 * COIN))
+        tx0_outpoint = self.make_utxo(self.nodes[0], int(0.6 * COIN))
 
         self.wallet.send_self_transfer(
             from_node=self.nodes[0],
@@ -287,7 +323,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
     def test_spends_of_conflicting_outputs(self):
         """Replacements that spend conflicting tx outputs are rejected"""
         utxo1 = self.make_utxo(self.nodes[0], int(1.2 * COIN))
-        utxo2 = self.make_utxo(self.nodes[0], 3 * COIN)
+        utxo2 = self.make_utxo(self.nodes[0], 2 * COIN)
 
         tx1a = self.wallet.send_self_transfer(
             from_node=self.nodes[0],
@@ -333,7 +369,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
 
     def test_new_unconfirmed_inputs(self):
         """Replacements that add new unconfirmed inputs are rejected"""
-        confirmed_utxo = self.make_utxo(self.nodes[0], int(1.1 * COIN))
+        confirmed_utxo = self.make_utxo(self.nodes[0], int(0.8 * COIN))
         unconfirmed_utxo = self.make_utxo(self.nodes[0], int(0.1 * COIN), confirmed=False)
 
         self.wallet.send_self_transfer(
@@ -346,7 +382,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         tx2 = self.wallet.create_self_transfer_multi(
             utxos_to_spend=[confirmed_utxo, unconfirmed_utxo],
             sequence=0,
-            amount_per_output=1 * COIN,
+            amount_per_output=int(0.5 * COIN),
         )["tx"]
         tx2_hex = tx2.serialize().hex()
 
@@ -365,7 +401,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         # transactions
 
         # Start by creating a single transaction with many outputs
-        initial_nValue = 10 * COIN
+        initial_nValue = 2 * COIN
         utxo = self.make_utxo(self.nodes[0], initial_nValue)
         fee = int(0.0001 * COIN)
         split_value = int((initial_nValue - fee) / (MAX_REPLACEMENT_LIMIT + 1))
@@ -500,7 +536,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         # correctly used by replacement logic
 
         # 1. Check that feeperkb uses modified fees
-        tx0_outpoint = self.make_utxo(self.nodes[0], int(1.1 * COIN))
+        tx0_outpoint = self.make_utxo(self.nodes[0], int(0.6 * COIN))
 
         tx1a_txid = self.wallet.send_self_transfer(
             from_node=self.nodes[0],
@@ -529,7 +565,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         assert tx1b_txid in self.nodes[0].getrawmempool()
 
         # 2. Check that absolute fee checks use modified fee.
-        tx1_outpoint = self.make_utxo(self.nodes[0], int(1.1 * COIN))
+        tx1_outpoint = self.make_utxo(self.nodes[0], int(0.6 * COIN))
 
         # tx2a
         self.wallet.send_self_transfer(
@@ -627,7 +663,9 @@ class ReplaceByFeeTest(BitcoinTestFramework):
     def test_fullrbf(self):
         # BIP125 signaling is not respected
 
-        confirmed_utxo = self.make_utxo(self.nodes[0], int(2 * COIN))
+        seed_utxo = self.make_utxo(self.nodes[0], int(0.2 * COIN), confirmed=False)
+        self.generate(self.nodes[0], 1)
+        confirmed_utxo = seed_utxo
         assert self.nodes[0].getmempoolinfo()["fullrbf"]
 
         # Create an explicitly opt-out BIP125 transaction, which will be ignored

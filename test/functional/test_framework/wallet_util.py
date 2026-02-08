@@ -206,14 +206,15 @@ def generate_keypair_at_index(index, scheme=None):
     item = data[0] if isinstance(data, list) else data
     return item["privkey_wif"], bytes.fromhex(item["pubkey_hex"])
 
-def sign_tx_with_key(node, tx, privkeys, prevtxs=None, sighash_type=None):
+def sign_tx_with_key(node, tx, privkeys, prevtxs=None, sighash_type=None, require_complete=True):
     """Sign a transaction using signrawtransactionwithkey RPC."""
     prevtxs = prevtxs or []
     kwargs = {}
     if sighash_type is not None:
         kwargs["sighashtype"] = sighash_type_to_str(sighash_type)
     result = node.signrawtransactionwithkey(tx.serialize().hex(), privkeys, prevtxs, **kwargs)
-    assert result.get("complete", False)
+    if require_complete:
+        assert result.get("complete", False)
     return tx_from_hex(result["hex"])
 
 def calculate_input_weight(scriptsig_hex, witness_stack_hex=None):

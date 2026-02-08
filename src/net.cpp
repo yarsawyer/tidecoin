@@ -1641,7 +1641,7 @@ bool V2Transport::ShouldReconnectV1() const noexcept
     LOCK(m_recv_mutex);
     // We only reconnect in the very first state and when the receive buffer is empty. Together
     // these conditions imply nothing has been received so far.
-    if (m_recv_state != RecvState::KEY) return false;
+    if (m_recv_state != RecvState::CT) return false;
     if (!m_recv_buffer.empty()) return false;
     // Check if we've sent enough for the other side to disconnect us (if it was V1).
     LOCK(m_send_mutex);

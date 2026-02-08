@@ -10,6 +10,7 @@ See feature_assumeutxo.py for background.
 - TODO: test loading a wallet (backup) on a pruned node
 
 """
+from decimal import Decimal
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
 from test_framework.test_framework import BitcoinTestFramework
@@ -118,7 +119,7 @@ class AssumeutxoTest(BitcoinTestFramework):
 
         assert_equal(
             dump_output['txoutset_hash'],
-            "d2b051ff5e8eef46520350776f4100dd710a63447a8e01d917e92e79751a63e2")
+            "127bbb92ff31cd9bc4a23f63d15841f2c1b9eac91b43db9a9a10853365f25c9e")
         assert_equal(dump_output["nchaintx"], 334)
         assert_equal(n0.getblockchaininfo()["blocks"], SNAPSHOT_BASE_HEIGHT)
 
@@ -126,10 +127,14 @@ class AssumeutxoTest(BitcoinTestFramework):
         # will allow us to test n1's sync-to-tip on top of a snapshot.
         w_skp = address_to_scriptpubkey(w_address)
         w2_skp = address_to_scriptpubkey(w2_address)
+        # Tidecoin coinbase values are lower at these heights than Bitcoin's
+        # assumptions. Use smaller deterministic transfers for this test.
+        send_amount_w = COIN // 10   # 0.1
+        send_amount_w2 = COIN // 5   # 0.2
         for i in range(100):
             if i % 3 == 0:
-                self.mini_wallet.send_to(from_node=n0, scriptPubKey=w_skp, amount=1 * COIN)
-                self.mini_wallet.send_to(from_node=n0, scriptPubKey=w2_skp, amount=10 * COIN)
+                self.mini_wallet.send_to(from_node=n0, scriptPubKey=w_skp, amount=send_amount_w)
+                self.mini_wallet.send_to(from_node=n0, scriptPubKey=w2_skp, amount=send_amount_w2)
             self.generate(n0, nblocks=1, sync_fun=self.no_op)
 
         assert_equal(n0.getblockcount(), FINAL_HEIGHT)
@@ -210,19 +215,19 @@ class AssumeutxoTest(BitcoinTestFramework):
         self.log.info("Ensuring wallet can be restored from a backup that was created before the snapshot height")
         n1.restorewallet("w2", "backup_w2.dat")
         # Check balance of w2 wallet
-        assert_equal(n1.getbalance(), 340)
+        assert_equal(n1.getbalance(), Decimal("6.8"))
 
         # Check balance of w wallet after node is synced
         n1.loadwallet("w")
         w = n1.get_wallet_rpc("w")
-        assert_equal(w.getbalance(), 34)
+        assert_equal(w.getbalance(), Decimal("3.4"))
 
         self.log.info("Check balance of a wallet that is active during snapshot completion")
         n2.restorewallet("w", "backup_w.dat")
         loaded = n2.loadtxoutset(dump_output['path'])
         self.connect_nodes(0, 2)
         self.wait_until(lambda: len(n2.getchainstates()['chainstates']) == 1)
-        ensure_for(duration=1, f=lambda: (n2.getbalance() == 34))
+        ensure_for(duration=1, f=lambda: (n2.getbalance() == Decimal("3.4")))
 
         self.log.info("Ensuring descriptors can be loaded after background sync")
         n1.loadwallet(wallet_name)

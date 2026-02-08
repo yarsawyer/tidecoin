@@ -429,7 +429,8 @@ class NetTest(BitcoinTestFramework):
         node.sendmsgtopeer(peer_id=0, msg_type="addr", msg="FF")
 
         self.log.debug("Test that oversized messages are allowed, but get us disconnected")
-        zero_byte_string = b'\x00' * 4000001
+        # Tidecoin allows up to 8,000,000-byte protocol messages.
+        zero_byte_string = b'\x00' * 8000001
         node.sendmsgtopeer(peer_id=0, msg_type="addr", msg=zero_byte_string.hex())
         self.wait_until(lambda: len(self.nodes[0].getpeerinfo()) == 0, timeout=10)
 

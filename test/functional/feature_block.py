@@ -59,6 +59,11 @@ from test_framework.wallet_util import generate_keypair, sign_tx_with_key
 from data import invalid_txs
 
 
+# Tide consensus script limits (src/script/script.h).
+TIDE_MAX_SCRIPT_ELEMENT_SIZE = 8192
+TIDE_MAX_SCRIPT_SIZE = 65536
+TIDE_MAX_COINBASE_SCRIPTSIG_SIZE = 106
+
 #  Use this class for tests that require behavior other than normal p2p behavior.
 #  For now, it is used to serialize a bloated varint (b64).
 class CBrokenBlock(CBlock):
@@ -108,16 +113,21 @@ class FullBlockTest(BitcoinTestFramework):
 
         # Create a new block
         b_dup_cb = self.next_block('dup_cb')
+        # Build the duplicate coinbase from a height-120 template so that later
+        # BIP30 duplicate checks (at height 120) match both scriptSig and subsidy.
+        b_dup_cb.vtx[0] = create_coinbase(120, self.coinbase_pubkey)
+        b_dup_cb.vtx[0].nLockTime = 0
         b_dup_cb.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
         duplicate_tx = b_dup_cb.vtx[0]
         b_dup_cb = self.update_block('dup_cb', [])
         self.send_blocks([b_dup_cb])
 
-        # Add gigantic boundary scripts that respect all other limits
-        max_valid_script = CScript([b'\x01' * MAX_SCRIPT_ELEMENT_SIZE] * 19 + [b'\x01' * 62])
-        assert_equal(len(max_valid_script), MAX_SCRIPT_SIZE)
-        min_invalid_script = CScript([b'\x01' * MAX_SCRIPT_ELEMENT_SIZE] * 19 + [b'\x01' * 63])
-        assert_equal(len(min_invalid_script), MAX_SCRIPT_SIZE + 1)
+        # Add gigantic boundary scripts that respect all other limits.
+        # Keep the original intent: one exactly at consensus limit, one byte above.
+        max_valid_script = CScript([b'\x01' * TIDE_MAX_SCRIPT_ELEMENT_SIZE] * 7 + [b'\x01' * 8168])
+        assert_equal(len(max_valid_script), TIDE_MAX_SCRIPT_SIZE)
+        min_invalid_script = CScript([b'\x01' * TIDE_MAX_SCRIPT_ELEMENT_SIZE] * 7 + [b'\x01' * 8169])
+        assert_equal(len(min_invalid_script), TIDE_MAX_SCRIPT_SIZE + 1)
 
         b0 = self.next_block(0, additional_output_scripts=[max_valid_script, min_invalid_script])
         self.save_spendable_output()
@@ -393,7 +403,7 @@ class FullBlockTest(BitcoinTestFramework):
         # Now try a too-large-coinbase script
         self.move_tip(15)
         b28 = self.next_block(28, spend=out[6])
-        b28.vtx[0].vin[0].scriptSig = b'\x00' * 101
+        b28.vtx[0].vin[0].scriptSig = b'\x00' * (TIDE_MAX_COINBASE_SCRIPTSIG_SIZE + 1)
         b28 = self.update_block(28, [])
         self.send_blocks([b28], success=False, reject_reason='bad-cb-length', reconnect=True)
 
@@ -405,8 +415,8 @@ class FullBlockTest(BitcoinTestFramework):
         self.move_tip(23)
         b30 = self.next_block(30)
         b30.vtx[0].vin[0].scriptSig = bytes(b30.vtx[0].vin[0].scriptSig)  # Convert CScript to raw bytes
-        b30.vtx[0].vin[0].scriptSig += b'\x00' * (100 - len(b30.vtx[0].vin[0].scriptSig))  # Fill with 0s
-        assert_equal(len(b30.vtx[0].vin[0].scriptSig), 100)
+        b30.vtx[0].vin[0].scriptSig += b'\x00' * (TIDE_MAX_COINBASE_SCRIPTSIG_SIZE - len(b30.vtx[0].vin[0].scriptSig))  # Fill with 0s
+        assert_equal(len(b30.vtx[0].vin[0].scriptSig), TIDE_MAX_COINBASE_SCRIPTSIG_SIZE)
         b30 = self.update_block(30, [])
         self.send_blocks([b30], True)
         self.save_spendable_output()
@@ -499,8 +509,9 @@ class FullBlockTest(BitcoinTestFramework):
         b39_outputs = 0
         b39_sigops_per_output = 6
 
-        # Build the redeem script, hash it, use hash to create the p2sh script
-        redeem_script = CScript([self.coinbase_pubkey] + [OP_2DUP, OP_CHECKSIGVERIFY] * 5 + [OP_CHECKSIG])
+        # Tidecoin is PQ-only. Keep sigop accounting identical (6 CHECKSIG ops)
+        # while avoiding legacy P2SH signature satisfaction requirements.
+        redeem_script = CScript([OP_FALSE, OP_IF] + [OP_CHECKSIG] * b39_sigops_per_output + [OP_ENDIF, OP_TRUE])
         p2sh_script = script_to_p2sh_script(redeem_script)
 
         # Create a transaction that spends one satoshi to the p2sh_script, the rest to OP_TRUE
@@ -529,8 +540,8 @@ class FullBlockTest(BitcoinTestFramework):
         # The accounting in the loop above can be off, because it misses the
         # compact size encoding of the number of transactions in the block.
         # Make sure we didn't accidentally make too big a block. Note that the
-        # size of the block has non-determinism due to the ECDSA signature in
-        # the first transaction.
+        # size of the block can vary due to signature serialization in the
+        # first transaction.
         while b39.get_weight() >= MAX_BLOCK_WEIGHT:
             del b39.vtx[-1]
 
@@ -549,34 +560,39 @@ class FullBlockTest(BitcoinTestFramework):
         self.move_tip(39)
         b40 = self.next_block(40, spend=out[12])
         sigops = get_legacy_sigopcount_block(b40)
-        numTxes = (MAX_BLOCK_SIGOPS - sigops) // b39_sigops_per_output
-        assert_equal(numTxes <= b39_outputs, True)
+        numTxes_sigops = (MAX_BLOCK_SIGOPS - sigops) // b39_sigops_per_output
+        assert_equal(numTxes_sigops <= b39_outputs, True)
 
         lastOutpoint = COutPoint(b40.vtx[1].txid_int, 0)
         new_txs = []
-        for i in range(1, numTxes + 1):
+        new_txs_weight = 0
+        base_block_weight = b40.get_weight()
+        for i in range(1, numTxes_sigops + 1):
             tx = CTransaction()
             tx.vout.append(CTxOut(1, CScript([OP_TRUE])))
             tx.vin.append(CTxIn(lastOutpoint, b''))
             # second input is corresponding P2SH output from b39
             tx.vin.append(CTxIn(COutPoint(b39.vtx[i].txid_int, 0), b''))
-            # Note: must pass the redeem_script (not p2sh_script) to the signature hash function
-            prevtx = {
-                "txid": f"{b39.vtx[i].txid_int:064x}",
-                "vout": 0,
-                "scriptPubKey": b39.vtx[i].vout[0].scriptPubKey.hex(),
-                "redeemScript": redeem_script.hex(),
-                "amount": Decimal(b39.vtx[i].vout[0].nValue) / COIN,
-            }
-            signed = sign_tx_with_key(self.nodes[0], tx, [self.coinbase_privkey], [prevtx])
-            tx.vin = signed.vin
-            tx.vout = signed.vout
-            tx.wit = signed.wit
-            tx.nLockTime = signed.nLockTime
-            tx.version = signed.version
+            tx.vin[1].scriptSig = CScript([redeem_script])
+            tx_weight = tx.get_weight()
+
+            # Keep this subtest focused on sigops by ensuring the candidate
+            # block stays within MAX_BLOCK_WEIGHT before we append this tx.
+            sigops_to_fill = MAX_BLOCK_SIGOPS - ((len(new_txs) + 1) * b39_sigops_per_output + sigops) + 1
+            filler = CTransaction()
+            filler.vin.append(CTxIn(COutPoint(tx.txid_int, 0), b''))
+            filler.vout.append(CTxOut(1, CScript([OP_CHECKSIG] * sigops_to_fill)))
+            projected_weight = base_block_weight + new_txs_weight + tx_weight + filler.get_weight()
+            if projected_weight > MAX_BLOCK_WEIGHT:
+                break
+
             new_txs.append(tx)
+            new_txs_weight += tx_weight
             lastOutpoint = COutPoint(tx.txid_int, 0)
 
+        assert new_txs
+
+        numTxes = len(new_txs)
         b40_sigops_to_fill = MAX_BLOCK_SIGOPS - (numTxes * b39_sigops_per_output + sigops) + 1
         tx = CTransaction()
         tx.vin.append(CTxIn(lastOutpoint, b''))
@@ -667,9 +683,15 @@ class FullBlockTest(BitcoinTestFramework):
         self.move_tip(44)
         b47 = self.next_block(47)
         target = uint256_from_compact(b47.nBits)
-        while b47.hash_int <= target:
-            # Rehash nonces until an invalid too-high-hash block is found.
-            b47.nNonce += 1
+        # In Tidecoin tests, block.solve() uses scrypt PoW. In upstream Bitcoin,
+        # PoW validity is checked against the header hash. Build an invalid block
+        # for whichever PoW metric this test framework exposes.
+        if hasattr(b47, "scrypt_pow_int"):
+            while b47.scrypt_pow_int() <= target:
+                b47.nNonce += 1
+        else:
+            while b47.hash_int <= target:
+                b47.nNonce += 1
         self.send_blocks([b47], False, force_send=True, reject_reason='high-hash', reconnect=True)
 
         self.log.info("Reject a block with a timestamp >2 hours in the future")
@@ -1359,18 +1381,21 @@ class FullBlockTest(BitcoinTestFramework):
         if (scriptPubKey[0] == OP_TRUE):  # an anyone-can-spend
             tx.vin[0].scriptSig = CScript()
             return
+        original_script_sig = tx.vin[0].scriptSig
         prevtx = {
             "txid": f"{spend_tx.txid_int:064x}",
             "vout": 0,
             "scriptPubKey": spend_tx.vout[0].scriptPubKey.hex(),
             "amount": Decimal(spend_tx.vout[0].nValue) / COIN,
         }
-        signed = sign_tx_with_key(self.nodes[0], tx, [self.coinbase_privkey], [prevtx])
+        # Some invalid-tx templates intentionally break prevout references; in that
+        # path we still want partially signed data for block-level rejection tests.
+        signed = sign_tx_with_key(self.nodes[0], tx, [self.coinbase_privkey], [prevtx], require_complete=False)
         tx.vin = signed.vin
-        tx.vout = signed.vout
         tx.wit = signed.wit
-        tx.nLockTime = signed.nLockTime
-        tx.version = signed.version
+        # Match upstream sign_input_legacy behavior by preserving any existing
+        # scriptSig bytes after the generated signature push.
+        tx.vin[0].scriptSig = tx.vin[0].scriptSig + original_script_sig
 
     def create_and_sign_transaction(self, spend_tx, value, output_script=None):
         if output_script is None:

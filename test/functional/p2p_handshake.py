@@ -27,6 +27,9 @@ from test_framework.util import p2p_port
 #  2. the local chain is close to the tip (<24h)
 DESIRABLE_SERVICE_FLAGS_FULL = NODE_NETWORK | NODE_WITNESS
 DESIRABLE_SERVICE_FLAGS_PRUNED = NODE_NETWORK_LIMITED | NODE_WITNESS
+NODE_NETWORK_LIMITED_ALLOW_CONN_BLOCKS = 144
+POW_TARGET_SPACING_SEC = 60
+NETWORK_LIMITED_WINDOW_SEC = NODE_NETWORK_LIMITED_ALLOW_CONN_BLOCKS * POW_TARGET_SPACING_SEC
 
 
 class P2PHandshakeTest(BitcoinTestFramework):
@@ -78,11 +81,13 @@ class P2PHandshakeTest(BitcoinTestFramework):
         self.test_desirable_service_flags(node, [NODE_NETWORK | NODE_WITNESS],
                                           DESIRABLE_SERVICE_FLAGS_FULL, expect_disconnect=False)
 
-        self.log.info("Check that limited peers are only desired if the local chain is close to the tip (<24h)")
-        self.generate_at_mocktime(int(time.time()) - 25 * 3600)  # tip outside the 24h window, should fail
+        self.log.info("Check that limited peers are only desired if the local chain is close to the tip")
+        # The threshold is NODE_NETWORK_LIMITED_ALLOW_CONN_BLOCKS blocks behind tip.
+        # On Tidecoin regtest this maps to 144 * 60s = 2.4h.
+        self.generate_at_mocktime(int(time.time()) - (NETWORK_LIMITED_WINDOW_SEC + 3600))  # outside window, should fail
         self.test_desirable_service_flags(node, [NODE_NETWORK_LIMITED | NODE_WITNESS],
                                           DESIRABLE_SERVICE_FLAGS_FULL, expect_disconnect=True)
-        self.generate_at_mocktime(int(time.time()) - 23 * 3600)  # tip inside the 24h window, should succeed
+        self.generate_at_mocktime(int(time.time()) - (NETWORK_LIMITED_WINDOW_SEC - 600))  # inside window, should succeed
         self.test_desirable_service_flags(node, [NODE_NETWORK_LIMITED | NODE_WITNESS],
                                           DESIRABLE_SERVICE_FLAGS_PRUNED, expect_disconnect=False)
 
