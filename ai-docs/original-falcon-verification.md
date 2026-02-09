@@ -317,11 +317,293 @@ The two intentional differences (norm bound and max signature size) are the "leg
 - https://raw.githubusercontent.com/PQClean/PQClean/master/crypto_sign/falcon-512/clean/fpr.h
 - https://raw.githubusercontent.com/PQClean/PQClean/master/crypto_sign/falcon-512/clean/common.c
 
-### 11.3 Background Research
+### 11.3 Falcon Specification and Reference Implementation
 
-- **PQClean GitHub repository**: https://github.com/PQClean/PQClean
-- **Falcon specification**: https://falcon-sign.info
-- **2019 bug fix commit context**: The fix was committed to the Falcon reference implementation on September 18, 2019, by Thomas Pornin, and subsequently propagated to PQClean.
+- https://falcon-sign.info/
+- https://falcon-sign.info/falcon.pdf
+- https://falcon-sign.info/falcon-impl-20190802.pdf
+- https://falcon-sign.info/impl/falcon.h.html
+- https://falcon-sign.info/impl/config.h.html
+- https://falcon-sign.info/impl/sign.c.html
+
+### 11.4 PQClean Repository
+
+- https://github.com/PQClean/PQClean
+- https://github.com/PQClean/PQClean/pull/210 (Falcon integer-only CT implementation)
+- https://github.com/PQClean/PQClean/issues/522 (aarch64 fmla bit-flip issue)
+- https://github.com/PQClean/PQClean/security
+
+### 11.5 2019 Falcon Sampler Bug Analysis
+
+- https://www.esat.kuleuven.be/cosic/blog/ccs25-falconbug/ (How Bad Was The Falcon Bug of 2019? — CCS 2025)
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/7Z8x5AMXy8s/m/Spyv8VYoBQAJ (Falcon bug & fixes — NIST PQC Forum)
+- https://cryptoservices.github.io/post-quantum/cryptography/2019/09/18/new-falcon-impl.html (NCC Group: New Falcon implementation)
+- https://cryptoservices.github.io/post-quantum/cryptography/2019/10/21/falcon-implementation.html (NCC Group: Optimized Falcon)
+
+### 11.6 FN-DSA (FIPS 206) Standardization
+
+- https://csrc.nist.gov/presentations/2025/fips-206-fn-dsa-falcon
+- https://csrc.nist.gov/csrc/media/presentations/2025/fips-206-fn-dsa-(falcon)/images-media/fips_206-perlner_2.1.pdf
+- https://csrc.nist.gov/csrc/media/Presentations/2024/falcon/images-media/prest-falcon-pqc2024.pdf
+- https://csrc.nist.gov/csrc/media/presentations/2024/navigating-floating-point-challenges-in-falcon
+- https://csrc.nist.gov/csrc/media/Presentations/Falcon/images-media/Falcon-April2018.pdf
+- https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/selected-algos-2022/official-comments/falcon-selected-algo-official-comment.pdf
+- https://csrc.nist.gov/csrc/media/Events/2022/fourth-pqc-standardization-conference/documents/papers/falcon-down-pqc2022.pdf
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/Dpr3tnTlKy0/m/X8z4uVw5AAAJ (Signature format feedback)
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/1HXzjlMUU6Y (FIPS 206 status)
+- https://www.digicert.com/blog/quantum-ready-fndsa-nears-draft-approval-from-nist
+- https://www.inria.fr/en/nist-algorithm-falcon-post-quantum-cryptographic
+
+### 11.7 Falcon Cryptanalysis and Side-Channel Research
+
+- https://eprint.iacr.org/2007/432.pdf (GPV framework — foundational lattice-based signatures)
+- https://eprint.iacr.org/2021/772 (FALCON DOWN — side-channel attack)
+- https://eprint.iacr.org/2024/710.pdf (BUFFing Falcon / FN-DSA BUFF security)
+- https://eprint.iacr.org/2024/1709 (Floating-point error sensitivity in Falcon)
+- https://eprint.iacr.org/2024/1769.pdf (A Closer Look at Falcon)
+- https://eprint.iacr.org/2024/321.pdf (Formal verification of emulated floating-point in Falcon)
+- https://eprint.iacr.org/2025/1042 (Crowhammer: Rowhammer bit-flip key recovery)
+- https://eprint.iacr.org/2025/351.pdf (Thorough power analysis on Falcon)
+- https://eprint.iacr.org/2025/2159 (Single-trace key recovery)
+- https://eprint.iacr.org/2021/1486.pdf (Mitaka: simpler Falcon variant)
+- https://arxiv.org/html/2504.00320v1 (SHIFT SNARE — single-trace analysis)
+- https://dl.acm.org/doi/10.1007/978-3-031-30634-1_19 (EUROCRYPT 2023 — power analysis)
+
+### 11.8 Thomas Pornin FN-DSA Reference Implementations
+
+- https://github.com/pornin/rust-fn-dsa
+- https://github.com/pornin/c-fn-dsa
+
+### 11.9 ML-DSA / CRYSTALS-Dilithium Research
+
+- https://pq-crystals.org/dilithium/
+- https://pq-crystals.org/dilithium/data/dilithium-specification-round3-20210208.pdf
+- https://pq-crystals.org/dilithium/resources.shtml
+- https://eprint.iacr.org/2017/633.pdf (CRYSTALS-Dilithium original paper)
+- https://tches.iacr.org/index.php/TCHES/article/view/839
+- https://link.springer.com/chapter/10.1007/978-3-642-10366-7_35 (Fiat-Shamir with Aborts)
+- https://iacr.org/archive/asiacrypt2009/59120596/59120596.pdf
+- https://link.springer.com/chapter/10.1007/978-3-031-38554-4_12 (Fixing Fiat-Shamir with Aborts proof — CRYPTO 2023)
+- https://perso.ens-lyon.fr/damien.stehle/downloads/MSIS.pdf (Module lattice reductions)
+- https://dl.acm.org/doi/10.1007/s10623-014-9938-4
+- https://cims.nyu.edu/~regev/papers/lwesurvey.pdf (LWE survey)
+- https://web.eecs.umich.edu/~cpeikert/pubs/LWsE.pdf (SIS/LWE with small parameters)
+- https://arxiv.org/html/2409.02222v1 (Module-LWE/SIS digital signatures)
+- https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.204.pdf
+- https://csrc.nist.gov/files/pubs/fips/204/ipd/docs/fips-204-initial-public-comments-2023.pdf
+- https://github.com/pq-crystals/dilithium (reference implementation)
+
+### 11.10 NIST Post-Quantum Cryptography Standards
+
+- https://csrc.nist.gov/pubs/fips/203/final (FIPS 203: ML-KEM)
+- https://csrc.nist.gov/pubs/fips/204/final (FIPS 204: ML-DSA)
+- https://csrc.nist.gov/pubs/fips/205/final (FIPS 205: SLH-DSA)
+- https://csrc.nist.gov/projects/post-quantum-cryptography/post-quantum-cryptography-standardization
+- https://csrc.nist.gov/projects/post-quantum-cryptography/post-quantum-cryptography-standardization/evaluation-criteria/security-(evaluation-criteria)
+- https://csrc.nist.gov/projects/post-quantum-cryptography/workshops-and-timeline
+- https://csrc.nist.gov/projects/post-quantum-cryptography/faqs
+- https://csrc.nist.gov/pubs/ir/8547/ipd (IR 8547: Transition to PQC Standards)
+- https://csrc.nist.gov/Presentations/2024/practical-cost-of-grover-for-aes-key-recovery
+- https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.204.pdf
+- https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.203.pdf
+- https://www.nist.gov/news-events/news/2024/08/nist-releases-first-3-finalized-post-quantum-encryption-standards
+- https://www.nist.gov/news-events/news/2025/03/nist-selects-hqc-fifth-algorithm-post-quantum-encryption
+- https://www.federalregister.gov/documents/2024/08/14/2024-17956/announcing-issuance-of-federal-information-processing-standards-fips-fips-203-module-lattice-based
+
+### 11.11 Open Quantum Safe and Other PQ Libraries
+
+- https://openquantumsafe.org/liboqs/algorithms/sig/falcon.html
+- https://openquantumsafe.org/liboqs/algorithms/sig/ml-dsa.html
+- https://pqshield.com/falcon-a-post-quantum-signature-scheme/
+- https://quarkslab.github.io/crypto-condor/latest/method/Falcon.html
+- https://github.com/itzmeanjan/ml-kem
+
+### 11.12 Quantum Computing Threat Research
+
+- https://eprint.iacr.org/2017/598.pdf (Quantum resource estimates for ECDLP)
+- https://eprint.iacr.org/2021/967.pdf
+- https://eprint.iacr.org/2021/292.pdf
+- https://eprint.iacr.org/2016/989 (Scrypt is maximally memory-hard)
+- https://eprint.iacr.org/2023/062.pdf
+- https://eprint.iacr.org/2022/1503
+- https://eprint.iacr.org/2016/992.pdf
+- https://arxiv.org/abs/1603.09383
+- https://arxiv.org/pdf/1711.04235
+- https://arxiv.org/pdf/2505.02239
+- https://arxiv.org/pdf/2510.09271
+- https://arxiv.org/pdf/2409.01358
+- https://arxiv.org/abs/2301.05680
+- https://arxiv.org/abs/2110.00878
+- https://arxiv.org/html/2312.17483
+- https://journals.aps.org/prxquantum/pdf/10.1103/PRXQuantum.5.020312
+- https://www.nature.com/articles/s41534-024-00848-3
+- https://www.nature.com/articles/s41586-022-05434-1
+- https://www.nature.com/articles/s41586-024-08449-y
+- https://www.amazon.science/publications/systems-architecture-for-quantum-random-access-memory
+- https://www.scilit.com/publications/a073ad723dcb63ac9c9a13eb40515fb5
+- https://kudelskisecurity.com/research/quantum-attack-resource-estimate-using-shors-algorithm-to-break-rsa-vs-dh-dsa-vs-ecc/
+- https://postquantum.com/post-quantum/nist-pqc-security-categories/
+- https://postquantum.com/post-quantum/grovers-algorithm/
+- https://postquantum.com/post-quantum/brassard-hoyer-tapp-bht/
+- https://en.wikipedia.org/wiki/Grover's_algorithm
+
+### 11.13 Scrypt and YespowerTIDE (PoW Research)
+
+- https://www.mdpi.com/2079-9292/13/16/3167 (Grover on Scrypt)
+- https://www.mdpi.com/2079-9292/12/21/4485
+- https://quantum-safeinternet.com/project/quantum-security-of-memory-hard-functions/
+- https://link.springer.com/chapter/10.1007/978-3-319-56617-7_2
+- https://link.springer.com/chapter/10.1007/978-981-99-8727-6_1
+- https://dl.acm.org/doi/fullHtml/10.1145/3613424.3614270
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC10490729/
+- https://sites.cs.ucsb.edu/~rich/class/old.cs290/papers/scrypt.pdf
+- https://www.rfc-editor.org/rfc/rfc7914.html (RFC 7914: scrypt)
+- https://www.tarsnap.com/scrypt.html
+- https://www.tarsnap.com/scrypt/scrypt.pdf
+- https://www.openwall.com/yespower/
+- https://www.openwall.com/yescrypt/
+- https://github.com/openwall/yespower
+- https://en.wikipedia.org/wiki/Solar_Designer
+- https://openwall.info/wiki/people/solar/bio
+- https://en.wikipedia.org/wiki/Scrypt
+- https://litecoin.info/docs/key-concepts/proof-of-work
+
+### 11.14 Merged Mining Research
+
+- https://en.bitcoin.it/wiki/Merged_mining_specification
+- https://tlu.tarilabs.com/mining/MergedMiningIntroduction
+- https://www.binance.com/en/research/analysis/merged-mining
+- https://www.litecoinpool.org/news?id=59
+- https://litecoin.com/news/how-litecoin-and-dogecoin-created-one-of-the-most-robust-pow-networks
+- https://coincub.com/mining/merge-mining/
+- https://www.coinspect.com/blog/merged-mining-security/
+- https://earnednotgifted.medium.com/my-take-on-merged-mining-why-merged-mining-doesnt-increase-security-of-the-auxiliary-chain-ccd3bbc978b5
+- https://blog.thirdweb.com/understanding-merged-mining-a-comprehensive-guide/
+
+### 11.15 Bitcoin Quantum Resistance and BIP-360
+
+- https://bitcoinops.org/en/topics/quantum-resistance/
+- https://www.gopher.security/post-quantum/is-sha-256-secure-against-quantum-attacks
+- https://bip360.org/bip360.html
+- https://bip360.org/
+- https://qbip.org/
+- https://delvingbitcoin.org/t/proposing-a-p2qrh-bip-towards-a-quantum-resistant-soft-fork/956
+- https://delvingbitcoin.org/t/post-quantum-hd-wallets-silent-payments-key-aggregation-and-threshold-signatures/1854
+- https://chaincode.com/bitcoin-post-quantum.pdf
+- https://blog.projecteleven.com/posts/a-look-at-post-quantum-proposals-for-bitcoin
+- https://blog.projecteleven.com/posts/hd-wallets--quantum-risk-does-reusing-one-address-endanger-the-rest
+- https://river.com/learn/will-quantum-computing-break-bitcoin/
+- https://hrf.org/latest/the-quantum-threat-to-bitcoin/
+- https://bitcoinmagazine.com/news/new-bitcoin-improvement-proposal-aims-to-solve-future-quantum-security-risks
+- https://bitbo.io/news/quantum-resistant-bip-360-debate/
+- https://thebitcoinmanual.com/articles/qramp/
+- https://en.bitcoin.it/wiki/Quantum_computing_and_Bitcoin
+- https://braiins.com/blog/can-quantum-computers-51-attack-bitcoin
+- https://hackernoon.com/what-it-takes-for-quantum-computers-to-mine-bitcoin-efficiently
+- https://conduition.io/cryptography/quantum-hbs/
+- https://postquantum.com/post-quantum/quantum-cryptocurrencies-bitcoin/
+
+### 11.16 Post-Quantum Blockchain Projects (Competitive Landscape)
+
+- https://www.theqrl.org/
+- https://docs.theqrl.org/what-is-qrl/
+- https://www.theqrl.org/blog/techniques-for-efficient-post-quantum-finance-part-4-reducing-storage-requirements/
+- https://algorand.co/technology/post-quantum
+- https://algorand.co/blog/technical-brief-quantum-resistant-transactions-on-algorand-with-falcon-signatures
+- https://algorand.co/blog/pioneering-falcon-post-quantum-technology-on-blockchain
+- https://www.biometricupdate.com/202510/iota-adds-post-quantum-cryptography-to-its-identity-framework
+- https://ethereum.org/roadmap/future-proofing/
+- https://www.btq.com/blog/ethereums-roadmap-post-quantum-cryptography
+- https://cointelegraph.com/news/why-vitalik-believes-quantum-computing-could-break-ethereum-s-cryptography-sooner-than-expected
+- https://cointelegraph.com/news/ethereum-post-quantum-resilience-interview
+- https://blockmanity.com/news/5-quantum-resistant-blockchain-projects-worth-watching-in-2026/
+- https://www.webopedia.com/crypto/learn/post-quantum-crypto-projects/
+- https://medium.com/mochimo-official/mcm-post-quantum-security-in-blockchain-820b3758fa83
+- https://cellframe.net/
+- https://www.amarchenkova.com/posts/quantum-secure-cryptocurrencies-qrl-mochimo-iota-cardano
+- https://thequantumspace.org/2025/11/11/post-quantum-wallets/
+
+### 11.17 Harvest Now, Decrypt Later (HNDL)
+
+- https://www.federalreserve.gov/econres/feds/harvest-now-decrypt-later-examining-post-quantum-cryptography-and-the-data-privacy-risks-for-distributed-ledger-networks.htm
+- https://www.federalreserve.gov/econres/feds/files/2025093pap.pdf
+- https://a16zcrypto.com/posts/article/quantum-computing-misconceptions-realities-blockchains-planning-migrations/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC8946996/
+- https://www.sciencedirect.com/science/article/pii/S2096720923000167
+- https://www.schneier.com/blog/archives/2022/02/breaking-245-bit-elliptic-curve-encryption-with-a-quantum-computer.html
+- https://crypto.news/bitcoin-investors-face-harvest-now-decrypt-later-quantum-threat/
+- https://forklog.com/en/secret-harvesters-why-quantum-computers-threaten-bitcoin-privacy/
+- https://en.wikipedia.org/wiki/Harvest_now,_decrypt_later
+- https://thequantuminsider.com/2025/10/06/federal-reserve-warns-quantum-computers-could-expose-bitcoins-hidden-past/
+
+### 11.18 Tidecoin Project Sources
+
+- https://tidecoin.org/
+- https://tdc-next.vercel.app/
+- https://tidecoin.pqcsf.com/
+- https://explorer.tidecoin.org/
+- https://pool.tidecoin.exchange/
+- https://github.com/tidecoin/tidecoin
+- https://github.com/tidecoin-old/whitepaper
+- https://github.com/tidecoin-old/whitepaper/blob/master/tidecoin.pdf
+- https://github.com/tidecoin/tidecoin-android-miner
+- https://bitcointalk.org/index.php?topic=5306694.0
+- https://bitcourier.co.uk/news/tidecoin-interview
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/GZKDF25GYc8
+- https://setcoinkr.medium.com/tidecoin-a-post-quantum-security-peer-to-peer-crypto-cash-4c181f55f753
+- https://skybaseja.medium.com/tidecoin-a-post-quantum-security-peer-to-peer-crypto-cash-74cbca584140
+- https://en.namu.wiki/w/%ED%83%80%EC%9D%B4%EB%93%9C%EC%BD%94%EC%9D%B8
+- https://en.everybodywiki.com/Tidecoin
+- https://tideidle.com/Tide_specifications/
+- https://miningpoolstats.stream/tidecoin
+- https://www.coingecko.com/en/coins/tidecoin
+- https://coincodex.com/crypto/tidecoin/exchanges/
+- https://coinpaprika.com/coin/tdc-tidecoin/
+- https://www.livecoinwatch.com/price/Tidecoin-TDC
+- https://bscscan.com/token/0x0e182bd5c8703632c4c1761e0496c66c2b5d3385
+- https://disboard.org/server/796853997259849728
+- https://x.com/tidecoin
+- https://x.com/Tidecoin_go
+- https://cputest.ru/store/yespower/tidecoin_yespowertide/33
+- https://www.mexc.com/price/tidecoin
+
+### 11.19 51% Attack Economics and Mining
+
+- https://www.crypto51.app/
+- https://www.crypto51.app/coins/LTC.html
+- https://www.coindesk.com/tech/2023/08/02/why-you-should-care-about-litecoin-its-the-backbone-of-dogecoin
+
+### 11.20 General PQC Industry and Educational Sources
+
+- https://blog.cloudflare.com/post-quantum-signatures/
+- https://blog.cloudflare.com/another-look-at-pq-signatures/
+- https://electricdusk.com/ntt.html (NTT tutorial)
+- https://kivicore.com/en/embedded-security-blog/ml-dsa-explained-quantum-safe-digital-signatures-for-secure-embedded-systems
+- https://www.encryptionconsulting.com/how-ml-dsa-replaces-ecc-and-rsa-for-digital-signatures/
+- https://www.encryptionconsulting.com/overview-of-fips-203/
+- https://www.encryptionconsulting.com/decoding-nist-pqc-standards/
+- https://utimaco.com/news/blog-posts/nists-final-pqc-standards-are-here-what-you-need-know
+- https://hacken.io/insights/ml-dsa-crystals-dilithium/
+- https://cloudsecurityalliance.org/blog/2024/08/15/nist-fips-203-204-and-205-finalized-an-important-step-towards-a-quantum-safe-future
+- https://www.jbs.cam.ac.uk/2025/why-quantum-matters-now-for-blockchain/
+- https://en.wikipedia.org/wiki/NIST_Post-Quantum_Cryptography_Standardization
+- https://coinmarketcap.com/cmc-ai/quantum-resistant-ledger/what-is/
+- https://www.binance.com/en/square/post/2024-10-29-vitalik-buterin-outlines-quantum-resistant-future-for-ethereum-in-new-roadmap-update-15509117799834
+- https://bitcoinist.com/bitcoins-post-quantum-shift-could-take-a-decade-crypto-exec-says/
+- https://www.ainvest.com/news/bitcoin-quantum-migration-decade-long-transition-investment-implications-2512/
+- https://www.coindesk.com/tech/2025/12/20/bitcoin-s-quantum-debate-is-resurfacing-and-markets-are-starting-to-notice
+- https://www.cointribune.com/en/bip-360-bitcoin-divides-over-quantum-challenge/
+- https://finance.yahoo.com/news/coinshares-says-only-10-200-170531015.html
+- https://ceur-ws.org/Vol-3460/papers/DLT_2023_paper_19.pdf
+- https://www.frontiersin.org/journals/computer-science/articles/10.3389/fcomp.2025.1457000/full
+- https://github.com/veracrypt/VeraCrypt/issues/1271
+
+### 11.21 Academic Papers (Lattice Cryptography)
+
+- https://link.springer.com/article/10.1186/s42400-024-00216-w
+- https://www.sciencedirect.com/science/article/abs/pii/S0304397524002895
+- https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ise2.12074
+- https://www.mdpi.com/1099-4300/24/3/323
 
 ---
 

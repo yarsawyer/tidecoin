@@ -33,6 +33,7 @@ Status meaning:
 | feature_rbf.py | fixed |
 | mempool_sigoplimit.py | fixed |
 | rpc_createmultisig.py | fixed |
+| rpc_getdescriptorinfo.py | fixed |
 | rpc_psbt.py | fixed |
 | test_framework/wallet_util.py | fixed |
 | tool_utils.py | fixed |
@@ -735,11 +736,16 @@ Status meaning:
   - In Tidecoin descriptor/PQ address flow this path is not a reliable generic key-export surface for all generated addresses.
 - Fix:
   - Switched `get_generate_key()` to always use deterministic `tidecoin-testkeys` generation (`generate_keypair(wif=True)`), independent of node wallet export internals.
+  - Removed unused legacy helper surfaces from the framework module:
+    - `get_key(...)` (node `dumpprivkey` extraction path),
+    - `get_multisig(...)` (node-export based multisig helper),
+    - `bytes_to_wif(...)` (legacy compression-byte WIF helper).
 - Files changed:
   - `test/functional/test_framework/wallet_util.py`
 - Why this is correct:
   - Keeps key generation deterministic and test-local.
   - Decouples descriptor-import tests from wallet export-path specifics that are not under test.
+  - Prevents accidental future usage of legacy secp-oriented helper patterns in PQ-only tests.
 
 #### `wallet_importdescriptors.py` (2026-02-08 rerun refresh)
 - Status: fixed (post-baseline rerun)
@@ -1502,3 +1508,53 @@ Status meaning:
   - `rpc_psbt.py`
 - Verification:
   - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py wallet_pqhd_lock_semantics.py wallet_change_address.py rpc_psbt.py --jobs=1 --combinedlogslen=200` passed.
+
+#### `rpc_getdescriptorinfo.py` (2026-02-09 explicit-PQ descriptor coverage)
+- Status: fixed
+- Failure:
+  - Test coverage gap for `PQHD-REQ-0018`: explicit secp/xpub descriptor rejection and explicit PQ raw-hex acceptance were not enforced in RPC surface tests.
+  - Initial strict error substring check was too specific for Tidecoin parser wording (`Pubkey must include a valid PQ scheme prefix`) while the real RPC surface returns `pk(): Pubkey ... is invalid`.
+- Root cause:
+  - Tidecoin descriptor parser/reporter wording differs slightly from earlier assumptions, while semantic behavior is the same (reject non-PQ explicit key material and xpub expressions).
+- Fix:
+  - Added explicit rejection checks in `rpc_getdescriptorinfo.py` for:
+    - secp compressed pubkey in `pk(...)`,
+    - xpub path expression in `wpkh(...)`.
+  - Added explicit positive checks for PQ-native wrappers:
+    - `wsh512(pk(...))`,
+    - `wsh512(multi(...))`.
+  - Adjusted reject substring to stable semantic surface (`is invalid`) to avoid brittle message-text coupling.
+- Files changed:
+  - `test/functional/rpc_getdescriptorinfo.py`
+  - (paired unit coverage) `src/test/descriptor_tests.cpp`
+- Why this is correct:
+  - Preserves test intent (descriptor info correctness and invalid-vector rejection) while matching Tidecoin’s canonical PQ-only descriptor contract and real RPC error surface.
+- Verification:
+  - `./build/bin/test_tidecoin --run_test=descriptor_tests --report_level=detailed` passed.
+  - `python3 test/functional/test_runner.py rpc_getdescriptorinfo.py --jobs=1 --combinedlogslen=200` passed.
+
+#### `wallet_hd.py` (2026-02-09 PQHD-origin coverage tightening)
+- Status: fixed (extended)
+- Gap identified:
+  - Existing Tidecoin adaptation validated deterministic descriptor-chain behavior (`parent_desc`, restore determinism) but did not assert PQHD-origin metadata consistency.
+- Root cause:
+  - Earlier migration from Bitcoin HD metadata (`hdmasterfingerprint`/`hdkeypath`) to Tidecoin descriptor metadata focused on behavior parity and left PQHD-origin checks implicit.
+- Fix:
+  - Added explicit PQHD-origin assertions in `wallet_hd.py`:
+    - retrieve default seed via `listpqhdseeds` and assert all derived addresses use that `pqhd_seedid`,
+    - validate branch/index from `pqhd_path`:
+      - first receive address: branch `0`, index `0`,
+      - first change address: branch `1`, index `0`,
+      - sequential receive derivations advance index deterministically,
+      - post-restore derived addresses match both address sequence and `pqhd_path` sequence.
+  - Preserved original test intent:
+    - deterministic address derivation after backup/restore,
+    - successful rescan recovery,
+    - change output comes from internal chain.
+- Files changed:
+  - `test/functional/wallet_hd.py`
+- Why this is correct:
+  - Tightens test to Tidecoin-native PQHD guarantees instead of legacy HD/BIP32 fields.
+  - Increases regression sensitivity for seed/path metadata plumbing without weakening existing behavioral coverage.
+- Verification:
+  - `python3 test/functional/test_runner.py wallet_hd.py --jobs=1 --combinedlogslen=200` passed.

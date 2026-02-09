@@ -10,13 +10,9 @@ import subprocess
 import unittest
 
 from test_framework.address import (
-    byte_to_base58,
     key_to_p2pkh,
     key_to_p2sh_p2wpkh,
     key_to_p2wpkh,
-    script_to_p2sh,
-    script_to_p2sh_p2wsh,
-    script_to_p2wsh,
 )
 from test_framework.messages import (
     CTxIn,
@@ -30,9 +26,7 @@ from test_framework.script import (
 from test_framework.script_util import (
     key_to_p2pkh_script,
     key_to_p2wpkh_script,
-    keys_to_multisig_script,
     script_to_p2sh_script,
-    script_to_p2wsh_script,
 )
 
 Key = namedtuple('Key', ['privkey',
@@ -45,17 +39,6 @@ Key = namedtuple('Key', ['privkey',
                          'p2sh_p2wpkh_redeem_script',
                          'p2sh_p2wpkh_addr'])
 
-Multisig = namedtuple('Multisig', ['privkeys',
-                                   'pubkeys',
-                                   'p2sh_script',
-                                   'p2sh_addr',
-                                   'redeem_script',
-                                   'p2wsh_script',
-                                   'p2wsh_addr',
-                                   'p2sh_p2wsh_script',
-                                   'p2sh_p2wsh_addr'])
-
-_keygen_node = None
 _testkeys_path = None
 _pq_key_index = 0
 _pq_seed_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
@@ -63,8 +46,7 @@ _pq_default_scheme = os.environ.get("TIDECOIN_TEST_SCHEME", "falcon-512")
 
 def set_keygen_node(node):
     """Set the node used for PQHD-backed key generation in tests."""
-    global _keygen_node, _testkeys_path
-    _keygen_node = node
+    global _testkeys_path
     # Derive tool path from the node's binary location if available.
     try:
         bitcoind_path = node.binaries.paths.bitcoind
@@ -106,22 +88,6 @@ def _run_testkeys(*, scheme: str, count: int = 1):
     data = json.loads(out)
     return data
 
-def get_key(node):
-    """Generate a fresh key on node
-
-    Returns a named tuple of privkey, pubkey and all address and scripts."""
-    addr = node.getnewaddress()
-    pubkey = node.getaddressinfo(addr)['pubkey']
-    return Key(privkey=node.dumpprivkey(addr),
-               pubkey=pubkey,
-               p2pkh_script=key_to_p2pkh_script(pubkey).hex(),
-               p2pkh_addr=key_to_p2pkh(pubkey),
-               p2wpkh_script=key_to_p2wpkh_script(pubkey).hex(),
-               p2wpkh_addr=key_to_p2wpkh(pubkey),
-               p2sh_p2wpkh_script=script_to_p2sh_script(key_to_p2wpkh_script(pubkey)).hex(),
-               p2sh_p2wpkh_redeem_script=key_to_p2wpkh_script(pubkey).hex(),
-               p2sh_p2wpkh_addr=key_to_p2sh_p2wpkh(pubkey))
-
 def get_generate_key():
     """Generate a fresh key
 
@@ -137,28 +103,6 @@ def get_generate_key():
                p2sh_p2wpkh_redeem_script=key_to_p2wpkh_script(pubkey).hex(),
                p2sh_p2wpkh_addr=key_to_p2sh_p2wpkh(pubkey))
 
-def get_multisig(node):
-    """Generate a fresh 2-of-3 multisig on node
-
-    Returns a named tuple of privkeys, pubkeys and all address and scripts."""
-    addrs = []
-    pubkeys = []
-    for _ in range(3):
-        addr = node.getaddressinfo(node.getnewaddress())
-        addrs.append(addr['address'])
-        pubkeys.append(addr['pubkey'])
-    script_code = keys_to_multisig_script(pubkeys, k=2)
-    witness_script = script_to_p2wsh_script(script_code)
-    return Multisig(privkeys=[node.dumpprivkey(addr) for addr in addrs],
-                    pubkeys=pubkeys,
-                    p2sh_script=script_to_p2sh_script(script_code).hex(),
-                    p2sh_addr=script_to_p2sh(script_code),
-                    redeem_script=script_code.hex(),
-                    p2wsh_script=witness_script.hex(),
-                    p2wsh_addr=script_to_p2wsh(script_code),
-                    p2sh_p2wsh_script=script_to_p2sh_script(witness_script).hex(),
-                    p2sh_p2wsh_addr=script_to_p2sh_p2wsh(script_code))
-
 def test_address(node, address, **kwargs):
     """Get address info for `address` and test whether the returned values are as expected."""
     addr_info = node.getaddressinfo(address)
@@ -168,11 +112,6 @@ def test_address(node, address, **kwargs):
                 raise AssertionError("key {} unexpectedly returned in getaddressinfo.".format(key))
         elif addr_info[key] != value:
             raise AssertionError("key {} value {} did not match expected value {}".format(key, addr_info[key], value))
-
-def bytes_to_wif(b, compressed=True):
-    if compressed:
-        b += b'\x01'
-    return byte_to_base58(b, 239)
 
 def generate_keypair(compressed=True, wif=False, scheme=None):
     """Generate a new PQ keypair and return (privkey_wif, pubkey_bytes).

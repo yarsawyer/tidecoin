@@ -54,18 +54,34 @@ class DescriptorTest(BitcoinTestFramework):
         assert_raises_rpc_error(-5, f"pk(): Key '{pub_hex} ' is invalid due to whitespace", self.nodes[0].getdescriptorinfo, f"pk({pub_hex} )")
         assert_raises_rpc_error(-5, f"pk(): Key ' {priv_key}' is invalid due to whitespace", self.nodes[0].getdescriptorinfo, f"pk( {priv_key})")
 
+        # Tidecoin descriptors accept explicit raw PQ-prefixed pubkeys only.
+        assert_raises_rpc_error(
+            -5,
+            "is invalid",
+            self.nodes[0].getdescriptorinfo,
+            "pk(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)",
+        )
+        assert_raises_rpc_error(
+            -5,
+            "not valid",
+            self.nodes[0].getdescriptorinfo,
+            "wpkh(xpub661MyMwAqRbcF9QxvA3GvH7Tn2Y4m4v5hJ4Qqg1j9n7S7g7J8q9r3kQ3mLZ2kJ1w4Vw1Y8r6mQ6W2j3s5E5n7jL9pQ2aB6v2mN2QhM8mY8/0/*)",
+        )
+
         self.test_desc(f"pk({pub_hex})", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"pkh({pub_hex})", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"wpkh({pub_hex})", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"sh(wpkh({pub_hex}))", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"combo({pub_hex})", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"sh(wsh(pkh({pub_hex})))", isrange=False, issolvable=True, hasprivatekeys=False)
+        self.test_desc(f"wsh512(pk({pub_hex}))", isrange=False, issolvable=True, hasprivatekeys=False)
 
         priv_key2, pubkey2 = generate_keypair(wif=True)
         self.test_desc(f"multi(1,{pub_hex},{pubkey2.hex()})", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"sh(multi(2,{pub_hex},{pubkey2.hex()}))", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"wsh(multi(2,{pub_hex},{pubkey2.hex()}))", isrange=False, issolvable=True, hasprivatekeys=False)
         self.test_desc(f"sh(wsh(multi(1,{pub_hex},{pubkey2.hex()})))", isrange=False, issolvable=True, hasprivatekeys=False)
+        self.test_desc(f"wsh512(multi(1,{pub_hex},{pubkey2.hex()}))", isrange=False, issolvable=True, hasprivatekeys=False)
 
         # Private key descriptors should be marked as having private keys
         self.test_desc(f"wpkh({priv_key})", isrange=False, issolvable=True, hasprivatekeys=True)

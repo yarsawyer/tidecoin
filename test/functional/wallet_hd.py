@@ -22,11 +22,37 @@ class WalletHDTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
 
+    def assert_pqhd_address_origin(self, info, expected_seed_id, expected_branch=None, expected_index=None):
+        assert "pqhd_seedid" in info
+        assert "pqhd_path" in info
+        assert_equal(info["pqhd_seedid"], expected_seed_id)
+
+        parts = info["pqhd_path"].split("/")
+        # Path shape: .../<account>h/<branch>h/<index>h
+        assert len(parts) >= 2
+        assert parts[-1].endswith("h")
+        assert parts[-2].endswith("h")
+
+        branch = int(parts[-2][:-1])
+        index = int(parts[-1][:-1])
+        if expected_branch is not None:
+            assert_equal(branch, expected_branch)
+        if expected_index is not None:
+            assert_equal(index, expected_index)
+
+        return branch, index
+
     def run_test(self):
+        seeds = self.nodes[1].listpqhdseeds()
+        default_seed = next((s for s in seeds if s["default_receive"]), None)
+        assert default_seed is not None
+        expected_seed_id = default_seed["seed_id"]
+
         # Establish the wallet's external descriptor chain metadata.
         ext_info = self.nodes[1].getaddressinfo(self.nodes[1].getnewaddress())
         assert 'parent_desc' in ext_info
         ext_parent_desc = ext_info['parent_desc']
+        self.assert_pqhd_address_origin(ext_info, expected_seed_id, expected_branch=0, expected_index=0)
 
         # create an internal key
         change_addr = self.nodes[1].getrawchangeaddress()
@@ -35,6 +61,7 @@ class WalletHDTest(BitcoinTestFramework):
         assert 'parent_desc' in change_addrV
         change_parent_desc = change_addrV['parent_desc']
         assert ext_parent_desc != change_parent_desc
+        self.assert_pqhd_address_origin(change_addrV, expected_seed_id, expected_branch=1, expected_index=0)
 
         # Take a wallet backup before deriving addresses, then verify deterministic
         # derivation and recovery after restore/rescan.
@@ -45,13 +72,17 @@ class WalletHDTest(BitcoinTestFramework):
         self.generate(self.nodes[0], COINBASE_MATURITY + 1)
         hd_add = None
         hd_add_list = []
+        hd_path_list = []
         NUM_HD_ADDS = 10
         for i in range(1, NUM_HD_ADDS + 1):
             hd_add = self.nodes[1].getnewaddress()
             hd_info = self.nodes[1].getaddressinfo(hd_add)
             assert 'parent_desc' in hd_info
             assert_equal(hd_info["parent_desc"], ext_parent_desc)
+            _, addr_index = self.assert_pqhd_address_origin(hd_info, expected_seed_id, expected_branch=0)
+            assert_equal(addr_index, i)
             hd_add_list.append(hd_add)
+            hd_path_list.append(hd_info["pqhd_path"])
             self.nodes[0].sendtoaddress(hd_add, 1)
             self.generate(self.nodes[0], 1)
         # create an internal key (again)
@@ -59,6 +90,7 @@ class WalletHDTest(BitcoinTestFramework):
         change_addrV = self.nodes[1].getaddressinfo(change_addr)
         assert_equal(change_addrV["ischange"], True)
         assert_equal(change_addrV["parent_desc"], change_parent_desc)
+        self.assert_pqhd_address_origin(change_addrV, expected_seed_id, expected_branch=1, expected_index=1)
 
         self.sync_all()
         assert_equal(self.nodes[1].getbalance(), NUM_HD_ADDS)
@@ -80,6 +112,9 @@ class WalletHDTest(BitcoinTestFramework):
         for i in range(1, NUM_HD_ADDS + 1):
             hd_add_2 = self.nodes[1].getnewaddress()
             assert_equal(hd_add_2, hd_add_list[i - 1])
+            restored_info = self.nodes[1].getaddressinfo(hd_add_2)
+            self.assert_pqhd_address_origin(restored_info, expected_seed_id, expected_branch=0, expected_index=i)
+            assert_equal(restored_info["pqhd_path"], hd_path_list[i - 1])
         assert_equal(hd_add, hd_add_2)
         self.connect_nodes(0, 1)
         self.sync_all()

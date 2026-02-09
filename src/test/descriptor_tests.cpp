@@ -11,7 +11,9 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <array>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -92,6 +94,74 @@ BOOST_AUTO_TEST_CASE(descriptor_wsh512_parsing)
     BOOST_CHECK(!descs.at(0)->IsRange());
     BOOST_REQUIRE(descs.at(0)->GetOutputType().has_value());
     BOOST_CHECK_EQUAL(*descs.at(0)->GetOutputType(), OutputType::BECH32PQ);
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_explicit_pq_pubkey_matrix)
+{
+    FlatSigningProvider out;
+    std::string error;
+
+    auto parse_ok = [&](const std::string& desc) {
+        out = FlatSigningProvider{};
+        error.clear();
+        auto parsed = Parse(desc, out, error);
+        BOOST_REQUIRE_MESSAGE(!parsed.empty(), error);
+        BOOST_CHECK_MESSAGE(EqualDescriptor(desc, parsed.at(0)->ToString()), parsed.at(0)->ToString());
+        return parsed;
+    };
+
+    auto parse_fail = [&](const std::string& desc, const std::string& needle) {
+        out = FlatSigningProvider{};
+        error.clear();
+        auto parsed = Parse(desc, out, error);
+        BOOST_CHECK(parsed.empty());
+        BOOST_CHECK_MESSAGE(!error.empty(), "expected parse error");
+        BOOST_CHECK_MESSAGE(error.find(needle) != std::string::npos, error);
+    };
+
+    struct SchemeCase {
+        pq::SchemeId id;
+    };
+    const std::array<SchemeCase, 5> schemes{{
+        {pq::SchemeId::FALCON_512},
+        {pq::SchemeId::FALCON_1024},
+        {pq::SchemeId::MLDSA_44},
+        {pq::SchemeId::MLDSA_65},
+        {pq::SchemeId::MLDSA_87},
+    }};
+
+    std::vector<CPubKey> pubkeys;
+    pubkeys.reserve(schemes.size());
+    for (const auto& scheme : schemes) {
+        CKey key;
+        key.MakeNewKey(scheme.id);
+        const CPubKey pubkey = key.GetPubKey();
+        BOOST_REQUIRE(pubkey.IsFullyValid());
+        pubkeys.push_back(pubkey);
+        const std::string hex = HexStr(pubkey);
+
+        // Explicit PQ raw-hex key expressions should parse across wrappers.
+        parse_ok("pk(" + hex + ")");
+        parse_ok("pkh(" + hex + ")");
+        parse_ok("wpkh(" + hex + ")");
+        parse_ok("sh(wpkh(" + hex + "))");
+        parse_ok("combo(" + hex + ")");
+        parse_ok("wsh(pk(" + hex + "))");
+        parse_ok("wsh512(pk(" + hex + "))");
+        parse_ok("multi(1," + hex + ")");
+        parse_ok("sortedmulti(1," + hex + ")");
+        parse_ok("wsh(multi(1," + hex + "))");
+    }
+
+    // Mixed-scheme multisig is permitted but has no unambiguous single scheme prefix.
+    const std::string mixed = "wsh(multi(1," + HexStr(pubkeys.at(0)) + "," + HexStr(pubkeys.at(2)) + "))";
+    auto parsed_mixed = parse_ok(mixed);
+    BOOST_CHECK(!parsed_mixed.at(0)->GetPQHDSchemePrefix().has_value());
+
+    // Explicit secp pubkeys are not accepted in PQ-only descriptor parsing.
+    parse_fail("pk(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)", "is invalid");
+    // BIP32/xpub/xprv expressions are not part of Tidecoin PQ descriptor surface.
+    parse_fail("wpkh(xpub661MyMwAqRbcF9QxvA3GvH7Tn2Y4m4v5hJ4Qqg1j9n7S7g7J8q9r3kQ3mLZ2kJ1w4Vw1Y8r6mQ6W2j3s5E5n7jL9pQ2aB6v2mN2QhM8mY8/0/*)", "not valid");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

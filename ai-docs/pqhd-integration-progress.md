@@ -110,6 +110,21 @@ Legend:
     - `src/script/descriptor.cpp` (`PQHDPubkeyProvider::ToString()`, hardened-only parsing, `*h` only)
     - `src/test/descriptor_tests.cpp` (`descriptor_pqhd_key_expression_parsing`)
   - Verify: `./build/bin/test_tidecoin -t descriptor_tests`
+- PQHD-REQ-0018 — Explicit PQ pubkeys in descriptors use raw prefixed hex only (no xpub/xprv)
+  - Touch-points:
+    - `src/test/descriptor_tests.cpp` (`descriptor_explicit_pq_pubkey_matrix`)
+      - positive matrix: `pk`, `pkh`, `wpkh`, `sh(wpkh)`, `combo`, `wsh(pk)`, `wsh512(pk)`, `multi`, `sortedmulti`, `wsh(multi)` over all supported PQ schemes.
+      - mixed-scheme multisig parse path (`GetPQHDSchemePrefix()` must be unset when ambiguous).
+      - negative vectors for secp compressed pubkey and xpub/BIP32 descriptor expression.
+    - `test/functional/rpc_getdescriptorinfo.py`
+      - RPC-surface rejects secp key and xpub expression.
+      - RPC-surface accepts explicit PQ raw-hex wrappers including `wsh512(...)`.
+  - Verify:
+    - `./build/bin/test_tidecoin --run_test=descriptor_tests --report_level=detailed`
+    - `python3 test/functional/test_runner.py rpc_getdescriptorinfo.py --jobs=1 --combinedlogslen=200`
+  - Behavioral guarantee:
+    - Tidecoin descriptor parsing remains PQ-only for explicit key material.
+    - Unsupported secp/xpub vectors are rejected at both parser and RPC surfaces.
 - PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin
   - Touch-points:
     - `src/pq/pqhd_kdf.h` (`pqhd::SecureSeed32` RAII-wiped seed wrapper)
@@ -195,6 +210,30 @@ Legend:
     - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200`
   - Behavioral guarantee:
     - Wallet supports multiple PQHD roots, exposes lifecycle APIs, and blocks unsafe removal of defaults/descriptor-referenced seeds.
+- PQHD-REQ-0022 — Migration baseline: oldtidecoin wallets are legacy BDB non-HD
+  - Touch-points:
+    - `src/wallet/wallet.cpp` (`DBErrors::LEGACY_WALLET` reject-on-load path, `MigrateLegacyToDescriptor(...)`)
+    - `src/wallet/walletdb.cpp` (`LEGACY_WALLET` detection, `bdb_ro` migration-only DB path)
+    - `src/wallet/migrate.cpp`, `src/wallet/migrate.h` (BerkeleyRO parser and migration DB backend)
+    - `src/wallet/rpc/wallet.cpp` (`listwalletdir` legacy warning, `migratewallet` RPC)
+  - Verify (manual real-wallet migration run):
+    - Legacy BDB wallet source: `/home/yaroslav/dev/tidecoin/wallet_old/wallet.dat`
+    - Isolated node boot:
+      - `./build/bin/tidecoind -datadir=/tmp/tide_mig_test -walletdir=/tmp/tide_mig_test/wallets -nosettings -listen=0 -dnsseed=0 -discover=0 -server=1 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -rpcuser=tide -rpcpassword=tidepass -rpcport=19443 -port=19444 -daemonwait`
+    - Legacy detection:
+      - `./build/bin/tidecoin-cli -datadir=/tmp/tide_mig_test -rpcuser=tide -rpcpassword=tidepass -rpcport=19443 listwalletdir`
+      - returns warning: `This wallet is a legacy wallet and will need to be migrated with migratewallet before it can be loaded`
+    - Migration:
+      - `./build/bin/tidecoin-cli -datadir=/tmp/tide_mig_test -rpcuser=tide -rpcpassword=tidepass -rpcport=19443 migratewallet wallet_old`
+      - returned:
+        - `wallet_name: wallet_old`
+        - `backup_path: /tmp/tide_mig_test/wallets/wallet_old_1770668262.legacy.bak`
+    - Post-migration state:
+      - `getwalletinfo` shows descriptor wallet (`format: sqlite`, `descriptors: true`)
+      - `listpqhdseeds` shows initialized default PQHD seed.
+  - Behavioral guarantee:
+    - Legacy oldtidecoin BDB wallets are intentionally not loaded directly.
+    - Migration RPC converts legacy wallet state to descriptor/PQHD wallet state and creates a legacy backup.
 
 ---
 
@@ -216,14 +255,13 @@ Legend:
 <!-- (implemented; see above) -->
 
 ### Descriptors
-- PQHD-REQ-0018 — Explicit PQ pubkeys in descriptors use raw prefixed hex only (no xpub/xprv)
-  - Note: upstream `descriptor_tests` vectors are secp256k1/WIF/BIP32-centric and are skipped in Tidecoin. We still need a small PQ-native descriptor test suite that exercises explicit raw-hex prefixed `TidePubKey` bytes (no xpub/xprv surface).
+- (none)
 
 ### PSBT + RPC/Qt Integration
 - (none)
 
 ### Migration + Tests
-- PQHD-REQ-0022 — Migration baseline: oldtidecoin wallets are legacy BDB non-HD
+- (none)
 
 ---
 
