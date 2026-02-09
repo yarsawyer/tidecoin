@@ -2,6 +2,7 @@
 #define BITCOIN_WALLET_PQHD_H
 
 #include <serialize.h>
+#include <support/allocators/secure.h>
 #include <uint256.h>
 
 #include <cstdint>
@@ -17,7 +18,7 @@ struct PQHDSeed
 
     int nVersion{CURRENT_VERSION};
     int64_t nCreateTime{0};
-    std::vector<unsigned char> seed;
+    std::vector<unsigned char, secure_allocator<unsigned char>> seed;
 
     SERIALIZE_METHODS(PQHDSeed, obj)
     {

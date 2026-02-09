@@ -5,6 +5,8 @@
 #include <key.h>
 #include <node/types.h>
 #include <addresstype.h>
+#include <pq/pqhd_params.h>
+#include <psbt.h>
 #include <script/script.h>
 #include <test/util/test_controls.h>
 #include <util/strencodings.h>
@@ -47,11 +49,11 @@ BOOST_AUTO_TEST_CASE(psbt_updater_test)
     };
     ssData >> psbtx;
 
-    // Fill transaction with our data; BIP32 derivations are unsupported in PQHD-only mode.
+    // Fill transaction with wallet data. Tidecoin PSBT does not emit BIP32 derivations.
     bool complete = true;
-    const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, false, true);
-    BOOST_REQUIRE(err);
-    BOOST_CHECK(*err == common::PSBTError::UNSUPPORTED);
+    const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false);
+    BOOST_REQUIRE(!err);
+    BOOST_CHECK(!complete);
 }
 
 BOOST_AUTO_TEST_CASE(psbt_fill_and_sign_pq_p2wpkh)
@@ -74,11 +76,70 @@ BOOST_AUTO_TEST_CASE(psbt_fill_and_sign_pq_p2wpkh)
     psbtx.inputs.at(0).witness_utxo = CTxOut{1 * COIN, script_pub_key};
 
     bool complete{false};
-    const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true, /*bip32derivs=*/false);
+    const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true);
     BOOST_REQUIRE(!err);
     BOOST_CHECK(complete);
     BOOST_CHECK(psbtx.inputs.at(0).final_script_sig.empty());
     BOOST_CHECK_EQUAL(psbtx.inputs.at(0).final_script_witness.stack.size(), 2U);
+}
+
+BOOST_AUTO_TEST_CASE(psbt_fill_emits_pqhd_origin_records)
+{
+    REQUIRE_WALLET_TESTS_ENABLED();
+    LOCK(m_wallet.cs_wallet);
+    m_wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    m_wallet.SetupDescriptorScriptPubKeyMans();
+
+    const CTxDestination input_dest = *Assert(m_wallet.GetNewDestination(OutputType::BECH32, ""));
+    const CTxDestination output_dest = *Assert(m_wallet.GetNewDestination(OutputType::BECH32, ""));
+    const CScript input_script = GetScriptForDestination(input_dest);
+    const CScript output_script = GetScriptForDestination(output_dest);
+
+    CMutableTransaction mtx;
+    mtx.vin.emplace_back(CTxIn{Txid::FromUint256(uint256::ONE), 0});
+    mtx.vout.emplace_back(CTxOut{1, output_script});
+    PartiallySignedTransaction psbtx{mtx};
+    psbtx.inputs.at(0).witness_utxo = CTxOut{1 * COIN, input_script};
+
+    bool complete{false};
+    const auto err = m_wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, /*finalize=*/true, /*include_pqhd_origins=*/true);
+    BOOST_REQUIRE(!err);
+    BOOST_CHECK(!complete);
+
+    auto extract_origin = [](const std::set<PSBTProprietary>& records) -> std::optional<psbt::tidecoin::PQHDOrigin> {
+        for (const auto& record : records) {
+            if (auto decoded = psbt::tidecoin::DecodePQHDOrigin(record)) return decoded;
+        }
+        return std::nullopt;
+    };
+
+    const auto input_origin = extract_origin(psbtx.inputs.at(0).m_proprietary);
+    const auto output_origin = extract_origin(psbtx.outputs.at(0).m_proprietary);
+    BOOST_REQUIRE(input_origin);
+    BOOST_REQUIRE(output_origin);
+
+    BOOST_CHECK_EQUAL(input_origin->path_hardened.size(), output_origin->path_hardened.size());
+    BOOST_CHECK(input_origin->path_hardened.size() >= 3);
+    BOOST_CHECK_EQUAL(input_origin->path_hardened.at(0), 0x80000000U | pqhd::PURPOSE);
+    BOOST_CHECK_EQUAL(input_origin->path_hardened.at(1), 0x80000000U | pqhd::COIN_TYPE);
+    BOOST_CHECK_EQUAL(output_origin->path_hardened.at(0), 0x80000000U | pqhd::PURPOSE);
+    BOOST_CHECK_EQUAL(output_origin->path_hardened.at(1), 0x80000000U | pqhd::COIN_TYPE);
+
+    // Current wallet default scheme for receive/change is Falcon-512.
+    BOOST_CHECK_EQUAL(input_origin->pubkey[0], static_cast<uint8_t>(pq::SchemeId::FALCON_512));
+    BOOST_CHECK_EQUAL(output_origin->pubkey[0], static_cast<uint8_t>(pq::SchemeId::FALCON_512));
+    BOOST_CHECK_EQUAL(input_origin->path_hardened.at(2), 0x80000000U | static_cast<uint8_t>(pq::SchemeId::FALCON_512));
+    BOOST_CHECK_EQUAL(output_origin->path_hardened.at(2), 0x80000000U | static_cast<uint8_t>(pq::SchemeId::FALCON_512));
+
+    // Metadata emission is configurable and can be disabled for privacy-sensitive flows.
+    PartiallySignedTransaction psbtx_no_origin{mtx};
+    psbtx_no_origin.inputs.at(0).witness_utxo = CTxOut{1 * COIN, input_script};
+    complete = false;
+    const auto err_no_origin = m_wallet.FillPSBT(psbtx_no_origin, complete, std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, /*finalize=*/true, /*include_pqhd_origins=*/false);
+    BOOST_REQUIRE(!err_no_origin);
+    BOOST_CHECK(!complete);
+    BOOST_CHECK(psbtx_no_origin.inputs.at(0).m_proprietary.empty());
+    BOOST_CHECK(psbtx_no_origin.outputs.at(0).m_proprietary.empty());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

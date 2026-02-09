@@ -213,7 +213,6 @@ public:
     //! Fill PSBT.
     virtual std::optional<common::PSBTError> fillPSBT(std::optional<int> sighash_type,
         bool sign,
-        bool bip32derivs,
         size_t* n_signed,
         PartiallySignedTransaction& psbtx,
         bool& complete) = 0;

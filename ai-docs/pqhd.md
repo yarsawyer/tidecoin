@@ -585,8 +585,8 @@ What changes in user-visible RPC output:
 
 What changes in the `bip32derivs` knob:
 - `descriptorprocesspsbt` no longer accepts a `bip32derivs` parameter.
-- `walletprocesspsbt` still exposes `bip32derivs`, but it is **hard‑rejected**
-  if set true (must be false).
+- `walletprocesspsbt` no longer accepts a `bip32derivs` parameter.
+- `walletcreatefundedpsbt` no longer accepts a `bip32derivs` parameter.
 - PQHD origin emission is handled separately via `tidecoin/PQHD_ORIGIN`
   proprietary records (planned; see §10.3).
 
@@ -645,7 +645,7 @@ Status snapshot (current code):
   `walletprocesspsbt` / `CWallet::FillPSBT`.
 
 - `walletprocesspsbt`:
-  - `bip32derivs=true` is **rejected** (must be false).
+  - no `bip32derivs` parameter is accepted.
   - Planned: add `tidecoin/PQHD_ORIGIN` proprietary records for all PQHD-derived
     keys the wallet can attribute to a `SeedID32` + hardened path.
   - Write scope (frozen policy for PQHD v1):
@@ -1330,7 +1330,7 @@ large rework:
 - PSBT:
   - Implement `tidecoin/PQHD_ORIGIN` write/read paths in walletprocesspsbt and
     PSBT analysis (§10.2–§10.3).
-  - Keep `bip32derivs` hard‑rejected (must be false) and ensure help text
+  - Keep `bip32derivs` removed from wallet PSBT RPC/API and ensure help text
     reflects that PQHD origin metadata is carried via proprietary records.
 - Watch-only workflow:
   - Define concrete “bounded export” RPC(s) for ranges of derived pubkeys (or

@@ -37,10 +37,10 @@ bool HidingSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
     return m_provider->GetKey(keyid, key);
 }
 
-bool HidingSigningProvider::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const
+std::optional<pqhd::SecureSeed32> HidingSigningProvider::GetPQHDSeed(const uint256& seed_id) const
 {
-    if (m_hide_secret) return false;
-    return m_provider->GetPQHDSeed(seed_id, seed);
+    if (m_hide_secret) return std::nullopt;
+    return m_provider->GetPQHDSeed(seed_id);
 }
 
 bool FlatSigningProvider::GetCScript(const CScriptID& scriptid, CScript& script) const { return LookupHelper(scripts, scriptid, script); }
@@ -220,10 +220,10 @@ bool MultiSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
     return false;
 }
 
-bool MultiSigningProvider::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const
+std::optional<pqhd::SecureSeed32> MultiSigningProvider::GetPQHDSeed(const uint256& seed_id) const
 {
     for (const auto& provider : m_providers) {
-        if (provider->GetPQHDSeed(seed_id, seed)) return true;
+        if (auto seed = provider->GetPQHDSeed(seed_id)) return seed;
     }
-    return false;
+    return std::nullopt;
 }

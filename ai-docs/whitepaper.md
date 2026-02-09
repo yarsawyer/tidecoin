@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Tidecoin is a decentralized cryptocurrency engineered from genesis to resist attacks from both classical and quantum computers. While Bitcoin and virtually all major blockchains rely on the Elliptic Curve Digital Signature Algorithm (ECDSA) -- which Shor's algorithm will break once sufficiently powerful quantum computers exist -- Tidecoin replaces ECDSA entirely with NIST-standardized post-quantum signature schemes: Falcon-512/1024 and ML-DSA-44/65/87. Built on the battle-tested Bitcoin Core v30 codebase, Tidecoin preserves the UTXO model, scripting system, and 15+ years of peer-reviewed consensus logic while adding a custom Post-Quantum Hierarchical Deterministic (PQHD) wallet, a memory-hard proof-of-work algorithm (yespower), SHA-512-based witness scripts, ML-KEM-512 encrypted peer-to-peer transport, and infrastructure for Auxiliary Proof-of-Work (AuxPoW) merged mining with scrypt-based chains. The network has been in continuous operation since December 27, 2020 -- over five years of uninterrupted block production with zero security incidents.
+Tidecoin is a decentralized cryptocurrency engineered from genesis to resist attacks from both classical and quantum computers. While Bitcoin and virtually all major blockchains rely on the Elliptic Curve Digital Signature Algorithm (ECDSA) -- which Shor's algorithm will break once sufficiently powerful quantum computers exist -- Tidecoin replaces ECDSA entirely with NIST-standardized post-quantum signature schemes: Falcon-512/1024 and ML-DSA-44/65/87. Built on the battle-tested Bitcoin Core v30 codebase, Tidecoin preserves the UTXO model, scripting system, and 15+ years of peer-reviewed consensus logic while adding a custom Post-Quantum Hierarchical Deterministic (PQHD) wallet, SHA-512-based witness scripts, ML-KEM-512 encrypted peer-to-peer transport, and a two-phase proof-of-work strategy: CPU-friendly YespowerTIDE mining for fair initial distribution, transitioning to scrypt-based merged mining with Litecoin for long-term quantum-resistant network security. The network has been in continuous operation since December 27, 2020 -- over five years of uninterrupted block production with zero security incidents.
 
 ---
 
@@ -130,7 +130,7 @@ Tidecoin applies post-quantum security at every layer:
 | Transaction signing | ECDSA (secp256k1) | Falcon-512/1024, ML-DSA-44/65/87 |
 | Witness script hashing | SHA-256 (128-bit PQ security) | SHA-512 (256-bit PQ security) |
 | Peer-to-peer encryption | ECDH (secp256k1) | ML-KEM-512 (FIPS 203) |
-| Proof-of-work | SHA-256d (no memory barrier) | Yespower (memory-hard) |
+| Proof-of-work | SHA-256d (no memory barrier) | YespowerTIDE -> scrypt (memory-hard, merged-mined) |
 | HD wallet derivation | BIP32 (ECDSA-based xpub) | PQHD (hardened-only, hash-based) |
 
 ### 3.4 Conservative Activation
@@ -143,48 +143,228 @@ New signature schemes are activated through height-gated consensus upgrades, not
 
 ### 4.1 Falcon-512 and Falcon-1024
 
-Falcon (Fast-Fourier Lattice-based Compact Signatures over NTRU) is a NIST PQC Round 3 winner, designated for standardization as **FIPS 206 (FN-DSA)**. The draft standard was described as "basically written, awaiting approval" at the 6th PQC Standardization Conference in September 2025.
+Falcon (**F**ast-Fourier **L**attice-based **C**ompact Signatures **o**ver **N**TRU) is a NIST PQC Round 3 winner, designated for standardization as **FIPS 206 (FN-DSA)**. The draft standard was described as "basically written, awaiting approval" at the 6th PQC Standardization Conference in September 2025.
 
-**Mathematical basis:** Falcon instantiates the Gentry-Peikert-Vaikuntanathan (GPV) framework for hash-and-sign lattice-based signatures. The underlying hard problem is the Short Integer Solution (SIS) problem over NTRU lattices, for which no efficient quantum algorithm is known. Security is proven in both the Random Oracle Model (ROM) and the Quantum Random Oracle Model (QROM).
+Falcon-512 has been the active signature scheme on Tidecoin's mainnet since genesis (December 2020), making Tidecoin one of the earliest live blockchains to use this NIST-standardized lattice-based signature.
 
-**Why Falcon for cryptocurrency:** Falcon produces the smallest combined public-key-plus-signature size of any NIST PQC signature scheme. For bandwidth-constrained blockchain transactions, this is decisive:
+#### 4.1.1 Mathematical Foundation: NTRU Lattices and the GPV Framework
+
+Falcon combines two fundamental constructions:
+
+**NTRU lattices.** Falcon operates over the cyclotomic polynomial ring R_q = Z_q[x] / (x^n + 1), where n is a power of 2 (512 or 1024) and q = 12,289 is a prime modulus chosen for efficient Number Theoretic Transform (NTT) computation. An NTRU lattice is defined by a public polynomial h in R_q. The public key h hides the factorization h = g * f^(-1) mod q, where f and g are polynomials with small coefficients -- the "short secret basis" of the lattice. The resulting lattice Lambda_h = { (u, v) in R^2 : u + h*v = 0 mod q } has rank 2n in Z^(2n). Because a full basis can be obtained by rotating coefficients of a few initial vectors, the public key compresses to a single polynomial h -- under 897 bytes for Falcon-512, under 1,793 bytes for Falcon-1024.
+
+**GPV hash-then-sign framework.** The Gentry-Peikert-Vaikuntanathan (GPV) framework (STOC 2008) provides a provably secure method for constructing lattice-based hash-and-sign signatures:
+
+1. **Key generation:** Generate a lattice together with a *short basis* B (the trapdoor). Publish a compact representation (the polynomial h) as the public key.
+2. **Signing:** Hash the message to a target point c in the lattice's ambient space. Use the short basis B to *sample a short vector* from a discrete Gaussian distribution centered on c. The signature is derived from this short vector.
+3. **Verification:** Check that the signature is short enough and that the corresponding point lies on the lattice.
+
+The critical asymmetry: finding a short vector near an arbitrary target is easy with the short basis (trapdoor), but computationally intractable with only the public polynomial h. This is the **Short Integer Solution (SIS) problem** over NTRU lattices, studied since 1996 (Hoffstein, Pipher, Silverman) with no known polynomial-time quantum algorithm. Security is proven in both the Random Oracle Model (ROM) and the Quantum Random Oracle Model (QROM).
+
+#### 4.1.2 Key Generation
+
+1. **Sample short polynomials f, g** from R with small integer coefficients, ensuring f is invertible modulo q.
+2. **Compute public key:** h = g * f^(-1) mod q in R_q.
+3. **Solve the NTRU equation:** Find additional polynomials F, G satisfying f*G - g*F = q (mod x^n + 1), using the recursive NTRUSolve algorithm with LLL-like size reduction.
+4. **Form the secret basis:** B = [[g, -f], [G, -F]] -- a 2x2 matrix of polynomials that, interpreted as a 2n x 2n integer matrix, forms a short basis for the NTRU lattice with determinant q.
+
+Key generation uses less than 30 KB of RAM -- a hundredfold improvement over earlier NTRU signature designs.
+
+#### 4.1.3 Signing: Fast Fourier Sampling
+
+Signing a message m with Falcon proceeds through:
+
+1. **Salt generation:** A random 40-byte nonce r is generated, ensuring that signing the same message twice produces different signatures.
+2. **Hash-to-point:** c = SHAKE-256(r || m) is expanded into a polynomial in R_q -- the target point that the signer must approach with a short lattice vector.
+3. **Fast Fourier Sampling (ffSampling):** This is the core of Falcon and its most security-critical component. Using the secret basis B, the signer samples a short vector (s1, s2) such that s1 + h * s2 = c mod q:
+   - The Gram-Schmidt orthogonalization of B is precomputed as a binary "Falcon tree" in the FFT (splitting) domain.
+   - ffSampling recursively splits the problem into sub-problems of half dimension at each level, exploiting the algebraic structure of x^n + 1.
+   - At each leaf, a single integer is sampled from a **discrete Gaussian distribution** D_{Z, sigma, center} with standard deviation sigma = 165.74 (Falcon-512) or sigma = 168.39 (Falcon-1024).
+   - This achieves O(n log n) complexity versus the generic GPV sampler's O(n^2).
+4. **Signature encoding:** The signature (r, s2) is output in compressed format.
+
+**Why the Gaussian sampler is security-critical:** If the sampler deviates from a true discrete Gaussian distribution, signatures carry a statistical bias correlated with the secret basis B. Over many signatures, an attacker can exploit this bias for key recovery. A theoretically perfect Gaussian sampler leaks less than 2^(-64) bits per signature, allowing safely more than 2^64 signatures per key. The sampler requires high-precision floating-point arithmetic (53-bit IEEE-754 binary64), creating both implementation and side-channel challenges addressed below.
+
+#### 4.1.4 Verification
+
+Verification is remarkably simple and fast:
+
+1. Recompute c = SHAKE-256(r || m) (the hash-to-point target).
+2. Recover s1 = c - s2 * h mod q (one polynomial multiplication and subtraction).
+3. Accept if ||(s1, s2)||^2 <= bound (a norm check against a precomputed threshold).
+
+Verification uses only **integer arithmetic** -- no floating-point, no Gaussian sampling, no secret key involvement. On typical hardware, Falcon-512 verification achieves ~28,000 verifications/second, approximately 5-10x faster than signing.
+
+#### 4.1.5 Size Comparison
 
 | Parameter | Falcon-512 | Falcon-1024 | ML-DSA-44 | ML-DSA-65 |
 |-----------|-----------|-------------|-----------|-----------|
 | NIST Security Level | 1 (~AES-128) | 5 (~AES-256) | 2 (~AES-128) | 3 (~AES-192) |
 | Public Key | 897 bytes | 1,793 bytes | 1,312 bytes | 1,952 bytes |
-| Signature | ~666 bytes (avg) | ~1,280 bytes (avg) | 2,420 bytes | 3,309 bytes |
+| Signature (padded) | 666 bytes | 1,280 bytes | 2,420 bytes | 3,309 bytes |
 | **PK + Sig** | **~1,563 bytes** | **~3,073 bytes** | **3,732 bytes** | **5,261 bytes** |
 | Verification speed | ~28,000 ver/s | ~13,700 ver/s | Fast | Fast |
 
-Falcon-512 has been the active signature scheme on Tidecoin's mainnet since genesis (December 2020), making Tidecoin one of the earliest live blockchains to use this NIST-standardized lattice-based signature.
+Falcon's combined public key + signature size is the **smallest of any NIST PQC signature standard**, which is decisive for bandwidth-constrained blockchain transactions.
 
-**Implementation details** (source: `src/pq/falcon512.c`, `src/pq/falcon-512/`):
-- Full PQClean reference implementation integration
-- Custom legacy signature format with nonce inclusion for backwards compatibility
-- Verification is integer-only arithmetic (no floating-point dependency)
+#### 4.1.6 Signature Formats: Compressed vs. Padded
+
+The Falcon specification defines multiple signature encoding formats:
+
+- **Compressed (format code 1):** Variable-length signatures using Golomb-Rice-like compression. Falcon-512: average ~652 bytes, maximum 752 bytes. This is the most bandwidth-efficient encoding.
+- **Padded (format code 2):** Fixed-length signatures (666 bytes for Falcon-512, 1,280 bytes for Falcon-1024). If a compressed signature exceeds the target size, signing restarts. Fixed size simplifies protocol design and prevents information leakage through signature length variation.
+- **Constant-time (CT, format code 3):** Fixed-length with constant-time encoding/decoding (809 bytes for Falcon-512). Each coefficient is encoded over a fixed number of bits, eliminating timing side-channels during encoding. Rarely needed but available for high-sensitivity scenarios.
+
+FIPS 206 will include both padded and compressed formats with domain separation to maintain strong unforgeability when multiple encodings coexist.
+
+#### 4.1.7 Integer Emulation: Eliminating Floating-Point Side Channels
+
+The discrete Gaussian sampler at the heart of Falcon signing requires high-precision floating-point arithmetic for its FFT computations. Native hardware FPU operations are fast but vulnerable to **electromagnetic emanation**, **power analysis**, and **timing side-channels** -- demonstrated by the FALCON DOWN attack (2021, ePrint 2021/772) which achieved full key recovery through electromagnetic measurements of FFT multiplications, and the SHIFT SNARE attack (2025) which achieved 100% key recovery from a single power trace on ARM Cortex-M4.
+
+Tidecoin's implementation uses the **PQClean "clean" constant-time implementation** by Thomas Pornin, which employs **integer emulation** (FALCON_FPEMU) rather than native floating-point:
+
+- **All floating-point arithmetic is emulated using `uint64_t` integer operations.** The C `double` type is never used. Instead, IEEE-754 binary64 format is represented as a 64-bit unsigned integer (bit 63: sign, bits 52-62: exponent, bits 51-0: mantissa), with all arithmetic (addition, subtraction, multiplication, division, square root, rounding) implemented as sequences of integer operations.
+- **Constant-time shifts:** Custom functions `fpr_ursh()`, `fpr_irsh()`, and `fpr_ulsh()` handle 64-bit shifts with "possibly secret shift count" using barrel-shifter emulation through XOR masking, avoiding variable-time software shift routines (source: `src/pq/falcon-512/fpr.h:125-153`).
+- **No branching on secrets:** Table lookups read all elements (no early exit), and value tests use constant-time bitwise operations.
+- **Fully portable:** Works on any platform with a C99-compliant compiler -- no FPU required. Successfully tested on 32-bit and 64-bit systems, both little-endian (x86, ARM) and big-endian (PowerPC).
+
+The integer emulation approach makes signing approximately 20x slower than native floating-point with AVX2, but this tradeoff is accepted for **provable constant-time behavior** -- the critical security property for a cryptocurrency where keys protect real value. The formal correctness of Falcon's emulated floating-point has been verified (ePrint 2024/321).
+
+Source: `src/pq/falcon-512/fpr.h:34-96` (header documenting the integer emulation design), `src/pq/falcon-512/fpr.c` (implementation).
+
+#### 4.1.8 Tidecoin's Legacy vs. Strict Signature Modes
+
+Tidecoin's Falcon-512 implementation (source: `src/pq/falcon512.c`) supports two verification modes:
+
+- **Legacy mode** (active since genesis): Uses the original Falcon signature format with a relaxed norm bound derived from the pre-2019-fix acceptance threshold (`floor((7085 * 12289) >> (10 - logn))`). This preserves backward compatibility with all signatures created since genesis block zero. The legacy format uses header byte `0x39` (0x30 + 9 for degree-9 = 512).
+
+- **Strict mode** (activated with AuxPoW): Uses the standard PQClean `crypto_sign_verify()` with the tighter acceptance bound. New signatures after activation use the standard format with improved security margins.
+
+**Keys remain identical in both modes.** The public key format (polynomial h encoded as 14 bits per coefficient with header byte `0x09`) and private key format (f, g, F polynomials with header byte `0x59`) are unchanged. Only signature *creation* and *verification bounds* differ. This means existing wallets require no key migration -- the same keys simply produce and verify tighter signatures after AuxPoW activation.
+
+#### 4.1.9 From Falcon to FN-DSA (FIPS 206): What Changes
+
+FIPS 206 standardizes Falcon under the name **FN-DSA** (FFT over NTRU-Lattice-Based Digital Signature Algorithm). Key changes from the original Falcon specification:
+
+1. **BUFF security via public key hashing:** FN-DSA computes hm = SHAKE-256(nonce || hpk || 0x00 || len(ctx) || ctx || message), where hpk is a 64-byte hash of the public key. This achieves Beyond UnForgeability Features (BUFF) security at zero size cost -- no change to public key or signature sizes (ePrint 2024/710).
+
+2. **Context string support:** A `ctx` parameter enables domain separation between different applications using the same key pair.
+
+3. **Nonce regeneration on restart:** When the signing loop restarts (signature too large or vector not short enough), FN-DSA generates a new nonce each time, eliminating a subtle information leakage present in original Falcon where the same nonce was reused.
+
+4. **Fixed-point NTRUSolve:** Key generation replaces the `Reduce()` algorithm with an approach from the Hawk scheme, avoiding floating-point arithmetic in keygen (signing still requires emulated floating-point).
+
+5. **Pre-hashing support:** FN-DSA supports pre-hashed messages with collision-resistant hash functions.
+
+**Key compatibility:** Public key encoding remains unchanged between original Falcon and FN-DSA (same polynomial h, same sizes). However, FN-DSA signatures are **not backward-compatible** with original Falcon signatures because the hash input changed (includes hpk and context). Tidecoin's transition plan: existing keys work in both modes; the legacy verification path accepts pre-activation signatures, while post-activation signatures will use the stricter format that aligns with FN-DSA's direction.
+
+#### 4.1.10 The 2019 Sampler Bug and PQClean Security History
+
+In August 2019, Thomas Pornin published a new constant-time Falcon implementation. Shortly after, **Markku-Juhani O. Saarinen** discovered two severe bugs in the Gaussian sampler:
+
+1. **Incorrect lookup table:** The implementation used probability distribution (PD) values instead of the correct reverse cumulative distribution (RCD) values.
+2. **Wrong rejection sampling probability:** A scaling factor was applied at the wrong place, causing the sampler to reject too infrequently.
+
+**Consequences:** Produced signatures were technically valid but **leaked information about the private key**. Performance was artificially inflated (signing was ~17% too fast), and signatures were slightly shorter than correct (~651 vs ~657 bytes average for Falcon-512). A 2025 retrospective analysis (ACM CCS 2025, "How Bad Was The Falcon Bug of 2019?") demonstrated that improved attack techniques combined with PCA methodology could achieve **full key recovery from approximately 50 million buggy signatures**.
+
+Thomas Pornin published the fix on September 18, 2019. PQClean integrated the corrected code via PR #210; the project's security notes confirm that "all Falcon implementations before PR #235 got merged were insecure."
+
+**Tidecoin's timeline:** Tidecoin's genesis block was mined on December 27, 2020 -- **over 15 months after the sampler bug was fixed.** Tidecoin has always used the post-fix PQClean implementation with the correct RCD table and proper rejection sampling. No Tidecoin signature was ever produced by the vulnerable code.
+
+Additionally, the PQClean "clean" implementation used by Tidecoin specifically avoids the aarch64 `fmla` (fused multiply-add) precision issue documented in PQClean Issue #522 (November 2023), because the clean variant uses integer emulation rather than native floating-point instructions.
 
 ### 4.2 ML-DSA-44, ML-DSA-65, and ML-DSA-87
 
-ML-DSA (Module-Lattice-Based Digital Signature Algorithm) is standardized as **FIPS 204**, finalized August 13, 2024. Formerly known as CRYSTALS-Dilithium.
+ML-DSA (Module-Lattice-Based Digital Signature Algorithm) is standardized as **FIPS 204**, finalized August 13, 2024. Formerly known as CRYSTALS-Dilithium, ML-DSA is NIST's **recommended default** for general-purpose post-quantum digital signatures. Tidecoin supports all three ML-DSA security levels, activated via consensus upgrade at AuxPoW height.
 
-**Mathematical basis:** Based on the hardness of the Module Learning With Errors (Module-LWE) and Module Short Integer Solution (Module-SIS) problems. Uses the Fiat-Shamir with Aborts paradigm.
+#### 4.2.1 Mathematical Foundation: Module-LWE and Module-SIS
 
-**Advantages over Falcon:**
-- **No floating-point arithmetic:** ML-DSA uses only integer operations, eliminating an entire class of side-channel vulnerabilities
-- **Simpler constant-time implementation:** Easier to implement securely
-- **NIST's recommended default:** NIST recommends ML-DSA as the primary choice for general-purpose post-quantum signatures
-- **Already finalized:** FIPS 204 is effective since August 2024; Falcon's FIPS 206 is still in draft
+ML-DSA is built on two hard problems over **module lattices**:
 
-**Key sizes** (source: `src/pq/pq_scheme.h:72-100`):
+- **Module-LWE (Module Learning With Errors):** Given a random matrix **A** and a vector **t** = **A** * **s** + **e** (where **s** and **e** have small coefficients), it is computationally infeasible to recover **s**. This underpins the hiding of the secret key within the public key.
+- **Module-SIS (Module Short Integer Solution):** Given a random matrix **A**, it is hard to find a short vector **z** such that **A** * **z** = **0** (or some target). This underpins the unforgeability of signatures.
 
-| Parameter | Public Key | Secret Key | Signature | NIST Level |
-|-----------|-----------|------------|-----------|------------|
-| ML-DSA-44 | 1,312 bytes | 2,560 bytes | 2,420 bytes | 2 |
-| ML-DSA-65 | 1,952 bytes | 4,032 bytes | 3,309 bytes | 3 |
-| ML-DSA-87 | 2,592 bytes | 4,896 bytes | 4,627 bytes | 5 |
+Both problems operate over the polynomial ring R_q = Z_q[x] / (x^256 + 1), where:
+- n = 256 (polynomial degree, fixed for all ML-DSA parameter sets)
+- q = 8,380,417 = 2^23 - 2^13 + 1 (a prime chosen to enable efficient NTT; it is congruent to 1 mod 512, admitting a primitive 512th root of unity r = 1753)
 
-Tidecoin supports all three ML-DSA security levels, activated via consensus upgrade. Users and applications can choose the security/size tradeoff appropriate to their needs.
+Module lattices generalize both standard (unstructured) lattices and ideal lattices (Ring-LWE/Ring-SIS). The "module" structure uses vectors of ring elements parameterized by dimensions (k, l) -- the rows and columns of matrix **A**. This interpolation provides more conservative security assumptions than Ring-LWE (the algebraic structure gives attackers less to exploit) while remaining more efficient than plain LWE (which would require enormous matrices). The worst-case to average-case reductions for Module-LWE/SIS were established by Langlois and Stehle (2015).
+
+#### 4.2.2 Key Generation
+
+1. Sample a random seed rho and expand it to generate the public matrix **A** in R_q^{k x l} using SHAKE-128/SHAKE-256. Only the seed needs storage -- **A** is derived deterministically.
+2. Sample secret vectors **s_1** in R_q^l and **s_2** in R_q^k, with each polynomial coefficient drawn uniformly from [-eta, +eta] (eta = 2 or 4 depending on security level).
+3. Compute **t** = **A** * **s_1** + **s_2** mod q -- the Module-LWE instance.
+4. Split **t** into high-order bits **t_1** and low-order bits **t_0** by dropping the d=13 least significant bits from each coefficient.
+5. Compute tr = H(rho || **t_1**) -- a 64-byte hash of the public key (increased from 32 bytes in the original Dilithium).
+6. **Public key:** pk = (rho, **t_1**). **Secret key:** sk = (rho, K, tr, **s_1**, **s_2**, **t_0**).
+
+#### 4.2.3 Signing: Fiat-Shamir with Aborts
+
+ML-DSA signing implements **Lyubashevsky's Fiat-Shamir with Aborts** paradigm (ASIACRYPT 2009). This converts an interactive zero-knowledge identification protocol into a non-interactive signature scheme, with the critical addition of **rejection sampling** (the "aborts"):
+
+1. **Masking (Commitment):** Sample a random masking vector **y** with coefficients uniformly from [-gamma_1 + 1, gamma_1]. gamma_1 is large enough to hide the secret key.
+2. **Compute commitment:** **w** = **A** * **y** mod q. Extract high-order bits **w_1** = HighBits(**w**).
+3. **Challenge:** Compute c_tilde = SHAKE-256(tr || M || **w_1**). Derive a sparse ternary challenge polynomial c with exactly tau coefficients equal to +/-1 and all others zero.
+4. **Response:** Compute **z** = **y** + c * **s_1**.
+5. **Rejection tests (the "abort" conditions):** Check that ||**z**||_inf < gamma_1 - beta (ensures **z** does not leak information about **s_1**); check low-order bits of **A** * **z** - c * **t**; check that the hint vector **h** has at most omega nonzero entries. **If any test fails, restart from step 1.**
+6. **Output:** sigma = (c_tilde, **z**, **h**).
+
+The rejection sampling is the key innovation: without it, **z** = **y** + c * **s_1** would carry a statistical bias revealing the secret key **s_1** through the distribution of **z**. By aborting when **z** falls too close to the boundary, the algorithm ensures that the distribution of valid signatures is **statistically independent of the secret key**. The expected number of iterations per signature is approximately 4.25 (ML-DSA-44), 5.1 (ML-DSA-65), or 3.85 (ML-DSA-87).
+
+**Hedged vs. deterministic signing (FIPS 204 addition):** In the default "hedged" mode, the masking vector **y** incorporates both fresh randomness (from an RNG) and precomputed secret randomness from the private key. This provides defense-in-depth against faulty RNGs, side-channel attacks, and fault attacks simultaneously. In deterministic mode, only secret key material is used. Both modes produce interoperable signatures verified by the same algorithm.
+
+#### 4.2.4 Verification
+
+Verification is single-pass with no retry loop:
+
+1. Parse sigma = (c_tilde, **z**, **h**) and pk = (rho, **t_1**).
+2. Reconstruct **A** from rho. Recover challenge polynomial c from c_tilde.
+3. Compute **w'_1** = UseHint(**h**, **A** * **z** - c * **t_1** * 2^d) to recover the high-order bits.
+4. Recompute c_tilde' = SHAKE-256(tr || M || **w'_1**).
+5. Accept if c_tilde' == c_tilde and ||**z**||_inf < gamma_1 - beta and the hint **h** has at most omega nonzero entries.
+
+**Why this works:** By the key relation **t** = **A** * **s_1** + **s_2**, the expression **A** * **z** - c * **t** simplifies to **A** * **y** - c * **s_2**, recovering the original commitment shifted by a small error. The high-order bits match when the rejection conditions were satisfied, allowing the verifier to reconstruct the same challenge. Verification is significantly faster than signing -- a single matrix-vector multiplication, one polynomial multiplication, hashing, and norm checks.
+
+#### 4.2.5 Parameters and Sizes
+
+| Parameter | ML-DSA-44 | ML-DSA-65 | ML-DSA-87 |
+|-----------|-----------|-----------|-----------|
+| **NIST Security Category** | **2** (~AES-128) | **3** (~AES-192) | **5** (~AES-256) |
+| (k, l) matrix dimensions | (4, 4) | (6, 5) | (8, 7) |
+| eta (secret key coefficient range) | 2 | 4 | 2 |
+| tau (nonzero coefficients in challenge) | 39 | 49 | 60 |
+| gamma_1 (masking range) | 2^17 | 2^19 | 2^19 |
+| Expected signing iterations | ~4.25 | ~5.1 | ~3.85 |
+| **Public Key** | **1,312 bytes** | **1,952 bytes** | **2,592 bytes** |
+| **Secret Key** | **2,560 bytes** | **4,032 bytes** | **4,896 bytes** |
+| **Signature** | **2,420 bytes** | **3,309 bytes** | **4,627 bytes** |
+
+(Source: `src/pq/pq_scheme.h:72-100`, FIPS 204 Table 1)
+
+#### 4.2.6 Advantages Over Falcon
+
+ML-DSA complements Falcon with several distinct advantages:
+
+- **No floating-point arithmetic at all:** All operations are integer-based (modular arithmetic, NTT butterfly operations, comparisons). No FPU, no emulation, no floating-point side channels. This makes constant-time implementation straightforward and eliminates the entire vulnerability class that affects Falcon's sampler.
+- **No Gaussian sampling:** ML-DSA uses only uniform sampling from bounded integer ranges. Gaussian sampling is difficult to implement in constant time and has been the source of numerous side-channel attacks on other lattice schemes.
+- **Simpler implementation:** The core operations are SHAKE hashing, NTT-based polynomial multiplication, and coefficient-wise arithmetic with norm checks. No complex number-theoretic operations like FFT tree construction.
+- **Hedged signing by default:** FIPS 204 mixes fresh randomness with secret key material, providing simultaneous defense against faulty RNGs, side channels, and fault injection.
+- **Already finalized:** FIPS 204 was published August 13, 2024 and is effective immediately. Falcon's FIPS 206 remains in draft with projected finalization in 2026-2027.
+- **Strong unforgeability (SUF-CMA):** An adversary cannot produce a new valid signature even for a message that has already been signed.
+
+The tradeoff: ML-DSA signatures (2,420-4,627 bytes) are 3.6-3.6x larger than Falcon signatures (666-1,280 bytes). In blockchain contexts where bandwidth is constrained, Falcon's compactness remains valuable -- which is why Tidecoin supports both families, allowing users to choose the appropriate tradeoff.
+
+#### 4.2.7 From CRYSTALS-Dilithium to ML-DSA (FIPS 204)
+
+The standard is based on Dilithium specification version 3.1, with changes made by NIST:
+
+- **Renaming:** CRYSTALS-Dilithium -> ML-DSA; parameter sets Dilithium2/3/5 -> ML-DSA-44/65/87.
+- **Hedged signing as default:** Original Dilithium was fully deterministic. FIPS 204 changed the default to hedged.
+- **Increased tr size:** Public key hash increased from 32 to 64 bytes for stronger binding.
+- **Context string support:** Optional domain separation for different applications using the same key.
+- **Pre-hash API:** HashML-DSA variant for compatibility with existing protocols.
+- **No substantive algorithmic changes:** The underlying mathematics, parameter choices, and security levels remained the same.
 
 ### 4.3 Scheme Registry and Consensus Integration
 
@@ -262,35 +442,158 @@ PQHD is fully integrated with Bitcoin Core's descriptor wallet framework:
 
 ## 6. Consensus Mechanism and Proof-of-Work
 
-### 6.1 YespowerTIDE
+Tidecoin employs a **two-phase proof-of-work strategy** designed to maximize both fairness during early distribution and long-term network security against quantum adversaries.
 
-Tidecoin uses **yespower**, a memory-hard proof-of-work algorithm from the yespower/yescrypt family designed by Solar Designer (Alexander Peslyak) of the Openwall Project. Yespower is a PoW-focused fork of yescrypt, which itself builds on scrypt.
+### 6.1 Phase 1: YespowerTIDE (Current -- CPU Mining)
+
+During its initial phase, Tidecoin uses **YespowerTIDE**, a memory-hard proof-of-work algorithm from the yespower/yescrypt family designed by Solar Designer (Alexander Peslyak) of the Openwall Project. Yespower is a PoW-focused fork of yescrypt, which itself builds on Colin Percival's scrypt.
 
 **Properties:**
-- **Memory-hard:** Requires substantial RAM for each hash evaluation, making the algorithm inherently resistant to parallelization tricks used by GPUs and ASICs
-- **CPU-friendly:** Optimized for general-purpose CPUs, promoting mining decentralization
-- **GPU-unfriendly:** Heavy use of CPU L2 cache access patterns that map poorly to GPU architectures
+- **Memory-hard:** Requires 1-16 MB of RAM per hash evaluation
+- **CPU-friendly:** Optimized for general-purpose CPU L2 cache access patterns, promoting mining decentralization
+- **GPU-unfriendly:** Memory access patterns map poorly to GPU architectures, preventing GPU mining farms from dominating
 - **ASIC-neutral:** While dedicated hardware can eventually be built, the advantage over CPUs is far smaller than Bitcoin's SHA-256d, where ASICs outperform CPUs by factors of 10^6+
 
-### 6.2 Quantum Resistance of Memory-Hard PoW
+**Purpose of Phase 1:** YespowerTIDE ensures fair initial coin distribution. Anyone with a standard CPU -- including mobile devices via the Tidecoin Android Miner -- can participate in mining. This prevents the concentration of supply in the hands of ASIC or GPU farm operators during the critical early years when the coin supply is being distributed.
 
-Memory-hard proof-of-work provides inherent resistance to quantum speedup beyond what pure hash functions offer. The argument is structural:
+### 6.2 Phase 2: Scrypt via Merged Mining with Litecoin (Post-AuxPoW Activation)
 
-**Grover's algorithm and PoW:** Grover's algorithm provides a quadratic speedup for unstructured search -- reducing a 2^n search to 2^(n/2). For Bitcoin's SHA-256d PoW, this halves the effective difficulty in bit terms. However, Grover's is the theoretical maximum; no quantum algorithm can do fundamentally better for unstructured search.
+At a predetermined consensus height, Tidecoin activates **Auxiliary Proof-of-Work (AuxPoW)**, transitioning from standalone YespowerTIDE mining to **scrypt-based merged mining with Litecoin**. This is not merely a PoW algorithm change -- it is a deliberate security architecture decision. The AuxPoW activation simultaneously enables:
 
-**The memory barrier:** Each iteration of Grover's algorithm requires a quantum oracle that evaluates the target function in superposition. For a memory-hard function like yespower, this oracle must:
+1. **Scrypt proof-of-work** via Litecoin's parent chain
+2. **Multi-scheme signature support** (Falcon-1024, ML-DSA-44/65/87 join Falcon-512)
+3. **Witness version 1** with SHA-512-based 64-byte script hashing
+4. **OP_SHA512** opcode activation
+5. **Strict PQ signature validation** (rejecting legacy formats)
 
-1. Maintain the entire memory scratchpad (megabytes) in quantum superposition
-2. Perform data-dependent memory lookups in superposition
-3. Keep the quantum state coherent throughout the sequential access pattern
+This bundled activation ensures that the network's most significant post-quantum upgrades deploy together in a single, well-tested consensus transition.
 
-This requires **Quantum Random Access Memory (QRAM)** proportional to the function's memory parameter. QRAM at the scale of megabytes does not exist and faces fundamental physical challenges. As researchers have noted: "in the near future it remains a challenge to develop a QRAM capable of addressing millions or billions of individual memory elements."
+### 6.3 Why Scrypt: Deep Dive into Memory-Hard Quantum Resistance
 
-**Proven optimality:** A 2017 EUROCRYPT paper by Alwen, Chen, Pietrzak, Reyzin, and Tessaro proved that **scrypt is maximally memory-hard** -- its cumulative memory complexity cannot be reduced below Omega(n^2 * w) even by adversaries with parallel resources. Yespower inherits this property with significantly larger memory parameters (1-16 MB vs. scrypt's 128 KB).
+The choice of scrypt as the long-term PoW algorithm is motivated by its **provable, quantifiable resistance to quantum attack** -- a property that Bitcoin's SHA-256d fundamentally lacks.
 
-**Practical limitations of Grover on memory-hard functions:** A 2024 paper by Song and Seo, "Grover on Scrypt" (MDPI Electronics), presents optimized quantum circuits for attacking scrypt. Even with all optimizations applied, the resource requirements (qubits, circuit depth, QRAM) remain enormous -- far beyond any projected quantum hardware timeline.
+#### 6.3.1 How Scrypt Works Internally
 
-### 6.3 Difficulty Adjustment
+Scrypt (RFC 7914), created by Colin Percival in 2009, is a password-based key derivation function turned proof-of-work. For Litecoin's parameters (N=1024, r=1, p=1), each hash evaluation proceeds in three stages:
+
+**Stage 1 -- Key Expansion (PBKDF2-SHA-256):**
+The 80-byte block header is expanded to 128 bytes via PBKDF2-HMAC-SHA-256.
+
+**Stage 2 -- ROMix (the memory-hard core):**
+This is where scrypt's security originates. ROMix operates in two phases:
+
+*Phase A -- Scratchpad Construction (sequential writes):*
+```
+X = B  (128-byte initial block)
+for i = 0 to N-1:           // N = 1024 iterations
+    V[i] = X                 // Store current state in scratchpad
+    X = BlockMix(X)          // Advance state via Salsa20/8
+```
+This builds an array V of 1,024 entries, each 128 bytes, totaling **128 KB** of pseudorandom data.
+
+*Phase B -- Memory-Dependent Mixing (data-dependent random reads):*
+```
+for i = 0 to N-1:           // N = 1024 iterations
+    j = Integerify(X) mod N  // Index derived FROM current state
+    T = X XOR V[j]           // Fetch V[j] and XOR with state
+    X = BlockMix(T)          // Mix the result via Salsa20/8
+```
+The function `Integerify(X)` reads the last 64 bytes of the current state X and interprets them as a little-endian integer, then takes `mod N` to produce the scratchpad index j. **Each memory address depends on the result of the previous computation.** There is no way to predict which V[j] will be read next without actually performing the preceding BlockMix and XOR.
+
+**Stage 3 -- Final Compression (PBKDF2-SHA-256):**
+The mixed state is compressed back to a 32-byte hash via PBKDF2.
+
+**Per-hash computation summary:**
+- 2 x N = 2,048 BlockMix calls (each containing 2 Salsa20/8 evaluations) = **4,096 Salsa20/8 invocations**
+- **1,024 sequential data-dependent memory reads** from the 128 KB scratchpad
+- Each memory read address depends on the result of all previous reads
+
+#### 6.3.2 Why Data-Dependent Access Prevents Parallelization
+
+The sequential dependency chain j_0 -> j_1 -> ... -> j_1023 has depth exactly N = 1,024. No amount of parallel hardware -- classical or quantum -- can reduce this depth because:
+
+1. Computing j_k requires the output of iteration k-1
+2. Iteration k-1 requires reading V[j_{k-1}] from memory
+3. j_{k-1} is unknown until iteration k-2 completes
+4. Memory read latency is irreducible
+
+This creates a chain of 1,024 sequential memory reads where each address is a pseudorandom function of the entire computation history.
+
+#### 6.3.3 Grover's Algorithm vs. SHA-256d (Bitcoin)
+
+For Bitcoin's SHA-256d PoW, each Grover oracle call is computationally straightforward. The quantum circuit for SHA-256 requires:
+
+- **~2,402-6,063 logical qubits** for the oracle circuit (Amy et al., 2016; ePrint 2016/992)
+- **~16,000-109,000 T-depth** per oracle evaluation (Lee et al., 2023)
+- **Zero memory (QRAM)** -- SHA-256 is a stateless function
+- Grover provides a clean **quadratic speedup**: 2^256 classical -> 2^128 quantum oracle calls
+
+With surface code error correction at ~1,000 physical qubits per logical qubit, the full SHA-256 Grover attack requires approximately **2.4-10 million physical qubits** -- enormous by today's standards, but involving no fundamental architectural barriers beyond scale.
+
+#### 6.3.4 Grover's Algorithm vs. Scrypt (Litecoin / Tidecoin post-AuxPoW)
+
+For scrypt, the quantum oracle must implement the **entire memory-hard function** in quantum superposition. This creates three compounding barriers:
+
+**Barrier 1 -- The QRAM Requirement:**
+
+The 128 KB scratchpad must exist in quantum superposition. When Grover evaluates scrypt on a superposition of inputs |x_1> + |x_2> + ... + |x_M>, each input produces a *different* scratchpad. The quantum circuit must maintain all scratchpad states simultaneously.
+
+QRAM requirements for 128 KB (bucket-brigade architecture):
+
+| Component | Logical Qubits |
+|-----------|---------------|
+| Data qubits (128 KB = 1,048,576 bits) | **~1,048,576** |
+| Routing qubits (bucket-brigade) | **~131,072** |
+| Address qubits | ~17 |
+| Ancilla per query (O(N)) | **~131,072** |
+| **QRAM subtotal** | **~1.2 million logical qubits** |
+
+With surface code error correction (~1,000:1 ratio), the QRAM alone requires approximately **1.2 billion physical qubits** -- before accounting for the computational qubits needed for SHA-256 and Salsa20/8 sub-circuits.
+
+For comparison, Google's Willow chip (2024) has 105 physical qubits. IBM's largest announced roadmap target is ~100,000 qubits by 2033. The QRAM requirement for scrypt exceeds projected quantum hardware by **four orders of magnitude**.
+
+**Barrier 2 -- The Sequential Depth Barrier:**
+
+Each of the 1,024 data-dependent memory lookups must be performed as a sequential QRAM query. After each lookup, the scratchpad state becomes **entangled** with the computation state. The memory read at step k depends on data read at step k-1, forming an irreducible sequential chain.
+
+Furthermore, because quantum computation must be **reversible** (unitary), intermediate scratchpad states cannot be discarded -- they must be properly uncomputed through the reverse sequence of memory lookups. This effectively doubles the sequential depth.
+
+**Barrier 3 -- The Cumulative Memory Complexity (CMC) Barrier:**
+
+Alwen, Chen, Pietrzak, Reyzin, and Tessaro proved at EUROCRYPT 2017 (Best Paper Award) that scrypt is **maximally memory-hard**: its cumulative memory complexity is Omega(n^2 * w), where n is the number of hash invocations and w is the output length. This is tight -- no algorithm, no matter how clever with time-memory tradeoffs, can compute scrypt with lower total memory-time cost.
+
+This result extends to quantum computation. Blocki, Holman, and Lee (2022) introduced the **parallel reversible pebbling game** to formally analyze post-quantum security of memory-hard functions. The reversibility constraint of quantum circuits means that intermediate values cannot be freely discarded, adding additional overhead beyond the classical CMC bound.
+
+**Time-memory tradeoffs don't help:**
+
+An attacker can reduce QRAM by storing only every k-th scratchpad entry and recomputing missing entries on demand:
+- Memory reduces by factor k
+- Time (circuit depth) increases by factor k
+- The time-memory product remains constant: Omega(n^2 * w)
+
+Even with aggressive tradeoffs, the quantum attacker needs at minimum Omega(sqrt(N) * 128r) bytes of QRAM, with circuit depth Omega(sqrt(N)) per oracle call.
+
+#### 6.3.5 Quantitative Comparison: SHA-256d vs. Scrypt Under Quantum Attack
+
+| Parameter | SHA-256d (Bitcoin) | Scrypt N=1024,r=1,p=1 (Tidecoin) | Overhead Factor |
+|-----------|-------------------|-----------------------------------|-----------------|
+| Oracle logical qubits | ~2,402-6,063 | ~1,200,000+ (incl. QRAM) | **~200x** |
+| Oracle physical qubits (surface code) | ~2.4M-10M | **~1.2 billion+** | **~200x** |
+| QRAM requirement | **None** | 128 KB in superposition | Infinite (new resource) |
+| Sequential oracle depth | 1 SHA-256d call (~16K T-depth) | 2,048 BlockMix + 1,024 QRAM queries (~100M+ T-depth) | **~2,000x** |
+| Hash sub-calls per oracle | 2 (double SHA-256) | ~4,096 (Salsa20/8) + PBKDF2 | **~2,000x** |
+| Grover iterations needed | 2^128 (for 256-bit preimage) | 2^128 (same search space) | 1x |
+| Effective quantum speedup | Full quadratic (sqrt) | **Substantially subquadratic** | Degraded |
+| Estimated total attack cost | ~2^166 logical-qubit-cycles | **>> 2^180 logical-qubit-cycles** | **> 16,000x** |
+| Nearest feasibility | Decades away | **Further decades beyond SHA-256** | -- |
+
+**The key insight:** Bitcoin's SHA-256d requires zero QRAM -- the quantum oracle is a pure computation circuit. Scrypt requires a **128 KB QRAM operating in quantum superposition** -- an entirely new hardware resource that does not exist, cannot be simulated classically, and faces fundamental physical scaling challenges. This is not a difference of degree; it is a difference of kind.
+
+#### 6.3.6 Fault-Tolerant QRAM: The Hidden Problem
+
+A critical finding in the QRAM literature: under fault-tolerant operation (required for any useful quantum computation), the bucket-brigade QRAM **loses its theoretical efficiency advantage**. In the noiseless model, bucket-brigade QRAM has only O(log N) "active" gates per query. But under fault-tolerant operation, **all** O(N) components must be actively error-corrected, making the gate cost per QRAM query at least O(N). This means each of the 1,024 QRAM queries in scrypt's Phase B costs at least O(131,072) fault-tolerant gates -- a devastating overhead multiplier.
+
+### 6.4 Difficulty Adjustment
 
 Tidecoin uses a DigiShield-variant difficulty adjustment algorithm (source: `src/kernel/chainparams.cpp:99-108`):
 
@@ -382,23 +685,80 @@ In a classical setting, P2P encryption prevents passive eavesdropping but is les
 
 ## 9. Auxiliary Proof-of-Work (Merged Mining)
 
-### 9.1 Design
+### 9.1 The 51% Attack Problem for Small Chains
 
-Tidecoin includes full AuxPoW infrastructure (source: `src/auxpow.h`, `src/auxpow.cpp`) for merged mining with scrypt-based parent chains such as Litecoin. Merged mining allows miners working on a parent chain to simultaneously secure Tidecoin using the same computational work.
+Every proof-of-work cryptocurrency faces a fundamental security equation: the cost of a 51% attack must exceed the profit an attacker could extract. For small standalone chains, this equation is often unfavorable.
 
-The protocol embeds a Tidecoin block hash in the parent chain's coinbase transaction (prefixed with magic bytes `0xfabe6d6d`), allowing the parent chain's proof-of-work to serve as valid proof for Tidecoin's consensus.
+**Real-world attack costs (from Crypto51.app, 2025-2026 data):**
 
-**Current status:** AuxPoW infrastructure is complete but activation is deferred (`consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED` in `src/kernel/chainparams.cpp:93`). Activation will occur via a consensus upgrade at a predetermined block height.
+| Chain | Algorithm | 1-Hour Attack Cost | Context |
+|-------|-----------|-------------------|---------|
+| Bitcoin | SHA-256d | ~$1,611,667 | Effectively unattackable |
+| Litecoin | Scrypt | ~$58,356 | Expensive but finite |
+| Small standalone chains | Various | **$42 - $250** | Trivially attackable |
 
-### 9.2 Quantum Resistance of Scrypt Merged Mining
+A small CPU-mined chain like Tidecoin in its yespower phase, with a hashrate of ~5-6 MH/s, could theoretically be 51%-attacked by renting CPU power. This is the fundamental motivation for merged mining: **inherited security from a major chain eliminates this vulnerability class entirely**.
 
-Merged mining with a scrypt-based parent chain provides an additional layer of quantum resistance at the proof-of-work level:
+### 9.2 How Merged Mining Works
 
-- **Scrypt is maximally memory-hard** (proven, EUROCRYPT 2017), requiring QRAM for quantum oracle construction
-- **Inherited hashrate:** Tidecoin would benefit from the combined hashrate of all Litecoin miners that opt into merged mining, dramatically increasing the cost of a 51% attack
-- **Double barrier:** A quantum attacker must both overcome scrypt's memory-hardness in quantum computation and outcompete the parent chain's aggregate hashrate
+Auxiliary Proof-of-Work (AuxPoW) allows miners working on one blockchain (the "parent chain") to simultaneously secure additional blockchains ("auxiliary chains") using the same computational work, at near-zero marginal cost.
 
-The Dogecoin-Litecoin precedent demonstrates the effectiveness of AuxPoW: after Dogecoin enabled merged mining with Litecoin in 2014, its mining difficulty increased by approximately 1,500% within one month, with approximately 90% of its hashrate coming from Litecoin mining pools.
+**Protocol mechanics** (source: `src/auxpow.h`, `src/auxpow.cpp`):
+
+1. **Block assembly:** The miner constructs block candidates for both the parent chain (Litecoin) and the auxiliary chain (Tidecoin)
+2. **Coinbase embedding:** The hash of Tidecoin's block header is inserted into the coinbase field of Litecoin's coinbase transaction, prefixed with magic bytes `0xfabe6d6d`
+3. **Mining:** The miner performs scrypt PoW on Litecoin's block header as normal
+4. **Dual submission:** If the solved block meets Litecoin's difficulty, it is submitted to Litecoin. If it meets Tidecoin's difficulty (which can be lower), the parent's coinbase transaction, merkle branch, and block header are included in Tidecoin's AuxPoW header as proof.
+5. **Multiple auxiliary chains:** A merkle tree of auxiliary chain hashes can be embedded in a single coinbase, allowing simultaneous merged mining of many chains
+
+The parent chain (Litecoin) requires no awareness of Tidecoin. No protocol changes to Litecoin are needed.
+
+### 9.3 The Dogecoin-Litecoin Precedent
+
+The effectiveness of AuxPoW is demonstrated by historical data. Dogecoin activated merged mining with Litecoin in August 2014:
+
+- Mining difficulty increased by **+1,500%** within one month
+- **~90% of Dogecoin's total hashrate** now comes from Litecoin mining pools
+- The correlation between Dogecoin and Litecoin hashrate is **0.95** (near-perfect)
+- Before AuxPoW, Dogecoin was vulnerable to 51% attacks; after AuxPoW, attacking Dogecoin requires attacking Litecoin's full hashrate
+
+### 9.4 Why Merged Mining with Litecoin
+
+The choice of Litecoin as the parent chain is deliberate:
+
+**Security inheritance:** Litecoin's scrypt hashrate (~3 PH/s) costs approximately $58,356 per hour to attack. By merged mining with Litecoin, Tidecoin inherits this security -- a **100-1,000x improvement** over standalone small-chain security.
+
+**Quantum-resistant PoW:** Litecoin uses scrypt, a provably maximally memory-hard function (see Section 6.3). Unlike Bitcoin's SHA-256d, which can be attacked by a quantum computer with only computational qubits (no QRAM), scrypt requires ~1.2 billion physical qubits including QRAM for a quantum Grover attack (see Section 6.3.5). Merged mining with Litecoin means Tidecoin's PoW layer inherits scrypt's quantum resistance.
+
+**Aligned incentives:** Litecoin miners opt into merged mining voluntarily because Tidecoin block rewards provide additional revenue at negligible extra cost. This creates a positive-sum relationship where Litecoin miners earn more and Tidecoin gains security.
+
+**Chain ID separation:** Tidecoin uses AuxPoW Chain ID 8 (`src/kernel/chainparams.cpp:94`) with strict chain ID enforcement, preventing cross-chain proof replay attacks.
+
+### 9.5 AuxPoW Activation as the Upgrade Gate
+
+AuxPoW activation is the single consensus transition that unlocks Tidecoin's full post-quantum feature set. At the predetermined activation height, the following changes take effect simultaneously:
+
+| Feature | Before AuxPoW | After AuxPoW |
+|---------|--------------|--------------|
+| PoW algorithm | YespowerTIDE (CPU-mined) | Scrypt (merged-mined with LTC) |
+| Signature schemes | Falcon-512 only | Falcon-512/1024 + ML-DSA-44/65/87 |
+| Witness versions | v0 only (SHA-256 based) | v0 + v1 (SHA-512 based, 64-byte hash) |
+| OP_SHA512 | Disabled | Enabled |
+| PQ strict validation | Optional | Enforced (SCRIPT_VERIFY_PQ_STRICT) |
+
+This bundled activation ensures that the most significant upgrades deploy together, reducing the number of consensus transitions and allowing comprehensive testing of the combined feature set.
+
+**Current status:** AuxPoW infrastructure is complete and tested (`consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED` in `src/kernel/chainparams.cpp:93`). Activation height will be set via a node software release coordinated with the mining community.
+
+### 9.6 Combined Quantum Security of Scrypt + Merged Mining
+
+The quantum security argument for merged mining with Litecoin is twofold:
+
+**Layer 1 -- Algorithmic resistance:** Scrypt requires ~1.2 million logical qubits (~1.2 billion physical qubits) for the quantum oracle, including QRAM for the 128 KB scratchpad. This is approximately **200x more qubits** than attacking SHA-256d. The QRAM technology required does not exist and faces fundamental engineering challenges with no clear timeline for realization.
+
+**Layer 2 -- Economic resistance:** Even if a quantum adversary could somehow construct a scrypt quantum oracle, they must still outcompete the combined hashrate of all Litecoin and Tidecoin miners. The cost of 51%-attacking Litecoin's hashrate is $58,000+/hour classically; a quantum attacker would need to exceed this rate of PoW production, which requires not just a single quantum oracle evaluation but sustained, faster-than-classical throughput -- a far harder problem than a single Grover search.
+
+**The compound barrier:** An attacker must simultaneously solve two independent hard problems: (1) build a quantum computer with billion-qubit-scale QRAM, and (2) make that quantum computer evaluate scrypt faster than the entire Litecoin mining network's classical hardware. These barriers multiply rather than add.
 
 ---
 
@@ -454,7 +814,8 @@ Tidecoin had no premine, no initial coin offering, and no developer allocation. 
 | **Initial block reward** | 40 TDC | `validation.cpp:1970` |
 | **Halving interval (initial)** | 262,800 blocks | `chainparams.cpp:86` |
 | **Total supply** | ~21,000,000 TDC | Derived from schedule |
-| **PoW algorithm** | YespowerTIDE (CPU-optimized, memory-hard) | `pureheader.cpp:20-27` |
+| **PoW algorithm (Phase 1)** | YespowerTIDE (CPU-optimized, memory-hard) | `pureheader.cpp:20-27` |
+| **PoW algorithm (Phase 2)** | Scrypt via LTC merged mining (memory-hard) | `pureheader.cpp:29-38` |
 | **Default port** | 8755 | `chainparams.cpp:129` |
 | **Network magic** | 0xecfacea5 | `chainparams.cpp:125-128` |
 | **Bech32 HRP** | `tbc` (mainnet), `q` (PQ witness) | `chainparams.cpp:153-154` |
@@ -493,13 +854,28 @@ NIST confirms: "The existing algorithm standards for symmetric cryptography are 
 
 ### 12.3 Proof-of-Work Security
 
-| Property | SHA-256d (Bitcoin) | YespowerTIDE (Tidecoin) |
-|----------|-------------------|------------------------|
+**Current phase (YespowerTIDE -- CPU mining):**
+
+| Property | SHA-256d (Bitcoin) | YespowerTIDE (Tidecoin Phase 1) |
+|----------|-------------------|---------------------------------|
 | Memory requirement | ~0 (stateless) | 1-16 MB |
-| Grover speedup | Full quadratic (sqrt) | Limited by QRAM requirement |
-| QRAM needed | Minimal | Megabytes (does not exist at scale) |
 | ASIC advantage | ~10^6x over CPU | Moderate over CPU |
 | Mining decentralization | ASIC-dominated | CPU-accessible |
+| 51% attack cost | ~$1.6M/hour | Low (small standalone chain) |
+
+**Post-AuxPoW phase (scrypt via Litecoin merged mining):**
+
+| Property | SHA-256d (Bitcoin) | Scrypt (Tidecoin Phase 2) |
+|----------|-------------------|---------------------------|
+| Memory per hash | ~0 (stateless) | 128 KB |
+| Oracle logical qubits | ~2,402-6,063 | **~1,200,000+** (incl. QRAM) |
+| Oracle physical qubits | ~2.4M-10M | **~1.2 billion+** |
+| QRAM needed | **None** | **128 KB in superposition** |
+| Sequential oracle depth | ~16K T-depth | **~100M+ T-depth** |
+| Effective Grover speedup | Full quadratic | **Substantially subquadratic** |
+| 51% attack cost | ~$1.6M/hour | ~$58K/hour (inherited from LTC) |
+
+The transition from YespowerTIDE to scrypt merged mining trades the Phase 1 advantage (CPU-accessible decentralization) for the Phase 2 advantage (inherited Litecoin hashrate security + quantum-resistant memory-hard PoW). This is a deliberate lifecycle design: fair distribution first, maximum security second.
 
 ### 12.4 Transport Security
 
@@ -574,21 +950,30 @@ Tidecoin was discussed on the official NIST Post-Quantum Cryptography mailing li
 
 ## 15. Roadmap
 
-### Completed
+### Phase 1 -- Completed (Genesis to Present)
 
-- Falcon-512 signature scheme (active since genesis)
+- Falcon-512 signature scheme (active since genesis, December 2020)
 - PQHD deterministic wallet with encrypted seed storage
 - SegWit activation from block 1
-- YespowerTIDE CPU-friendly proof-of-work
+- YespowerTIDE CPU-friendly proof-of-work for fair initial distribution
 - ML-KEM-512 P2P transport encryption
-- OP_SHA512 and witness v1 512-bit script support (consensus rules)
-- AuxPoW merged mining infrastructure
+- AuxPoW merged mining infrastructure (code complete, tested)
+- OP_SHA512 and witness v1 512-bit script support (code complete, activation pending)
 - 135 unit test files + 255 functional test files
+- 5+ years of continuous network operation
 
-### Planned
+### Phase 2 -- AuxPoW Activation (Upcoming)
 
-- **AuxPoW activation:** Enable merged mining with scrypt-based parent chains
-- **Multi-scheme activation:** Unlock Falcon-1024, ML-DSA-44/65/87 at AuxPoW height
+The AuxPoW activation is the single most significant upgrade in Tidecoin's roadmap, simultaneously enabling:
+
+- **Scrypt merged mining with Litecoin:** Transition from standalone CPU mining to Litecoin-secured merged mining, increasing 51% attack cost by 100-1,000x
+- **Multi-scheme signatures:** Falcon-1024, ML-DSA-44, ML-DSA-65, ML-DSA-87 join Falcon-512
+- **Witness v1 activation:** SHA-512-based 64-byte script hashing with `q1...` PQ addresses
+- **OP_SHA512 activation:** 256-bit post-quantum script hashing
+- **Strict PQ validation:** Legacy signature format rejection
+
+### Phase 3 -- Long-Term
+
 - **Hardware wallet integration:** Falcon-512 and ML-DSA support for Ledger/Trezor secure elements
 - **Cross-chain bridges:** Quantum-secure bridge protocols using ML-KEM key exchange
 - **Performance optimization:** SIMD-accelerated signature verification for high-throughput nodes
@@ -632,12 +1017,45 @@ By combining the proven foundation of Bitcoin Core with NIST's post-quantum cryp
 15. Tidecoin original whitepaper. https://github.com/tidecoin-old/whitepaper/blob/master/tidecoin.pdf
 16. Tidecoin official website. https://tidecoin.org/
 
-### Cryptographic References
+### Quantum Attacks on PoW
 
-17. Falcon specification. https://falcon-sign.info/falcon.pdf
-18. PQClean: Clean, portable implementations of post-quantum cryptography. https://github.com/PQClean/PQClean
-19. Percival, C. "Stronger Key Derivation via Sequential Memory-Hard Functions." BSDCan'09. https://www.tarsnap.com/scrypt.html
-20. Solar Designer. Yespower. https://www.openwall.com/yespower/
+14. Amy, M., Di Matteo, O., Gheorghiu, V., Mosca, M., Parent, A., Schanck, J. "Estimating the cost of generic quantum pre-image attacks on SHA-2 and SHA-3." 2016. https://arxiv.org/abs/1603.09383
+15. Benkoczi, R., Gaur, D., et al. "Quantum Bitcoin Mining." Entropy 24(3):323, 2022. https://www.mdpi.com/1099-4300/24/3/323
+16. Nerem, R., Gaur, D. "Conditions for Advantageous Quantum Bitcoin Mining." 2023. https://www.sciencedirect.com/science/article/pii/S2096720923000167
+17. Lee, S., et al. "T-depth reduction method for efficient SHA-256 quantum circuit construction." IET Information Security, 2023. https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ise2.12074
+18. Blocki, J., Holman, B., Lee, S. "The Parallel Reversible Pebbling Game: Analyzing the Post-quantum Security of iMHFs." 2022. https://eprint.iacr.org/2022/1503
+19. Phalak, K., et al. "Quantum Random Access Memory for Dummies." 2023. https://pmc.ncbi.nlm.nih.gov/articles/PMC10490729/
+
+### Falcon Algorithm and Implementation
+
+20. Falcon specification. https://falcon-sign.info/falcon.pdf
+21. Falcon implementation paper (Pornin, 2019). https://falcon-sign.info/falcon-impl-20190802.pdf
+22. Gentry, C., Peikert, C., Vaikuntanathan, V. "Trapdoors for Hard Lattices and New Cryptographic Constructions." STOC 2008. https://eprint.iacr.org/2007/432.pdf
+23. Abou Haidar, C., Tibouchi, M. "How Bad Was The Falcon Bug of 2019?" ACM CCS 2025. https://www.esat.kuleuven.be/cosic/blog/ccs25-falconbug/
+24. Guerreau, M., et al. "FALCON Down: Breaking Falcon Post-Quantum Signature Scheme through Side-Channel Attacks." 2021. https://eprint.iacr.org/2021/772
+25. Berzati, A., et al. "SHIFT SNARE: Uncovering Secret Keys in FALCON via Single-Trace Analysis." 2025. https://arxiv.org/html/2504.00320v1
+26. Kim, S., Hong, S. "Improved Power Analysis Attacks on Falcon." EUROCRYPT 2023. https://dl.acm.org/doi/10.1007/978-3-031-30634-1_19
+27. Howe, J., et al. "Do Not Disturb a Sleeping Falcon: Floating-Point Error Sensitivity." 2024. https://eprint.iacr.org/2024/1709
+28. Becker, H., Howe, J. "Formal Verification of Emulated Floating-Point Arithmetic in Falcon." 2024. https://eprint.iacr.org/2024/321.pdf
+29. Pornin, T., Prest, T. "BUFFing FALCON without Increasing the Signature Size." 2024. https://eprint.iacr.org/2024/710.pdf
+30. PQClean: Clean, portable implementations of post-quantum cryptography. https://github.com/PQClean/PQClean
+31. PQClean PR #210: Falcon integer-only constant-time implementations. https://github.com/PQClean/PQClean/pull/210
+32. FIPS 206 Status Update slides (Perlner). https://csrc.nist.gov/csrc/media/presentations/2025/fips-206-fn-dsa-(falcon)/images-media/fips_206-perlner_2.1.pdf
+33. Pornin, T. rust-fn-dsa: Rust implementation of FN-DSA. https://github.com/pornin/rust-fn-dsa
+
+### ML-DSA Algorithm and Implementation
+
+34. Ducas, L., Kiltz, E., Lepoint, T., Lyubashevsky, V., Schwabe, P., Seiler, G., Stehle, D. "CRYSTALS-Dilithium: A Lattice-Based Digital Signature Scheme." TCHES 2018. https://eprint.iacr.org/2017/633.pdf
+35. Lyubashevsky, V. "Fiat-Shamir with Aborts: Applications to Lattice and Factoring-Based Signatures." ASIACRYPT 2009. https://link.springer.com/chapter/10.1007/978-3-642-10366-7_35
+36. Langlois, A., Stehle, D. "Worst-Case to Average-Case Reductions for Module Lattices." Designs, Codes and Cryptography, 2015. https://perso.ens-lyon.fr/damien.stehle/downloads/MSIS.pdf
+37. CRYSTALS-Dilithium Round 3 Specification (v3.1). https://pq-crystals.org/dilithium/data/dilithium-specification-round3-20210208.pdf
+38. Regev, O. "The Learning with Errors Problem." Survey. https://cims.nyu.edu/~regev/papers/lwesurvey.pdf
+
+### Other Cryptographic References
+
+39. Percival, C. "Stronger Key Derivation via Sequential Memory-Hard Functions." BSDCan'09. https://www.tarsnap.com/scrypt.html
+40. RFC 7914: The scrypt Password-Based Key Derivation Function. https://www.rfc-editor.org/rfc/rfc7914.html
+41. Solar Designer. Yespower. https://www.openwall.com/yespower/
 
 ---
 
@@ -665,17 +1083,73 @@ The following URLs were accessed during the research and preparation of this whi
 - https://www.federalreserve.gov/econres/feds/harvest-now-decrypt-later-examining-post-quantum-cryptography-and-the-data-privacy-risks-for-distributed-ledger-networks.htm
 - https://www.federalreserve.gov/econres/feds/files/2025093pap.pdf
 - https://www.federalregister.gov/documents/2024/08/14/2024-17956/announcing-issuance-of-federal-information-processing-standards-fips-fips-203-module-lattice-based
+- https://csrc.nist.gov/CSRC/media/Presentations/Falcon/images-media/Falcon-April2018.pdf
+- https://www.inria.fr/en/nist-algorithm-falcon-post-quantum-cryptographic
 
-### Falcon and ML-DSA Technical Sources
+### Falcon Technical Sources
 
 - https://falcon-sign.info/
 - https://falcon-sign.info/falcon.pdf
-- https://eprint.iacr.org/2024/1709.pdf
-- https://eprint.iacr.org/2024/1769.pdf
+- https://falcon-sign.info/falcon-impl-20190802.pdf
+- https://falcon-sign.info/impl/falcon.h.html
+- https://falcon-sign.info/impl/config.h.html
+- https://falcon-sign.info/impl/sign.c.html
+- https://eprint.iacr.org/2007/432.pdf (GPV framework)
+- https://eprint.iacr.org/2021/772 (FALCON DOWN side-channel attack)
+- https://eprint.iacr.org/2024/710.pdf (BUFFing Falcon / FN-DSA BUFF security)
+- https://eprint.iacr.org/2024/1709 (Floating-point error sensitivity)
+- https://eprint.iacr.org/2024/1769.pdf (A Closer Look at Falcon)
+- https://eprint.iacr.org/2024/321.pdf (Formal verification of emulated FP in Falcon)
+- https://eprint.iacr.org/2025/1042 (Crowhammer: Rowhammer bit-flip key recovery)
+- https://eprint.iacr.org/2025/351.pdf (Thorough power analysis on Falcon)
+- https://eprint.iacr.org/2025/2159 (Single-trace key recovery)
+- https://eprint.iacr.org/2021/1486.pdf (Mitaka: simpler Falcon variant)
+- https://arxiv.org/html/2504.00320v1 (SHIFT SNARE single-trace analysis)
+- https://dl.acm.org/doi/10.1007/978-3-031-30634-1_19 (EUROCRYPT 2023 power analysis)
+- https://www.esat.kuleuven.be/cosic/blog/ccs25-falconbug/ (How Bad Was The Falcon Bug of 2019?)
 - https://csrc.nist.gov/csrc/media/Events/2022/fourth-pqc-standardization-conference/documents/papers/falcon-down-pqc2022.pdf
-- https://openquantumsafe.org/liboqs/algorithms/sig/ml-dsa.html
-- https://github.com/itzmeanjan/ml-kem
+- https://csrc.nist.gov/csrc/media/presentations/2025/fips-206-fn-dsa-(falcon)/images-media/fips_206-perlner_2.1.pdf
+- https://csrc.nist.gov/csrc/media/Presentations/2024/falcon/images-media/prest-falcon-pqc2024.pdf
+- https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/selected-algos-2022/official-comments/falcon-selected-algo-official-comment.pdf
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/7Z8x5AMXy8s/m/Spyv8VYoBQAJ (Falcon bug & fixes PQC Forum)
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/Dpr3tnTlKy0/m/X8z4uVw5AAAJ (Signature format feedback)
+- https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/1HXzjlMUU6Y (FIPS 206 status)
+- https://cryptoservices.github.io/post-quantum/cryptography/2019/09/18/new-falcon-impl.html (NCC Group Falcon impl)
+- https://cryptoservices.github.io/post-quantum/cryptography/2019/10/21/falcon-implementation.html (Optimized Falcon)
+- https://pqshield.com/falcon-a-post-quantum-signature-scheme/
+- https://www.digicert.com/blog/quantum-ready-fndsa-nears-draft-approval-from-nist
+- https://quarkslab.github.io/crypto-condor/latest/method/Falcon.html
+- https://github.com/pornin/rust-fn-dsa
+- https://github.com/pornin/c-fn-dsa
 - https://github.com/PQClean/PQClean
+- https://github.com/PQClean/PQClean/pull/210 (Falcon integer-only CT implementation)
+- https://github.com/PQClean/PQClean/issues/522 (aarch64 fmla bit-flip issue)
+- https://github.com/PQClean/PQClean/security
+- https://openquantumsafe.org/liboqs/algorithms/sig/falcon.html
+
+### ML-DSA Technical Sources
+
+- https://pq-crystals.org/dilithium/
+- https://pq-crystals.org/dilithium/data/dilithium-specification-round3-20210208.pdf
+- https://pq-crystals.org/dilithium/resources.shtml
+- https://eprint.iacr.org/2017/633.pdf (CRYSTALS-Dilithium original paper)
+- https://tches.iacr.org/index.php/TCHES/article/view/839
+- https://link.springer.com/chapter/10.1007/978-3-642-10366-7_35 (Fiat-Shamir with Aborts)
+- https://iacr.org/archive/asiacrypt2009/59120596/59120596.pdf
+- https://link.springer.com/chapter/10.1007/978-3-031-38554-4_12 (Fixing Fiat-Shamir with Aborts proof, CRYPTO 2023)
+- https://perso.ens-lyon.fr/damien.stehle/downloads/MSIS.pdf (Module lattice reductions)
+- https://dl.acm.org/doi/10.1007/s10623-014-9938-4
+- https://cims.nyu.edu/~regev/papers/lwesurvey.pdf (LWE survey)
+- https://web.eecs.umich.edu/~cpeikert/pubs/LWsE.pdf (SIS/LWE with small parameters)
+- https://arxiv.org/html/2409.02222v1 (Module-LWE/SIS digital signatures)
+- https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.204.pdf
+- https://csrc.nist.gov/files/pubs/fips/204/ipd/docs/fips-204-initial-public-comments-2023.pdf
+- https://github.com/pq-crystals/dilithium (reference implementation)
+- https://openquantumsafe.org/liboqs/algorithms/sig/ml-dsa.html
+- https://blog.cloudflare.com/post-quantum-signatures/ (deep dive)
+- https://electricdusk.com/ntt.html (NTT tutorial)
+- https://kivicore.com/en/embedded-security-blog/ml-dsa-explained-quantum-safe-digital-signatures-for-secure-embedded-systems
+- https://github.com/itzmeanjan/ml-kem
 
 ### Quantum Computing and Cryptography Analysis
 
@@ -833,6 +1307,35 @@ The following URLs were accessed during the research and preparation of this whi
 - https://www.binance.com/en/square/post/2024-10-29-vitalik-buterin-outlines-quantum-resistant-future-for-ethereum-in-new-roadmap-update-15509117799834
 - https://www.mexc.com/price/tidecoin
 - https://coinmarketcap.com/cmc-ai/quantum-resistant-ledger/what-is/
+
+### Quantum Attacks on PoW and QRAM Architecture
+
+- https://arxiv.org/abs/1603.09383
+- https://eprint.iacr.org/2016/992.pdf
+- https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ise2.12074
+- https://www.mdpi.com/1099-4300/24/3/323
+- https://arxiv.org/abs/2110.00878
+- https://journals.aps.org/prxquantum/pdf/10.1103/PRXQuantum.5.020312
+- https://www.nature.com/articles/s41534-024-00848-3
+- https://www.nature.com/articles/s41586-022-05434-1
+- https://www.nature.com/articles/s41586-024-08449-y
+- https://arxiv.org/html/2312.17483
+- https://www.amazon.science/publications/systems-architecture-for-quantum-random-access-memory
+- https://eprint.iacr.org/2022/1503
+- https://arxiv.org/abs/2301.05680
+- https://www.scilit.com/publications/a073ad723dcb63ac9c9a13eb40515fb5
+- https://braiins.com/blog/can-quantum-computers-51-attack-bitcoin
+- https://hackernoon.com/what-it-takes-for-quantum-computers-to-mine-bitcoin-efficiently
+- https://en.bitcoin.it/wiki/Quantum_computing_and_Bitcoin
+- https://litecoin.info/docs/key-concepts/proof-of-work
+- https://en.wikipedia.org/wiki/Scrypt
+- https://www.tarsnap.com/scrypt/scrypt.pdf
+
+### 51% Attack Costs and Merged Mining Economics
+
+- https://www.crypto51.app/
+- https://www.crypto51.app/coins/LTC.html
+- https://www.coindesk.com/tech/2023/08/02/why-you-should-care-about-litecoin-its-the-backbone-of-dogecoin
 
 ### Codebase Source Files Analyzed
 

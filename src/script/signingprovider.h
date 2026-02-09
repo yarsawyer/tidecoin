@@ -9,12 +9,13 @@
 #include <addresstype.h>
 #include <attributes.h>
 #include <key.h>
+#include <pq/pqhd_kdf.h>
 #include <pubkey.h>
 #include <script/script.h>
 #include <sync.h>
 #include <uint256.h>
 
-#include <array>
+#include <optional>
 
 /** An interface to be implemented by keystores that support signing. */
 class SigningProvider
@@ -26,7 +27,7 @@ public:
     virtual bool GetPubKey(const CKeyID &address, CPubKey& pubkey) const { return false; }
     virtual bool GetKey(const CKeyID &address, CKey& key) const { return false; }
     virtual bool HaveKey(const CKeyID &address) const { return false; }
-    virtual bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const { return false; }
+    virtual std::optional<pqhd::SecureSeed32> GetPQHDSeed(const uint256& seed_id) const { return std::nullopt; }
 };
 
 extern const SigningProvider& DUMMY_SIGNING_PROVIDER;
@@ -43,7 +44,7 @@ public:
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
-    bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const override;
+    std::optional<pqhd::SecureSeed32> GetPQHDSeed(const uint256& seed_id) const override;
 };
 
 struct FlatSigningProvider final : public SigningProvider
@@ -146,7 +147,7 @@ public:
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
-    bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const override;
+    std::optional<pqhd::SecureSeed32> GetPQHDSeed(const uint256& seed_id) const override;
 };
 
 #endif // BITCOIN_SCRIPT_SIGNINGPROVIDER_H

@@ -40,6 +40,19 @@ static CKey GetSingleKeyFromProvider(const SigningProvider& provider, const CTxD
     return key;
 }
 
+static std::string WritePQHDPath(const std::vector<uint32_t>& path)
+{
+    std::string out = "m";
+    for (const uint32_t elem : path) {
+        out += "/";
+        out += std::to_string(elem & 0x7FFFFFFFU);
+        if ((elem & 0x80000000U) != 0) {
+            out += "h";
+        }
+    }
+    return out;
+}
+
 RPCHelpMan dumpprivkey()
 {
     return RPCHelpMan{
@@ -548,6 +561,9 @@ RPCHelpMan getaddressinfo()
                 "Some of the information will only be present if the address is in the active wallet.\n",
                 {
                     {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Tidecoin address for which to get information."},
+                    {"options", RPCArg::Type::OBJ_NAMED_PARAMS, RPCArg::Optional::OMITTED, "", {
+                        {"include_pqhd_origin", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include PQHD seed/path metadata when available."},
+                    }},
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
@@ -576,10 +592,12 @@ RPCHelpMan getaddressinfo()
                         {RPCResult::Type::STR_HEX, "pubkey", /*optional=*/true, "The hex value of the raw public key for single-key addresses (possibly embedded in P2SH or P2WSH)."},
                         {RPCResult::Type::OBJ, "embedded", /*optional=*/true, "Information about the address embedded in P2SH or P2WSH, if relevant and known.",
                         {
-                            {RPCResult::Type::ELISION, "", "Includes all getaddressinfo output fields for the embedded address, excluding metadata (timestamp)\n"
+                            {RPCResult::Type::ELISION, "", "Includes all getaddressinfo output fields for the embedded address, excluding metadata (timestamp, pqhd_seedid, pqhd_path)\n"
                             "and relation to the wallet (ismine)."},
                         }},
                         {RPCResult::Type::NUM_TIME, "timestamp", /*optional=*/true, "The creation time of the key, if available, expressed in " + UNIX_EPOCH_TIME + "."},
+                        {RPCResult::Type::STR_HEX, "pqhd_seedid", /*optional=*/true, "The PQHD SeedID32 for descriptor-derived addresses, when available."},
+                        {RPCResult::Type::STR, "pqhd_path", /*optional=*/true, "The PQHD derivation path for descriptor-derived addresses, when available."},
                         {RPCResult::Type::ARR, "labels", "Array of labels associated with the address. Currently limited to one label but returned\n"
                             "as an array to keep the API stable if multiple labels are enabled in the future.",
                         {
@@ -589,6 +607,7 @@ RPCHelpMan getaddressinfo()
                 },
                 RPCExamples{
                     HelpExampleCli("getaddressinfo", "\"" + EXAMPLE_ADDRESS[0] + "\"") +
+                    HelpExampleCliNamed("getaddressinfo", {{"address", "\"" + EXAMPLE_ADDRESS[0] + "\""}, {"include_pqhd_origin", "false"}}) +
                     HelpExampleRpc("getaddressinfo", "\"" + EXAMPLE_ADDRESS[0] + "\"")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -600,6 +619,8 @@ RPCHelpMan getaddressinfo()
 
     std::string error_msg;
     CTxDestination dest = DecodeDestination(request.params[0].get_str(), error_msg);
+    const UniValue options = request.params[1].isObject() ? request.params[1] : UniValue::VOBJ;
+    const bool include_pqhd_origin = options.exists("include_pqhd_origin") ? options["include_pqhd_origin"].get_bool() : true;
 
     // Make sure the destination is valid
     if (!IsValidDestination(dest)) {
@@ -656,6 +677,10 @@ RPCHelpMan getaddressinfo()
     if (spk_man) {
         if (const std::unique_ptr<CKeyMetadata> meta = spk_man->GetMetadata(dest)) {
             ret.pushKV("timestamp", meta->nCreateTime);
+            if (include_pqhd_origin && meta->has_pqhd_origin) {
+                ret.pushKV("pqhd_seedid", meta->pqhd_seed_id.ToString());
+                ret.pushKV("pqhd_path", WritePQHDPath(meta->pqhd_path));
+            }
         }
     }
 

@@ -376,6 +376,16 @@ std::shared_ptr<CWallet> LoadWalletInternal(WalletContext& context, const std::s
     }
 }
 
+template <typename T, typename A>
+void CleanseAndClearVector(std::vector<T, A>& vec)
+{
+    if (!vec.empty()) {
+        memory_cleanse(vec.data(), vec.size() * sizeof(T));
+    }
+    vec.clear();
+    vec.shrink_to_fit();
+}
+
 class FastWalletRescanFilter
 {
 public:
@@ -881,11 +891,13 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
             CKeyingMaterial plaintext_seed{seed_state.seed.begin(), seed_state.seed.end()};
             std::vector<unsigned char> crypted_seed;
             if (!EncryptSecret(plain_master_key, plaintext_seed, seed_id, crypted_seed)) {
+                CleanseAndClearVector(plaintext_seed);
                 encrypted_batch->TxnAbort();
                 delete encrypted_batch;
                 encrypted_batch = nullptr;
                 assert(false);
             }
+            CleanseAndClearVector(plaintext_seed);
             PQHDCryptedSeed crypted_record;
             crypted_record.nCreateTime = seed_state.create_time;
             crypted_record.crypted_seed = crypted_seed;
@@ -896,7 +908,7 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
                 encrypted_batch = nullptr;
                 assert(false);
             }
-            seed_state.seed.clear();
+            CleanseAndClearVector(seed_state.seed);
             seed_state.crypted_seed = std::move(crypted_seed);
             seed_state.encrypted = true;
         }
@@ -1942,6 +1954,159 @@ util::Result<void> CWallet::SetPQHDPolicy(std::optional<uint8_t> receive_scheme,
     return util::Result<void>();
 }
 
+static uint256 ComputePQHDSeedID(std::span<const uint8_t, 32> master_seed)
+{
+    const pqhd::SeedID32 seedid_be = pqhd::ComputeSeedID32(master_seed);
+    std::array<unsigned char, 32> seedid_le{};
+    std::reverse_copy(seedid_be.begin(), seedid_be.end(), seedid_le.begin());
+    return uint256{std::span<const unsigned char>(seedid_le)};
+}
+
+std::vector<CWallet::PQHDSeedInfo> CWallet::ListPQHDSeeds() const
+{
+    AssertLockHeld(cs_wallet);
+    std::vector<PQHDSeedInfo> out;
+    out.reserve(m_pqhd_seeds.size());
+    for (const auto& [seed_id, state] : m_pqhd_seeds) {
+        out.push_back(PQHDSeedInfo{
+            .seed_id = seed_id,
+            .create_time = state.create_time,
+            .encrypted = state.encrypted,
+        });
+    }
+    return out;
+}
+
+util::Result<CWallet::ImportPQHDSeedResult> CWallet::ImportPQHDSeed(const std::array<unsigned char, 32>& master_seed)
+{
+    AssertLockHeld(cs_wallet);
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        return util::Error{Untranslated("PQHD seed import requires descriptor wallet")};
+    }
+
+    const uint256 seed_id = ComputePQHDSeedID(std::span<const uint8_t, 32>(
+        reinterpret_cast<const uint8_t*>(master_seed.data()), master_seed.size()));
+    if (m_pqhd_seeds.contains(seed_id)) {
+        return ImportPQHDSeedResult{seed_id, /*inserted=*/false};
+    }
+
+    WalletBatch batch(GetDatabase());
+    const int64_t now{GetTime()};
+    if (IsCrypted()) {
+        if (IsLocked()) {
+            return util::Error{Untranslated("Cannot import PQHD seed while wallet is locked")};
+        }
+        CKeyingMaterial plaintext_seed{master_seed.begin(), master_seed.end()};
+        std::vector<unsigned char> crypted_seed;
+        if (!EncryptSecret(vMasterKey, plaintext_seed, seed_id, crypted_seed)) {
+            CleanseAndClearVector(plaintext_seed);
+            return util::Error{Untranslated("Encrypting PQHD seed failed")};
+        }
+        CleanseAndClearVector(plaintext_seed);
+
+        PQHDCryptedSeed seed_record;
+        seed_record.nCreateTime = now;
+        seed_record.crypted_seed = std::move(crypted_seed);
+        if (!batch.WriteCryptedPQHDSeed(seed_id, seed_record)) {
+            return util::Error{Untranslated("Failed to write encrypted PQHD seed")};
+        }
+        if (!LoadPQHDCryptedSeed(seed_id, PQHDCryptedSeed(seed_record))) {
+            return util::Error{Untranslated("Failed to load encrypted PQHD seed into wallet state")};
+        }
+    } else {
+        PQHDSeed seed_record;
+        seed_record.nCreateTime = now;
+        seed_record.seed.assign(master_seed.begin(), master_seed.end());
+        if (!batch.WritePQHDSeed(seed_id, seed_record)) {
+            return util::Error{Untranslated("Failed to write PQHD seed")};
+        }
+        if (!LoadPQHDSeed(seed_id, PQHDSeed(seed_record))) {
+            return util::Error{Untranslated("Failed to load PQHD seed into wallet state")};
+        }
+    }
+
+    if (!m_pqhd_policy) {
+        PQHDPolicy policy;
+        policy.default_receive_scheme = static_cast<uint8_t>(pq::SchemeId::FALCON_512);
+        policy.default_change_scheme = policy.default_receive_scheme;
+        policy.default_seed_id = seed_id;
+        policy.default_change_seed_id = seed_id;
+        if (!batch.WritePQHDPolicy(policy)) {
+            return util::Error{Untranslated("Failed to write default PQHD policy")};
+        }
+        LoadPQHDPolicy(PQHDPolicy(policy));
+    }
+
+    return ImportPQHDSeedResult{seed_id, /*inserted=*/true};
+}
+
+util::Result<void> CWallet::SetPQHDSeedDefaults(const uint256& receive_seed_id, const uint256& change_seed_id)
+{
+    AssertLockHeld(cs_wallet);
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        return util::Error{Untranslated("PQHD seed defaults require descriptor wallet")};
+    }
+    if (!m_pqhd_policy) {
+        return util::Error{Untranslated("PQHD policy not initialized")};
+    }
+    if (!HavePQHDSeed(receive_seed_id)) {
+        return util::Error{Untranslated("Receive seed id not found in wallet")};
+    }
+    if (!HavePQHDSeed(change_seed_id)) {
+        return util::Error{Untranslated("Change seed id not found in wallet")};
+    }
+
+    PQHDPolicy policy = *m_pqhd_policy;
+    policy.default_seed_id = receive_seed_id;
+    policy.default_change_seed_id = change_seed_id;
+
+    WalletBatch batch(GetDatabase());
+    if (!batch.WritePQHDPolicy(policy)) {
+        return util::Error{Untranslated("Failed to write PQHD policy")};
+    }
+    LoadPQHDPolicy(PQHDPolicy(policy));
+    return util::Result<void>();
+}
+
+util::Result<void> CWallet::RemovePQHDSeed(const uint256& seed_id)
+{
+    AssertLockHeld(cs_wallet);
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        return util::Error{Untranslated("PQHD seed removal requires descriptor wallet")};
+    }
+    const auto it = m_pqhd_seeds.find(seed_id);
+    if (it == m_pqhd_seeds.end()) {
+        return util::Error{Untranslated("PQHD seed id not found in wallet")};
+    }
+    if (m_pqhd_seeds.size() <= 1) {
+        return util::Error{Untranslated("Cannot remove the last PQHD seed")};
+    }
+    if (m_pqhd_policy &&
+        (m_pqhd_policy->default_seed_id == seed_id || m_pqhd_policy->default_change_seed_id == seed_id)) {
+        return util::Error{Untranslated("Cannot remove active default PQHD seed")};
+    }
+
+    for (const auto& [_, spk_man] : m_spk_managers) {
+        auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man.get());
+        if (!desc_spk_man) continue;
+        const auto& wallet_desc = desc_spk_man->GetWalletDescriptor();
+        if (!wallet_desc.descriptor) continue;
+        const auto key_path_info = wallet_desc.descriptor->GetPQHDKeyPathInfo();
+        if (key_path_info && key_path_info->seed_id == seed_id) {
+            return util::Error{Untranslated("Cannot remove PQHD seed referenced by wallet descriptors")};
+        }
+    }
+
+    WalletBatch batch(GetDatabase());
+    const bool erased = it->second.encrypted ? batch.EraseCryptedPQHDSeed(seed_id) : batch.ErasePQHDSeed(seed_id);
+    if (!erased) {
+        return util::Error{Untranslated("Failed to remove PQHD seed from wallet database")};
+    }
+    CleanseAndClearVector(it->second.seed);
+    m_pqhd_seeds.erase(it);
+    return util::Result<void>();
+}
+
 int CWallet::GetTargetHeightForOutputs() const
 {
     // The wallet can exist "offline" (e.g. tests or wallet tooling) without a
@@ -2356,13 +2521,10 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     return false;
 }
 
-std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& complete, std::optional<int> sighash_type, bool sign, bool bip32derivs, size_t * n_signed, bool finalize) const
+std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& complete, std::optional<int> sighash_type, bool sign, size_t * n_signed, bool finalize, bool include_pqhd_origins) const
 {
     if (n_signed) {
         *n_signed = 0;
-    }
-    if (bip32derivs) {
-        return PSBTError::UNSUPPORTED;
     }
     LOCK(cs_wallet);
     // Get all of the previous transactions
@@ -2398,7 +2560,7 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         int n_signed_this_spkm = 0;
-        const auto error{spk_man->FillPSBT(psbtx, txdata, sighash_type, sign, bip32derivs, &n_signed_this_spkm, finalize, script_verify_flags)};
+        const auto error{spk_man->FillPSBT(psbtx, txdata, sighash_type, sign, &n_signed_this_spkm, finalize, include_pqhd_origins, script_verify_flags)};
         if (error) {
             return error;
         }
@@ -3885,28 +4047,32 @@ bool CWallet::HasPQHDSeeds() const
     return !m_pqhd_seeds.empty();
 }
 
-bool CWallet::GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& master_seed) const
+std::optional<pqhd::SecureSeed32> CWallet::GetPQHDSeed(const uint256& seed_id) const
 {
     LOCK(cs_wallet);
     const auto it = m_pqhd_seeds.find(seed_id);
-    if (it == m_pqhd_seeds.end()) return false;
+    if (it == m_pqhd_seeds.end()) return std::nullopt;
 
     const PQHDSeedState& state = it->second;
     if (!state.encrypted) {
-        if (state.seed.size() != master_seed.size()) return false;
-        std::copy_n(state.seed.begin(), master_seed.size(), master_seed.begin());
-        return true;
+        std::optional<pqhd::SecureSeed32> out;
+        out.emplace();
+        if (!out->Set(std::span<const uint8_t>(state.seed.data(), state.seed.size()))) return std::nullopt;
+        return out;
     }
 
-    if (IsLocked()) return false;
+    if (IsLocked()) return std::nullopt;
 
     CKeyingMaterial plaintext;
     if (!DecryptSecret(vMasterKey, state.crypted_seed, seed_id, plaintext)) {
-        return false;
+        return std::nullopt;
     }
-    if (plaintext.size() != master_seed.size()) return false;
-    std::copy_n(plaintext.begin(), master_seed.size(), master_seed.begin());
-    return true;
+    std::optional<pqhd::SecureSeed32> out;
+    out.emplace();
+    const bool ok = out->Set(std::span<const uint8_t>(plaintext.data(), plaintext.size()));
+    CleanseAndClearVector(plaintext);
+    if (!ok) return std::nullopt;
+    return out;
 }
 
 bool CWallet::HaveCryptedKeys() const
@@ -3943,27 +4109,24 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     assert(!IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER));
 
     // Create a PQHD seed and default policy for descriptor wallets.
-    std::array<unsigned char, 32> master_seed{};
-    GetStrongRandBytes(master_seed);
+    pqhd::SecureSeed32 master_seed;
+    GetStrongRandBytes(master_seed.MutableSpan());
 
     // Store SeedID32 as a uint256 using the standard uint256 hex representation.
-    // The uint256 string representation reverses bytes; reverse here so seed_id.ToString()
-    // matches the canonical SeedID32 hex shown in pqhd test vectors.
-    const pqhd::SeedID32 seedid_be =
-        pqhd::ComputeSeedID32(std::span<const uint8_t, 32>(reinterpret_cast<const uint8_t*>(master_seed.data()), master_seed.size()));
-    std::array<unsigned char, 32> seedid_le{};
-    std::reverse_copy(seedid_be.begin(), seedid_be.end(), seedid_le.begin());
-    const uint256 seed_id{std::span<const unsigned char>(seedid_le)};
+    // The helper normalizes endianness so seed_id.ToString() matches canonical SeedID32 hex.
+    const uint256 seed_id{ComputePQHDSeedID(master_seed.Span())};
 
     if (IsCrypted()) {
         if (IsLocked()) {
             throw std::runtime_error(std::string(__func__) + ": Wallet is locked, cannot setup encrypted PQHD seed");
         }
-        CKeyingMaterial plaintext_seed{master_seed.begin(), master_seed.end()};
+        CKeyingMaterial plaintext_seed{master_seed.Span().begin(), master_seed.Span().end()};
         std::vector<unsigned char> crypted_seed;
         if (!EncryptSecret(vMasterKey, plaintext_seed, seed_id, crypted_seed)) {
+            CleanseAndClearVector(plaintext_seed);
             throw std::runtime_error(std::string(__func__) + ": encrypting PQHD seed failed");
         }
+        CleanseAndClearVector(plaintext_seed);
         PQHDCryptedSeed seed_record;
         seed_record.nCreateTime = GetTime();
         seed_record.crypted_seed = std::move(crypted_seed);
@@ -3974,7 +4137,7 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     } else {
         PQHDSeed seed_record;
         seed_record.nCreateTime = GetTime();
-        seed_record.seed.assign(master_seed.begin(), master_seed.end());
+        seed_record.seed.assign(master_seed.Span().begin(), master_seed.Span().end());
         if (!batch.WritePQHDSeed(seed_id, seed_record)) {
             throw std::runtime_error(std::string(__func__) + ": writing PQHD seed failed");
         }

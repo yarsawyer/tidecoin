@@ -27,7 +27,6 @@ Legend:
 ## Decisions Needed
 
 - None for the current PR chain.
-- PQHD seed lifecycle RPC/Qt surface is explicitly deferred; the plan is to refactor/extend existing wallet RPC/Qt flows later (no new “seed management” RPC family now).
 - PQHD‑only removal work is tracked in `ai-docs/pqhd-removal-plan.md` and is reflected here under “Cleanup alignment”.
 
 ---
@@ -68,8 +67,12 @@ Legend:
     - `src/psbt.h` (hard‑reject `PSBT_GLOBAL_XPUB`)
     - `src/rpc/rawtransaction.cpp` (`decodepsbt` omits `global_xpubs`/`bip32_derivs`)
     - `src/rpc/rawtransaction.cpp` (`descriptorprocesspsbt` has no `bip32derivs`)
+    - `src/wallet/rpc/spend.cpp` (`walletprocesspsbt` and `walletcreatefundedpsbt` no longer expose `bip32derivs`)
+    - `src/wallet/wallet.cpp`, `src/wallet/scriptpubkeyman.cpp` (`FillPSBT` signatures no longer take `bip32derivs`)
+    - `src/rpc/client.cpp` (CLI conversion table updated for removed PSBT args/index shifts)
   - Verify:
     - `./build/bin/test_tidecoin -t psbt_pqhd_origin_tests`
+    - `python3 test/functional/test_runner.py rpc_psbt.py wallet_bumpfee.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200`
 - PQHD-REQ-0009 — PQHD path constants and semantics are fixed (`src/pq/pqhd_params.h` for purpose/coin_type; hardened-only enforcement in `src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`; vectors in `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0010 — NodeSecret/ChainCode derivation (hardened-only CKD) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
 - PQHD-REQ-0011 — Leaf key material derivation (HKDF-style) (`src/pq/pqhd_kdf.h`, `src/pq/pqhd_kdf.cpp`, `src/test/pqhd_kdf_tests.cpp`)
@@ -91,8 +94,13 @@ Legend:
   - Verify: `./build/bin/test_tidecoin -t psbt_pq_keypaths_tests`
 - PQHD-REQ-0023 — PQHD unit tests for determinism + parsing (determinism: `src/test/pqhd_kdf_tests.cpp`, `src/test/pqhd_keygen_tests.cpp`)
 - PQHD-REQ-0025 — PQHD origin fields in `CKeyMetadata` (SeedID32 + hardened path)
-  - Touch-points: `src/wallet/walletdb.h` (`CKeyMetadata::VERSION_WITH_PQHD_ORIGIN`, `has_pqhd_origin`, `pqhd_seed_id`, `pqhd_path`)
-  - Verify: `./build/bin/test_tidecoin -t walletdb_tests`
+  - Touch-points:
+    - `src/wallet/walletdb.h` (`CKeyMetadata::VERSION_WITH_PQHD_ORIGIN`, `has_pqhd_origin`, `pqhd_seed_id`, `pqhd_path`)
+    - `src/wallet/scriptpubkeyman.cpp` (`DescriptorScriptPubKeyMan::GetMetadata` now populates PQHD seed/path from descriptor + derived child index)
+    - `src/wallet/rpc/addresses.cpp` (`getaddressinfo` now surfaces `pqhd_seedid` and `pqhd_path` with `include_pqhd_origin` control, default enabled)
+  - Verify:
+    - `./build/bin/test_tidecoin -t walletdb_tests`
+    - `python3 test/functional/test_runner.py wallet_change_address.py --jobs=1 --combinedlogslen=200`
 - PQHD-REQ-0016 — Descriptor grammar: `pqhd(<SeedID32>)/...` key expression
   - Touch-points:
     - `src/script/descriptor.cpp` (`PQHDPubkeyProvider`, `ParsePubkeyInner()` `pqhd(...)` parsing)
@@ -102,48 +110,104 @@ Legend:
     - `src/script/descriptor.cpp` (`PQHDPubkeyProvider::ToString()`, hardened-only parsing, `*h` only)
     - `src/test/descriptor_tests.cpp` (`descriptor_pqhd_key_expression_parsing`)
   - Verify: `./build/bin/test_tidecoin -t descriptor_tests`
+- PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin
+  - Touch-points:
+    - `src/pq/pqhd_kdf.h` (`pqhd::SecureSeed32` RAII-wiped seed wrapper)
+    - `src/script/signingprovider.h`, `src/script/signingprovider.cpp` (`GetPQHDSeed` returns `std::optional<pqhd::SecureSeed32>`; no caller-owned plain output buffers)
+    - `src/wallet/scriptpubkeyman.h`, `src/wallet/scriptpubkeyman.cpp` (`WalletStorage::GetPQHDSeed` adopts secure return type)
+    - `src/wallet/wallet.h`, `src/wallet/wallet.cpp` (`CWallet::GetPQHDSeed` secure return; locked-wallet deny path; decrypted plaintext is cleansed before release)
+    - `src/wallet/pqhd.h` (`PQHDSeed::seed` migrated to secure allocator container)
+    - `src/wallet/wallet.cpp` (`PQHDSeedState::seed` secure allocator; explicit cleanse-before-clear in encrypt/remove paths)
+    - `src/wallet/rpc/wallet.cpp` (`importpqhdseed` cleanses parsed seed bytes and stack seed buffer)
+    - `src/wallet/scriptpubkeyman.cpp` (`TopUpWithDB` derivation path uses `PQHDWalletSigningProvider` and fails when seed cannot be decrypted)
+    - `src/wallet/rpc/addresses.cpp` (`getnewaddress`/`getrawchangeaddress` surface keypool-exhaustion derivation failures)
+    - `test/functional/wallet_pqhd_lock_semantics.py` (runtime lock/unlock derivation behavior)
+  - Verify:
+    - `cmake --build build -j 12`
+    - `./build/bin/test_tidecoin -t walletdb_tests`
+    - `./build/bin/test_tidecoin -t scriptpubkeyman_tests`
+    - `./build/bin/test_tidecoin -t psbt_wallet_tests`
+    - `python3 test/functional/test_runner.py wallet_pqhd_lock_semantics.py --jobs=1 --combinedlogslen=200`
+    - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py rpc_psbt.py --jobs=1 --combinedlogslen=200`
+  - Behavioral guarantee:
+    - Locked encrypted PQHD wallets can still hand out pre-generated keypool entries.
+    - Once keypool is exhausted, locked wallets cannot derive new PQHD keys.
+    - Unlocking restores derivation and address generation.
+    - PQHD seed retrieval is secure-by-construction for wallet/signing-provider callers, and temporary plaintext seed buffers are explicitly cleansed on critical paths.
+- PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation
+  - Touch-points:
+    - `src/pq/pq_scheme.h` (`pq::IsSchemeAllowedAtHeight(...)`)
+    - `src/wallet/wallet.cpp` (`CWallet::LoadPQHDPolicy` clamp + policy defaults)
+    - `src/wallet/walletutil.cpp` (`GeneratePQHDWalletDescriptor` activation gate)
+    - `src/wallet/scriptpubkeyman.cpp` (`DescriptorScriptPubKeyMan::GetNewDestination` scheme gate)
+    - `src/wallet/rpc/wallet.cpp` (`setpqhdpolicy`)
+    - `src/qt/addresstablemodel.cpp`, `src/qt/optionsdialog.{h,cpp}`, `src/qt/forms/optionsdialog.ui` (Qt override/defaults)
+  - Verify:
+    - `./build/bin/test_tidecoin -t pq_pubkey_container_tests`
+    - `./build/bin/test_tidecoin -t walletdb_tests`
+    - `./build/bin/test_tidecoin -t scriptpubkeyman_tests`
+    - `python3 test/functional/test_runner.py wallet_pqhd_policy.py --jobs=1 --combinedlogslen=200`
+  - Note:
+    - Tidecoin regtest is post-auxpow from height 0; coverage is intentionally post-auxpow only.
+- PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
+  - Touch-points:
+    - `src/wallet/scriptpubkeyman.cpp` (`DescriptorScriptPubKeyMan::FillPSBT` emits `tidecoin/PQHD_ORIGIN` for unambiguous single-key wallet-owned inputs/outputs, gated by `include_pqhd_origins`)
+    - `src/wallet/wallet.cpp`, `src/wallet/wallet.h` (`CWallet::FillPSBT` plumbs `include_pqhd_origins`)
+    - `src/wallet/rpc/spend.cpp` (`walletprocesspsbt` adds `include_pqhd_origins` RPC flag, default enabled)
+    - `src/rpc/client.cpp` (CLI arg conversion mapping for `walletprocesspsbt` and `getaddressinfo` options)
+    - `src/wallet/test/psbt_wallet_tests.cpp` (`psbt_fill_emits_pqhd_origin_records`)
+    - `src/rpc/rawtransaction.cpp` (`decodepsbt` parsed display of `pqhd_origins`, already present)
+    - `test/functional/rpc_psbt.py` (wallet-update flow remains passing with PQHD-origin decode paths)
+    - `test/functional/wallet_pqhd_seed_lifecycle.py` (explicit enabled/disabled origin-emission assertions)
+  - Verify:
+    - `TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=psbt_wallet_tests --report_level=detailed`
+    - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py wallet_pqhd_lock_semantics.py wallet_change_address.py rpc_psbt.py --jobs=1 --combinedlogslen=200`
+  - Behavioral guarantee:
+    - wallet PSBT fill emits proprietary PQHD origin metadata for wallet-owned, single-key scripts on both input and output maps by default.
+    - operators can disable this metadata emission per-call in `walletprocesspsbt` for privacy-sensitive workflows.
+- PQHD-REQ-0024 — PQHD functional tests for wallet behavior and gating
+  - Touch-points:
+    - `test/functional/wallet_pqhd_policy.py` (scheme-policy update and override gating)
+    - `test/functional/wallet_pqhd_lock_semantics.py` (locked-derivation semantics)
+    - `test/functional/wallet_pqhd_seed_lifecycle.py` (multi-root seed lifecycle)
+    - `test/functional/test_runner.py` (test registration)
+  - Verify:
+    - `python3 test/functional/test_runner.py wallet_pqhd_policy.py wallet_pqhd_lock_semantics.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200`
+  - Behavioral guarantee:
+    - Core PQHD policy, lock behavior, and seed lifecycle are covered by direct functional assertions.
+- PQHD-REQ-0005 — Seed import de-duplication is by SeedID32 (idempotent)
+  - Touch-points:
+    - `src/wallet/wallet.h` (`ImportPQHDSeedResult`, `ImportPQHDSeed`)
+    - `src/wallet/wallet.cpp` (`ComputePQHDSeedID`, `CWallet::ImportPQHDSeed`)
+    - `src/wallet/rpc/wallet.cpp` (`importpqhdseed`)
+    - `test/functional/wallet_pqhd_seed_lifecycle.py` (re-import returns `inserted=false`)
+  - Verify:
+    - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200`
+  - Behavioral guarantee:
+    - Re-import of the same 32-byte master seed is accepted as a no-op keyed by SeedID32.
+- PQHD-REQ-0006 — Multi-root wallets: multiple PQHD seeds per wallet
+  - Touch-points:
+    - `src/wallet/wallet.h` (`ListPQHDSeeds`, `SetPQHDSeedDefaults`, `RemovePQHDSeed`)
+    - `src/wallet/wallet.cpp` (core lifecycle + descriptor-reference safety on removal)
+    - `src/wallet/rpc/wallet.cpp` (`listpqhdseeds`, `setpqhdseed`, `removepqhdseed`)
+    - `test/functional/wallet_pqhd_seed_lifecycle.py` (import/list/select/remove lifecycle)
+  - Verify:
+    - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200`
+  - Behavioral guarantee:
+    - Wallet supports multiple PQHD roots, exposes lifecycle APIs, and blocks unsafe removal of defaults/descriptor-referenced seeds.
 
 ---
 
 ## In Progress
 
-- PQHD-REQ-0002 — Auxpow-gated scheme activation for output generation (core enforcement done; RPC/Qt overrides implemented; RPC test coverage missing)
-  - Implemented:
-    - Central rule `pq::IsSchemeAllowedAtHeight(...)` in `src/pq/pq_scheme.h`
-    - Wallet policy clamp in `CWallet::LoadPQHDPolicy` (`src/wallet/wallet.cpp`)
-    - Descriptor creation gating in `GeneratePQHDWalletDescriptor` (`src/wallet/walletutil.cpp`)
-    - Output generation gating in `DescriptorScriptPubKeyMan::GetNewDestination` (`src/wallet/scriptpubkeyman.cpp`)
-    - Internal vs external descriptor scheme selection uses policy defaults (`src/wallet/wallet.cpp`)
-    - Qt scheme override uses async descriptor creation with progress (`src/qt/addresstablemodel.cpp`, `src/wallet/wallet.cpp`)
-    - RPC/Qt policy surface:
-      - `setpqhdpolicy` RPC updates wallet defaults (`src/wallet/rpc/wallet.cpp`)
-      - Options → Wallet tab default scheme selectors (`src/qt/forms/optionsdialog.ui`,
-        `src/qt/optionsdialog.{h,cpp}`, `src/qt/bitcoingui.cpp`)
-  - Tests:
-    - `./build/bin/test_tidecoin -t pq_pubkey_container_tests` (rule coverage)
-    - `./build/bin/test_tidecoin -t walletdb_tests` (policy clamp)
-    - `./build/bin/test_tidecoin -t scriptpubkeyman_tests` (PQHD scheme gate + internal scheme default)
-  - Missing:
-    - RPC test coverage for override behavior (pre‑auxpow reject, post‑auxpow accept).
-- PQHD-REQ-0007 — PQHD seed encryption and lock semantics match Bitcoin (partial; semantics not fully verified/tested)
-  - Present in code:
-    - Seeds stored in `m_pqhd_seeds` (plaintext or `crypted_seed`) (`src/wallet/pqhd.h`, `src/wallet/wallet.cpp`).
-    - Decryption uses `DecryptSecret` with `seed_id` as IV (`src/wallet/wallet.cpp`, `GetPQHDSeedForID` path).
-  - Missing:
-    - Explicit tests/verification for lock/unlock semantics (locked wallet cannot derive new PQHD keys).
-- PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
-  - Partial:
-    - `decodepsbt` reads and formats `tidecoin/PQHD_ORIGIN` into `pqhd_origins` (`src/rpc/rawtransaction.cpp`).
-  - Missing:
-    - Wallet emission during `walletprocesspsbt` / PSBT creation and analysis (no PQHD_ORIGIN added in `CWallet::FillPSBT` or `walletprocesspsbt` path).
+- (none)
 
 ---
 
 ## Not Started
 
 ### Seed Identity + Storage
-- PQHD-REQ-0005 — Seed import de-duplication is by SeedID32 (idempotent)
-- PQHD-REQ-0006 — Multi-root wallets: multiple PQHD seeds per wallet
+- (none)
 
 ### Derivation + Keygen
 - (none)
@@ -156,11 +220,10 @@ Legend:
   - Note: upstream `descriptor_tests` vectors are secp256k1/WIF/BIP32-centric and are skipped in Tidecoin. We still need a small PQ-native descriptor test suite that exercises explicit raw-hex prefixed `TidePubKey` bytes (no xpub/xprv surface).
 
 ### PSBT + RPC/Qt Integration
-- PQHD-REQ-0021 — Wallet + RPC/Qt write/read PQHD origin metadata in PSBT
+- (none)
 
 ### Migration + Tests
 - PQHD-REQ-0022 — Migration baseline: oldtidecoin wallets are legacy BDB non-HD
-- PQHD-REQ-0024 — PQHD functional tests for wallet behavior and gating
 
 ---
 

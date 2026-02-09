@@ -227,8 +227,10 @@ class ListTransactionsTest(BitcoinTestFramework):
         """Test behavior when receiving address is not in the address book."""
 
         self.log.info("Setup the same wallet on two nodes")
-        # refill keypool otherwise the second node wouldn't recognize addresses generated on the first nodes
-        self.nodes[0].keypoolrefill(1000)
+        # Refill to the same keypool target as upstream, but in PQ-safe chunks
+        # to avoid hitting the per-RPC timeout during large key generation bursts.
+        for target in (250, 500, 750, 1000):
+            self.nodes[0].keypoolrefill(target)
         self.stop_nodes()
         wallet0 = os.path.join(self.nodes[0].chain_path, self.default_wallet_name, "wallet.dat")
         wallet2 = os.path.join(self.nodes[2].chain_path, self.default_wallet_name, "wallet.dat")

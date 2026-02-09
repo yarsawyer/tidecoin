@@ -79,10 +79,10 @@ util::Result<void> ExternalSignerScriptPubKeyMan::DisplayAddress(const CTxDestin
 }
 
 // If sign is true, transaction must previously have been filled
-std::optional<PSBTError> ExternalSignerScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbt, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize, std::optional<unsigned int> script_verify_flags) const
+std::optional<PSBTError> ExternalSignerScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbt, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, int* n_signed, bool finalize, bool include_pqhd_origins, std::optional<unsigned int> script_verify_flags) const
 {
     if (!sign) {
-        return DescriptorScriptPubKeyMan::FillPSBT(psbt, txdata, sighash_type, false, bip32derivs, n_signed, finalize, script_verify_flags);
+        return DescriptorScriptPubKeyMan::FillPSBT(psbt, txdata, sighash_type, false, n_signed, finalize, include_pqhd_origins, script_verify_flags);
     }
 
     // Already complete if every input is now signed

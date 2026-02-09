@@ -335,8 +335,8 @@ public:
 
         if (!write_cache) return std::nullopt;
 
-        std::array<uint8_t, 32> master_seed{};
-        if (!arg.GetPQHDSeed(m_seed_id, master_seed)) {
+        const auto master_seed = arg.GetPQHDSeed(m_seed_id);
+        if (!master_seed) {
             return std::nullopt;
         }
 
@@ -355,7 +355,7 @@ public:
             return std::nullopt;
         }
 
-        const pqhd::Node master = pqhd::MakeMasterNode(master_seed);
+        const pqhd::Node master = pqhd::MakeMasterNode(master_seed->Span());
         const auto leaf_node_opt = pqhd::DerivePath(master, leaf_path);
         if (!leaf_node_opt) return std::nullopt;
 
@@ -402,8 +402,8 @@ public:
 
     void GetPrivKey(int pos, const SigningProvider& arg, FlatSigningProvider& out) const override
     {
-        std::array<uint8_t, 32> master_seed{};
-        if (!arg.GetPQHDSeed(m_seed_id, master_seed)) {
+        const auto master_seed = arg.GetPQHDSeed(m_seed_id);
+        if (!master_seed) {
             return;
         }
 
@@ -422,7 +422,7 @@ public:
             return;
         }
 
-        const pqhd::Node master = pqhd::MakeMasterNode(master_seed);
+        const pqhd::Node master = pqhd::MakeMasterNode(master_seed->Span());
         const auto leaf_node_opt = pqhd::DerivePath(master, leaf_path);
         if (!leaf_node_opt) return;
 

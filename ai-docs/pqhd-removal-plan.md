@@ -49,8 +49,9 @@ Incomplete / pending:
   - RPC help text still references xpub/xprv + BIP32:
     - `gethdkeys()` and `createwalletdescriptor()` in `src/wallet/rpc/wallet.cpp`
       (both hard-reject BIP32/xpub but advertise them in help).
-  - RPC parameters still include `bip32derivs` (must be false, hard-reject true):
-    - `walletprocesspsbt` / `descriptorprocesspsbt` in `src/wallet/rpc/spend.cpp`.
+  - Removed wallet-side `bip32derivs` RPC/API surface:
+    - `walletprocesspsbt` / `walletcreatefundedpsbt` in `src/wallet/rpc/spend.cpp`.
+    - `descriptorprocesspsbt` in `src/rpc/rawtransaction.cpp`.
   - PSBT BIP32 record types still defined to hard-reject:
     - `PSBT_IN_BIP32_DERIVATION`, `PSBT_OUT_BIP32_DERIVATION`, and global xpubs
       in `src/psbt.h`.
@@ -277,5 +278,5 @@ Acceptance:
       key expressions).
 - [x] Remove all remaining secp/BIP32 tests, benches, and fuzzers
       (`src/test/*`, `src/bench/*`, `src/test/fuzz/*`) (walletload descriptor
-      test migrated to pqhd; fuzz uses `bip32derivs=false`).
+      test migrated to pqhd; fuzz uses updated no-`bip32derivs` FillPSBT signatures).
 - [x] Add/update tests for PQ pubkey container and descriptor parsing.

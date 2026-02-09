@@ -25,6 +25,7 @@ from test_framework.util import (
 from test_framework.wallet_util import (
     get_generate_key,
     test_address,
+    WalletUnlock,
 )
 
 class ImportDescriptorsTest(BitcoinTestFramework):
@@ -228,6 +229,39 @@ class ImportDescriptorsTest(BitcoinTestFramework):
         dump_addr = self.nodes[1].deriveaddresses(dump_desc)[0]
         assert_equal(wpriv.dumpprivkey(dump_desc, {"index": 0}), dump_key.privkey)
         assert_equal(wpriv.dumpprivkey(dump_addr), dump_key.privkey)
+
+        self.log.info("dumpprivkey negative matrix: watch-only and not-owned")
+        watch_key = get_generate_key()
+        watch_desc = descsum_create("wpkh(" + watch_key.pubkey + ")")
+        self.test_importdesc({"desc": watch_desc, "timestamp": "now"}, success=True, wallet=w1)
+        watch_addr = self.nodes[1].deriveaddresses(watch_desc)[0]
+        assert_raises_rpc_error(
+            -4,
+            "Private key not available (watch-only or locked)",
+            w1.dumpprivkey,
+            watch_addr,
+        )
+        not_owned = get_generate_key().p2wpkh_addr
+        assert_raises_rpc_error(
+            -4,
+            "Private key not available (address not found in wallet)",
+            wpriv.dumpprivkey,
+            not_owned,
+        )
+
+        self.log.info("dumpprivkey negative matrix: encrypted locked wallet")
+        self.nodes[1].createwallet(wallet_name="wlocked", passphrase="passphrase")
+        wlocked = self.nodes[1].get_wallet_rpc("wlocked")
+        locked_addr = wlocked.getnewaddress()
+        assert_raises_rpc_error(
+            -13,
+            "Please enter the wallet passphrase",
+            wlocked.dumpprivkey,
+            locked_addr,
+        )
+        with WalletUnlock(wlocked, "passphrase"):
+            unlocked_wif = wlocked.dumpprivkey(locked_addr)
+            assert unlocked_wif
 
         # Make sure that we can import a simple WIF multisig and spend from it
         self.log.info('Test that multisigs can be imported and signed for (WIF-based)')

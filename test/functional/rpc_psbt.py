@@ -663,6 +663,18 @@ class PSBTTest(BitcoinTestFramework):
         # Create a psbt spending outputs from nodes 1 and 2
         psbt_orig = self.nodes[0].createpsbt([utxo1, utxo2], {self.nodes[0].getnewaddress():25.999})
 
+        def assert_has_single_pqhd_origin(psbt_in):
+            assert "pqhd_origins" in psbt_in
+            assert_equal(len(psbt_in["pqhd_origins"]), 1)
+            origin = psbt_in["pqhd_origins"][0]
+            assert_equal(len(origin["seed_id"]), 64)
+            assert origin["path"].startswith("m/")
+            path_elems = origin["path"].split("/")
+            assert_greater_than_or_equal(len(path_elems), 5)  # m / purposeh / coinh / schemeh / childh
+            for elem in path_elems[1:]:
+                assert elem.endswith("h")
+            assert_greater_than(len(origin["pubkey"]), 2)
+
         # Update psbts, should only have data for one input and not the other
         psbt1 = self.nodes[1].walletprocesspsbt(psbt_orig, False, "ALL")['psbt']
         psbt1_decoded = self.nodes[0].decodepsbt(psbt1)
@@ -670,11 +682,15 @@ class PSBTTest(BitcoinTestFramework):
         # Tidecoin PQ wallet does not support BIP32 derivation paths in PSBT.
         self.psbt_bip32_derivs_supported = "bip32_derivs" in psbt1_decoded['inputs'][0]
         assert not self.psbt_bip32_derivs_supported
+        assert_has_single_pqhd_origin(psbt1_decoded['inputs'][0])
+        assert "pqhd_origins" not in psbt1_decoded['inputs'][1]
         psbt2 = self.nodes[2].walletprocesspsbt(psbt_orig, False, "ALL", False)['psbt']
         psbt2_decoded = self.nodes[0].decodepsbt(psbt2)
         assert not psbt2_decoded['inputs'][0] and psbt2_decoded['inputs'][1]
         # Check that BIP32 paths were not added
         assert "bip32_derivs" not in psbt2_decoded['inputs'][1]
+        assert "pqhd_origins" not in psbt2_decoded['inputs'][0]
+        assert_has_single_pqhd_origin(psbt2_decoded['inputs'][1])
 
         # Sign PSBTs (workaround issue #18039)
         psbt1 = self.nodes[1].walletprocesspsbt(psbt_orig)['psbt']
@@ -692,7 +708,7 @@ class PSBTTest(BitcoinTestFramework):
         # replaceable arg
         block_height = self.nodes[0].getblockcount()
         unspent = self.nodes[0].listunspent()[0]
-        psbtx_info = self.nodes[0].walletcreatefundedpsbt([{"txid":unspent["txid"], "vout":unspent["vout"]}], [{self.nodes[2].getnewaddress():unspent["amount"]+1}], block_height+2, {"replaceable": False, "add_inputs": True}, False)
+        psbtx_info = self.nodes[0].walletcreatefundedpsbt([{"txid":unspent["txid"], "vout":unspent["vout"]}], [{self.nodes[2].getnewaddress():unspent["amount"]+1}], block_height+2, {"replaceable": False, "add_inputs": True})
         decoded_psbt = self.nodes[0].decodepsbt(psbtx_info["psbt"])
         for tx_in, psbt_in in zip(decoded_psbt["tx"]["vin"], decoded_psbt["inputs"]):
             assert_greater_than(tx_in["sequence"], MAX_BIP125_RBF_SEQUENCE)
@@ -702,20 +718,19 @@ class PSBTTest(BitcoinTestFramework):
         # Same construction with only locktime set and RBF explicitly enabled.
         assert_raises_rpc_error(
             -8,
-            "BIP32 derivation paths are not supported (PQHD-only)",
+            "Unknown named parameter bip32derivs",
             self.nodes[0].walletcreatefundedpsbt,
-            [{"txid":unspent["txid"], "vout":unspent["vout"]}],
-            [{self.nodes[2].getnewaddress():unspent["amount"]+1}],
-            block_height,
-            {"replaceable": True, "add_inputs": True},
-            True,
+            inputs=[{"txid":unspent["txid"], "vout":unspent["vout"]}],
+            outputs=[{self.nodes[2].getnewaddress():unspent["amount"]+1}],
+            locktime=block_height,
+            options={"replaceable": True, "add_inputs": True},
+            bip32derivs=True,
         )
         psbtx_info = self.nodes[0].walletcreatefundedpsbt(
             [{"txid":unspent["txid"], "vout":unspent["vout"]}],
             [{self.nodes[2].getnewaddress():unspent["amount"]+1}],
             block_height,
             {"replaceable": True, "add_inputs": True},
-            False,
         )
         decoded_psbt = self.nodes[0].decodepsbt(psbtx_info["psbt"])
         for tx_in, psbt_in in zip(decoded_psbt["tx"]["vin"], decoded_psbt["inputs"]):
@@ -741,7 +756,7 @@ class PSBTTest(BitcoinTestFramework):
 
         # Make sure change address wallet does not have P2SH innerscript access to results in success
         # when attempting BnB coin selection
-        self.nodes[0].walletcreatefundedpsbt([], [{self.nodes[2].getnewaddress():unspent["amount"]+1}], block_height+2, {"changeAddress":self.nodes[1].getnewaddress()}, False)
+        self.nodes[0].walletcreatefundedpsbt([], [{self.nodes[2].getnewaddress():unspent["amount"]+1}], block_height+2, {"changeAddress":self.nodes[1].getnewaddress()})
 
         # Make sure the wallet's change type is respected by default
         small_output = {self.nodes[0].getnewaddress():0.1}
@@ -854,13 +869,13 @@ class PSBTTest(BitcoinTestFramework):
         p2pkh = self.nodes[0].getnewaddress(address_type='legacy')
         assert_raises_rpc_error(
             -8,
-            "BIP32 derivation paths are not supported (PQHD-only)",
+            "Unknown named parameter bip32derivs",
             self.nodes[1].walletcreatefundedpsbt,
             inputs=[],
             outputs=[{p2pkh : 1}],
             bip32derivs=True,
         )
-        psbt = self.nodes[1].walletcreatefundedpsbt(inputs=[], outputs=[{p2pkh : 1}], bip32derivs=False)
+        psbt = self.nodes[1].walletcreatefundedpsbt(inputs=[], outputs=[{p2pkh : 1}])
         self.nodes[0].decodepsbt(psbt['psbt'])
 
         # Test decoding error: invalid base64

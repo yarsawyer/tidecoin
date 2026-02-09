@@ -34,6 +34,18 @@ class WalletChangeAddressTest(BitcoinTestFramework):
                 break
         return change_address
 
+    def assert_change_index(self, node, tx, index):
+        change_index = None
+        for vout in tx["vout"]:
+            info = node.getaddressinfo(vout["scriptPubKey"]["address"])
+            if (info["ismine"] and info["ischange"]):
+                assert "pqhd_path" in info
+                last_path_elem = info["pqhd_path"].split("/")[-1]
+                assert last_path_elem.endswith("h")
+                change_index = int(last_path_elem[:-1])
+                break
+        assert_equal(change_index, index)
+
     def assert_change_pos(self, wallet, tx, pos):
         change_pos = None
         for index, output in enumerate(tx["vout"]):
@@ -67,8 +79,9 @@ class WalletChangeAddressTest(BitcoinTestFramework):
                     fee_rate=1.1,
                 )["txid"]
                 tx = self.nodes[n].getrawtransaction(txid, True)
-                # find the change output and ensure change addresses are consumed
-                # without reuse across sequential sends.
+                # find the change output and ensure deterministic PQHD derivation
+                # and no change address reuse across sequential sends.
+                self.assert_change_index(self.nodes[n], tx, i)
                 change_address = self.get_change_address(self.nodes[n], tx)
                 assert change_address is not None
                 assert change_address not in seen_change_addrs[n]

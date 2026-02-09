@@ -9,6 +9,7 @@
 #include <key_io.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
+#include <support/cleanse.h>
 #include <univalue.h>
 #include <util/translation.h>
 #include <wallet/context.h>
@@ -398,6 +399,189 @@ static RPCHelpMan setpqhdpolicy()
     obj.pushKV("change_scheme_id", policy->default_change_scheme);
     obj.pushKV("change_scheme_name", change_info ? change_info->name : "unknown");
     return obj;
+},
+    };
+}
+
+static RPCHelpMan listpqhdseeds()
+{
+    return RPCHelpMan{
+        "listpqhdseeds",
+        "List PQHD seeds tracked by this wallet.\n",
+        {},
+        RPCResult{
+            RPCResult::Type::ARR, "", "",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                    {
+                        {RPCResult::Type::STR_HEX, "seed_id", "SeedID32 in hex form"},
+                        {RPCResult::Type::NUM_TIME, "created_at", "Seed creation time"},
+                        {RPCResult::Type::BOOL, "encrypted", "Whether the seed is encrypted in wallet storage"},
+                        {RPCResult::Type::BOOL, "default_receive", "Whether this seed is default for receive addresses"},
+                        {RPCResult::Type::BOOL, "default_change", "Whether this seed is default for change addresses"},
+                    },
+                },
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("listpqhdseeds", "")
+            + HelpExampleRpc("listpqhdseeds", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    LOCK(pwallet->cs_wallet);
+    const auto seeds = pwallet->ListPQHDSeeds();
+    const auto policy = pwallet->GetPQHDPolicy();
+
+    UniValue out(UniValue::VARR);
+    for (const auto& seed : seeds) {
+        UniValue entry(UniValue::VOBJ);
+        entry.pushKV("seed_id", seed.seed_id.ToString());
+        entry.pushKV("created_at", seed.create_time);
+        entry.pushKV("encrypted", seed.encrypted);
+        entry.pushKV("default_receive", policy && policy->default_seed_id == seed.seed_id);
+        entry.pushKV("default_change", policy && policy->default_change_seed_id == seed.seed_id);
+        out.push_back(std::move(entry));
+    }
+    return out;
+},
+    };
+}
+
+static RPCHelpMan importpqhdseed()
+{
+    return RPCHelpMan{
+        "importpqhdseed",
+        "Import a 32-byte PQHD master seed. Re-importing an existing seed is idempotent.\n",
+        {
+            {"seed", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "32-byte seed hex"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR_HEX, "seed_id", "Derived SeedID32"},
+                {RPCResult::Type::BOOL, "inserted", "Whether a new seed record was inserted"},
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("importpqhdseed", "\"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\"")
+            + HelpExampleRpc("importpqhdseed", "\"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    std::vector<unsigned char> seed_bytes = ParseHexV(request.params[0], "seed");
+    if (seed_bytes.size() != 32) {
+        if (!seed_bytes.empty()) {
+            memory_cleanse(seed_bytes.data(), seed_bytes.size());
+        }
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "seed must be 32-byte hex");
+    }
+    std::array<unsigned char, 32> master_seed{};
+    for (size_t i = 0; i < master_seed.size(); ++i) {
+        master_seed[i] = seed_bytes[i];
+    }
+    memory_cleanse(seed_bytes.data(), seed_bytes.size());
+    seed_bytes.clear();
+
+    LOCK(pwallet->cs_wallet);
+    auto import_result = pwallet->ImportPQHDSeed(master_seed);
+    if (!import_result) {
+        memory_cleanse(master_seed.data(), master_seed.size());
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(import_result).original);
+    }
+    memory_cleanse(master_seed.data(), master_seed.size());
+
+    UniValue out(UniValue::VOBJ);
+    out.pushKV("seed_id", import_result->seed_id.ToString());
+    out.pushKV("inserted", import_result->inserted);
+    return out;
+},
+    };
+}
+
+static RPCHelpMan setpqhdseed()
+{
+    return RPCHelpMan{
+        "setpqhdseed",
+        "Set default PQHD seed ids used for receive/change derivation policy.\n",
+        {
+            {"receive_seed_id", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "SeedID32 used for receive policy"},
+            {"change_seed_id", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "SeedID32 used for change policy (defaults to receive_seed_id)"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR_HEX, "receive_seed_id", "Selected receive SeedID32"},
+                {RPCResult::Type::STR_HEX, "change_seed_id", "Selected change SeedID32"},
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("setpqhdseed", "\"0123...abcd\"")
+            + HelpExampleCli("setpqhdseed", "\"0123...abcd\" \"9876...cdef\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    const uint256 receive_seed_id = ParseHashV(request.params[0], "receive_seed_id");
+    const uint256 change_seed_id = request.params[1].isNull() ? receive_seed_id : ParseHashV(request.params[1], "change_seed_id");
+
+    LOCK(pwallet->cs_wallet);
+    auto result = pwallet->SetPQHDSeedDefaults(receive_seed_id, change_seed_id);
+    if (!result) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(result).original);
+    }
+
+    UniValue out(UniValue::VOBJ);
+    out.pushKV("receive_seed_id", receive_seed_id.ToString());
+    out.pushKV("change_seed_id", change_seed_id.ToString());
+    return out;
+},
+    };
+}
+
+static RPCHelpMan removepqhdseed()
+{
+    return RPCHelpMan{
+        "removepqhdseed",
+        "Remove a non-default PQHD seed that is not referenced by existing wallet descriptors.\n",
+        {
+            {"seed_id", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "SeedID32 to remove"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR_HEX, "seed_id", "Removed SeedID32"},
+                {RPCResult::Type::BOOL, "removed", "Always true on success"},
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("removepqhdseed", "\"0123...abcd\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    const uint256 seed_id = ParseHashV(request.params[0], "seed_id");
+
+    LOCK(pwallet->cs_wallet);
+    auto result = pwallet->RemovePQHDSeed(seed_id);
+    if (!result) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(result).original);
+    }
+
+    UniValue out(UniValue::VOBJ);
+    out.pushKV("seed_id", seed_id.ToString());
+    out.pushKV("removed", true);
+    return out;
 },
     };
 }
@@ -888,7 +1072,11 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &sendmany},
         {"wallet", &sendtoaddress},
         {"wallet", &setlabel},
+        {"wallet", &listpqhdseeds},
+        {"wallet", &importpqhdseed},
         {"wallet", &setpqhdpolicy},
+        {"wallet", &setpqhdseed},
+        {"wallet", &removepqhdseed},
         {"wallet", &settxfee},
         {"wallet", &setwalletflag},
         {"wallet", &signmessage},

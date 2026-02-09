@@ -42,8 +42,33 @@ struct PQHDWalletSigningProvider final : public SigningProvider {
     bool GetPubKey(const CKeyID& address, CPubKey& pubkey) const override { return base.GetPubKey(address, pubkey); }
     bool GetKey(const CKeyID& address, CKey& key) const override { return base.GetKey(address, key); }
     bool HaveKey(const CKeyID& address) const override { return base.keys.find(address) != base.keys.end(); }
-    bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& seed) const override { return storage.GetPQHDSeed(seed_id, seed); }
+    std::optional<pqhd::SecureSeed32> GetPQHDSeed(const uint256& seed_id) const override { return storage.GetPQHDSeed(seed_id); }
 };
+
+void MaybeAddPQHDOriginRecord(const DescriptorScriptPubKeyMan& spk_man,
+                              const CScript& script,
+                              const FlatSigningProvider& provider,
+                              std::set<PSBTProprietary>& proprietary_records,
+                              uint8_t map_type)
+{
+    if (provider.pubkeys.size() != 1) return;
+
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest)) return;
+
+    std::unique_ptr<CKeyMetadata> metadata = spk_man.GetMetadata(dest);
+    if (!metadata || !metadata->has_pqhd_origin || metadata->pqhd_path.size() < 3) return;
+
+    const CPubKey& pubkey = provider.pubkeys.begin()->second;
+    if (!pubkey.IsValidNonHybrid()) return;
+
+    const auto* scheme = pq::SchemeFromPrefix(pubkey[0]);
+    if (!scheme) return;
+    const uint32_t scheme_in_path = metadata->pqhd_path[2] & 0x7FFFFFFFU;
+    if (scheme_in_path != static_cast<uint32_t>(pubkey[0])) return;
+
+    (void)psbt::tidecoin::AddPQHDOrigin(proprietary_records, map_type, pubkey, metadata->pqhd_seed_id, metadata->pqhd_path);
+}
 } // namespace
 
 typedef std::vector<unsigned char> valtype;
@@ -1195,9 +1220,8 @@ SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message,
     return SigningResult::OK;
 }
 
-std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize, std::optional<unsigned int> script_verify_flags) const
+std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, int* n_signed, bool finalize, bool include_pqhd_origins, std::optional<unsigned int> script_verify_flags) const
 {
-    (void)bip32derivs;
     const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
     if (n_signed) {
         *n_signed = 0;
@@ -1294,6 +1318,10 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             }
         }
 
+        if (include_pqhd_origins) {
+            MaybeAddPQHDOriginRecord(*this, script, *keys, input.m_proprietary, PSBT_IN_PROPRIETARY);
+        }
+
         PSBTError res = SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign), psbtx, i, &txdata, sighash_type, nullptr, finalize, effective_flags);
         if (res != PSBTError::OK && res != PSBTError::INCOMPLETE) {
             return res;
@@ -1314,6 +1342,13 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             continue;
         }
         UpdatePSBTOutput(HidingSigningProvider(keys.get(), /*hide_secret=*/true), psbtx, i);
+        if (include_pqhd_origins) {
+            const auto* flat_provider = dynamic_cast<const FlatSigningProvider*>(keys.get());
+            if (!flat_provider) {
+                continue;
+            }
+            MaybeAddPQHDOriginRecord(*this, psbtx.tx->vout.at(i).scriptPubKey, *flat_provider, psbtx.outputs.at(i).m_proprietary, PSBT_OUT_PROPRIETARY);
+        }
     }
 
     return {};
@@ -1321,14 +1356,38 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
 
 std::unique_ptr<CKeyMetadata> DescriptorScriptPubKeyMan::GetMetadata(const CTxDestination& dest) const
 {
-    std::unique_ptr<SigningProvider> provider = GetSigningProvider(GetScriptForDestination(dest));
-    if (provider) {
-        LOCK(cs_desc_man);
-        std::unique_ptr<CKeyMetadata> meta = std::make_unique<CKeyMetadata>();
-        meta->nCreateTime = m_wallet_descriptor.creation_time;
+    const CScript script = GetScriptForDestination(dest);
+    LOCK(cs_desc_man);
+
+    const auto script_it = m_map_script_pub_keys.find(script);
+    if (script_it == m_map_script_pub_keys.end()) {
+        return nullptr;
+    }
+
+    std::unique_ptr<CKeyMetadata> meta = std::make_unique<CKeyMetadata>();
+    meta->nCreateTime = m_wallet_descriptor.creation_time;
+
+    if (!m_wallet_descriptor.descriptor) {
         return meta;
     }
-    return nullptr;
+
+    const auto key_path_info = m_wallet_descriptor.descriptor->GetPQHDKeyPathInfo();
+    if (!key_path_info || key_path_info->path.empty()) {
+        return meta;
+    }
+
+    std::vector<uint32_t> full_path = key_path_info->path;
+    if (key_path_info->is_range) {
+        const int32_t child_index = script_it->second;
+        if (child_index >= 0) {
+            full_path.push_back(static_cast<uint32_t>(child_index) | 0x80000000U);
+        }
+    }
+
+    meta->has_pqhd_origin = true;
+    meta->pqhd_seed_id = key_path_info->seed_id;
+    meta->pqhd_path = std::move(full_path);
+    return meta;
 }
 
 uint256 DescriptorScriptPubKeyMan::GetID() const

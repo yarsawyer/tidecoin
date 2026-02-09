@@ -447,7 +447,7 @@ private:
     {
         int64_t create_time{0};
         bool encrypted{false};
-        std::vector<unsigned char> seed;
+        std::vector<unsigned char, secure_allocator<unsigned char>> seed;
         std::vector<unsigned char> crypted_seed;
     };
 
@@ -518,6 +518,19 @@ public:
     std::optional<PQHDPolicy> GetPQHDPolicy() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     util::Result<void> SetPQHDPolicy(std::optional<uint8_t> receive_scheme,
                                      std::optional<uint8_t> change_scheme) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    struct PQHDSeedInfo {
+        uint256 seed_id;
+        int64_t create_time{0};
+        bool encrypted{false};
+    };
+    struct ImportPQHDSeedResult {
+        uint256 seed_id;
+        bool inserted{false};
+    };
+    std::vector<PQHDSeedInfo> ListPQHDSeeds() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    util::Result<ImportPQHDSeedResult> ImportPQHDSeed(const std::array<unsigned char, 32>& master_seed) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    util::Result<void> SetPQHDSeedDefaults(const uint256& receive_seed_id, const uint256& change_seed_id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    util::Result<void> RemovePQHDSeed(const uint256& seed_id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     int GetTargetHeightForOutputs() const override;
 
     /** Interface to assert chain access */
@@ -699,18 +712,18 @@ public:
      * @param[out] complete indicates whether the PSBT is now complete
      * @param[in]  sighash_type the sighash type to use when signing (if PSBT does not specify)
      * @param[in]  sign whether to sign or not
-     * @param[in]  bip32derivs whether to fill in bip32 derivation information if available (unsupported)
      * @param[out] n_signed the number of inputs signed by this wallet
      * @param[in] finalize whether to create the final scriptSig or scriptWitness if possible
+     * @param[in] include_pqhd_origins whether to attach Tidecoin PQHD origin proprietary records to PSBT inputs/outputs
      * return error
      */
     std::optional<common::PSBTError> FillPSBT(PartiallySignedTransaction& psbtx,
                   bool& complete,
                   std::optional<int> sighash_type = std::nullopt,
                   bool sign = true,
-                  bool bip32derivs = false,
                   size_t* n_signed = nullptr,
-                  bool finalize = true) const;
+                  bool finalize = true,
+                  bool include_pqhd_origins = true) const;
 
     /**
      * Submit the transaction to the node's mempool and then relay to peers.
@@ -997,7 +1010,7 @@ public:
     bool HasEncryptionKeys() const override;
     bool HaveCryptedKeys() const;
     bool HasPQHDSeeds() const override;
-    bool GetPQHDSeed(const uint256& seed_id, std::array<uint8_t, 32>& master_seed) const override;
+    std::optional<pqhd::SecureSeed32> GetPQHDSeed(const uint256& seed_id) const override;
 
     /** Get last block processed height */
     int GetLastBlockHeight() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet)

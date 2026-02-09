@@ -2,6 +2,7 @@
 #define TIDECOIN_PQ_PQHD_KDF_H
 
 #include <array>
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -25,6 +26,47 @@ using SeedID32 = std::array<uint8_t, 32>;
 using NodeSecret = std::array<uint8_t, 32>;
 using ChainCode = std::array<uint8_t, 32>;
 using KeygenStreamBlock64 = std::array<uint8_t, 64>;
+
+/** RAII wrapper for 32-byte master seed material. */
+class SecureSeed32
+{
+public:
+    static constexpr size_t SIZE = 32;
+
+    SecureSeed32() = default;
+    ~SecureSeed32() { memory_cleanse(m_bytes.data(), m_bytes.size()); }
+
+    SecureSeed32(const SecureSeed32&) = delete;
+    SecureSeed32& operator=(const SecureSeed32&) = delete;
+
+    SecureSeed32(SecureSeed32&& other) noexcept
+    {
+        m_bytes = other.m_bytes;
+        memory_cleanse(other.m_bytes.data(), other.m_bytes.size());
+    }
+
+    SecureSeed32& operator=(SecureSeed32&& other) noexcept
+    {
+        if (this == &other) return *this;
+        memory_cleanse(m_bytes.data(), m_bytes.size());
+        m_bytes = other.m_bytes;
+        memory_cleanse(other.m_bytes.data(), other.m_bytes.size());
+        return *this;
+    }
+
+    bool Set(std::span<const uint8_t> seed) noexcept
+    {
+        if (seed.size() != m_bytes.size()) return false;
+        std::copy_n(seed.begin(), m_bytes.size(), m_bytes.begin());
+        return true;
+    }
+
+    std::span<uint8_t, SIZE> MutableSpan() noexcept { return std::span<uint8_t, SIZE>(m_bytes); }
+    std::span<const uint8_t, SIZE> Span() const noexcept { return std::span<const uint8_t, SIZE>(m_bytes); }
+
+private:
+    std::array<uint8_t, SIZE> m_bytes{};
+};
 
 class KeygenStreamKey64
 {

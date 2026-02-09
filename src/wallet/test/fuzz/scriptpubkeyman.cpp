@@ -191,7 +191,7 @@ FUZZ_TARGET(scriptpubkeyman, .init = initialize_spkm)
                 if (sighash_type == 151) sighash_type = std::nullopt;
                 auto sign  = fuzzed_data_provider.ConsumeBool();
                 auto finalize = fuzzed_data_provider.ConsumeBool();
-                (void)spk_manager->FillPSBT(psbt, txdata, sighash_type, sign, /*bip32derivs=*/false, nullptr, finalize);
+                (void)spk_manager->FillPSBT(psbt, txdata, sighash_type, sign, nullptr, finalize);
             }
         );
     }
