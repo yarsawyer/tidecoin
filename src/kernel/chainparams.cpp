@@ -183,7 +183,7 @@ public:
         consensus.BIP66Height = 1;
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 1;
-        consensus.nAuxpowStartHeight = Consensus::AUXPOW_DISABLED;
+        consensus.nAuxpowStartHeight = 1000;
         consensus.nAuxpowChainId = 8;
         consensus.fStrictChainId = true;
         consensus.MinBIP9WarningHeight = 1; // segwit activation height + miner confirmation window
@@ -213,7 +213,7 @@ public:
         pchMessageStart[1] = 0xce;
         pchMessageStart[2] = 0x3f;
         pchMessageStart[3] = 0xda;
-        nDefaultPort = 8755;
+        nDefaultPort = 18755;
         nPruneAfterHeight = 1000;
         m_assumed_blockchain_size = 22;
         m_assumed_chain_state_size = 3;
@@ -226,7 +226,7 @@ public:
         vFixedSeeds.clear();
         vSeeds.clear();
         // nodes with support for servicebits filtering should be at the top
-        vSeeds.emplace_back("tidetest.ddnsgeek.com");
+        //vSeeds.emplace_back("tidetest.ddnsgeek.com");
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,92);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,132);
