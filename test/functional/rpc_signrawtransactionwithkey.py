@@ -7,6 +7,10 @@
 from test_framework.messages import (
     COIN,
 )
+from test_framework.script import (
+    CScript,
+    OP_1,
+)
 from test_framework.address import (
     address_to_scriptpubkey,
     script_to_p2sh,
@@ -32,6 +36,9 @@ from test_framework.wallet_util import (
 
 from decimal import (
     Decimal,
+)
+from hashlib import (
+    sha512,
 )
 
 INPUTS = [
@@ -110,11 +117,33 @@ class SignRawTransactionWithKeyTest(BitcoinTestFramework):
         self.assert_signing_completed_successfully(spending_tx_signed)
         self.nodes[0].sendrawtransaction(spending_tx_signed['hex'])
 
+    def witness_v1_512_signing_test(self):
+        self.log.info("Test signing transaction spending witness v1-512 (bech32pq) output")
+        embedded_privkey, embedded_pubkey = generate_keypair(wif=True)
+        witness_script = key_to_p2pk_script(embedded_pubkey)
+        script_pub_key = CScript([OP_1, sha512(witness_script).digest()]).hex()
+        funded = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=bytes.fromhex(script_pub_key), amount=int(Decimal("1.0") * COIN))
+        txid = funded["txid"]
+        vout = funded["sent_vout"]
+        self.generate(self.nodes[0], 1)
+        prevout = {
+            "txid": txid,
+            "vout": vout,
+            "scriptPubKey": script_pub_key,
+            "witnessScript": witness_script.hex(),
+            "amount": Decimal("1.0"),
+        }
+        spending_tx = self.nodes[0].createrawtransaction([{"txid": txid, "vout": vout}], {getnewdestination()[2]: Decimal("0.999")})
+        spending_tx_signed = self.nodes[0].signrawtransactionwithkey(spending_tx, [embedded_privkey], [prevout])
+        self.assert_signing_completed_successfully(spending_tx_signed)
+        self.nodes[0].sendrawtransaction(spending_tx_signed["hex"])
+
     def invalid_sighashtype_test(self):
         self.log.info("Test signing transaction with invalid sighashtype")
         tx = self.nodes[0].createrawtransaction(self.inputs, self.outputs)
         privkeys = [self.signing_privkeys[0]]
         assert_raises_rpc_error(-8, "'all' is not a valid sighash parameter.", self.nodes[0].signrawtransactionwithkey, tx, privkeys, sighashtype="all")
+        assert_raises_rpc_error(-8, "'DEFAULT' is not a valid sighash parameter.", self.nodes[0].signrawtransactionwithkey, tx, privkeys, sighashtype="DEFAULT")
 
     def invalid_private_key_and_tx(self):
         self.log.info("Test signing transaction with an invalid private key")
@@ -141,6 +170,7 @@ class SignRawTransactionWithKeyTest(BitcoinTestFramework):
         self.prepare_offline_signing_vectors()
         self.successful_signing_test()
         self.witness_script_test()
+        self.witness_v1_512_signing_test()
         self.invalid_sighashtype_test()
         self.invalid_private_key_and_tx()
 

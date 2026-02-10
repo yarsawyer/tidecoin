@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <common/messages.h>
+#include <chainparams.h>
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <key_io.h>
@@ -121,7 +122,15 @@ static UniValue FinishTransaction(const std::shared_ptr<CWallet> pwallet, const 
     }
 
     CMutableTransaction mtx;
-    complete = FinalizeAndExtractPSBT(psbtx, mtx);
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    const std::optional<int> tip_height = pwallet->chain().getHeight();
+    const int next_height = tip_height ? *tip_height + 1 : 0;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+        script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        script_verify_flags |= SCRIPT_VERIFY_SHA512;
+    }
+    complete = FinalizeAndExtractPSBT(psbtx, mtx, script_verify_flags);
 
     UniValue result(UniValue::VOBJ);
 
@@ -922,8 +931,7 @@ RPCHelpMan signrawtransactionwithwallet()
                             },
                         },
                     },
-                    {"sighashtype", RPCArg::Type::STR, RPCArg::Default{"DEFAULT (treated as ALL)"}, "The signature hash type. Must be one of\n"
-            "       \"DEFAULT\"\n"
+                    {"sighashtype", RPCArg::Type::STR, RPCArg::Default{"ALL"}, "The signature hash type. Must be one of\n"
             "       \"ALL\"\n"
             "       \"NONE\"\n"
             "       \"SINGLE\"\n"
@@ -983,7 +991,7 @@ RPCHelpMan signrawtransactionwithwallet()
 
     std::optional<int> nHashType = ParseSighashString(request.params[2]);
     if (!nHashType) {
-        nHashType = SIGHASH_DEFAULT;
+        nHashType = SIGHASH_ALL;
     }
 
     // Script verification errors
@@ -1641,8 +1649,7 @@ RPCHelpMan walletprocesspsbt()
                 {
                     {"psbt", RPCArg::Type::STR, RPCArg::Optional::NO, "The transaction base64 string"},
                     {"sign", RPCArg::Type::BOOL, RPCArg::Default{true}, "Also sign the transaction when updating (requires wallet to be unlocked)"},
-                    {"sighashtype", RPCArg::Type::STR, RPCArg::Default{"DEFAULT (treated as ALL)"}, "The signature hash type to sign with if not specified by the PSBT. Must be one of\n"
-            "       \"DEFAULT\"\n"
+                    {"sighashtype", RPCArg::Type::STR, RPCArg::Default{"ALL"}, "The signature hash type to sign with if not specified by the PSBT. Must be one of\n"
             "       \"ALL\"\n"
             "       \"NONE\"\n"
             "       \"SINGLE\"\n"
@@ -1702,9 +1709,17 @@ RPCHelpMan walletprocesspsbt()
     result.pushKV("psbt", EncodeBase64(ssTx.str()));
     result.pushKV("complete", complete);
     if (complete) {
+        unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+        const std::optional<int> tip_height = wallet.chain().getHeight();
+        const int next_height = tip_height ? *tip_height + 1 : 0;
+        if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+            script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+            script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+            script_verify_flags |= SCRIPT_VERIFY_SHA512;
+        }
         CMutableTransaction mtx;
         // Returns true if complete, which we already think it is.
-        CHECK_NONFATAL(FinalizeAndExtractPSBT(psbtx, mtx));
+        CHECK_NONFATAL(FinalizeAndExtractPSBT(psbtx, mtx, script_verify_flags));
         DataStream ssTx_final;
         ssTx_final << TX_WITH_WITNESS(mtx);
         result.pushKV("hex", HexStr(ssTx_final));

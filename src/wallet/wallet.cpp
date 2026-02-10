@@ -2497,7 +2497,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
         coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], prev_height, wtx.IsCoinBase());
     }
     std::map<int, bilingual_str> input_errors;
-    return SignTransaction(tx, coins, SIGHASH_DEFAULT, input_errors);
+    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors);
 }
 
 bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
@@ -2507,6 +2507,8 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
     if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
         script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+        script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        script_verify_flags |= SCRIPT_VERIFY_SHA512;
     }
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
@@ -2555,6 +2557,8 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
     unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
     if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
         script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+        script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        script_verify_flags |= SCRIPT_VERIFY_SHA512;
     }
 
     // Fill in information from ScriptPubKeyMans

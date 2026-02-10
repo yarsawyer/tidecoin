@@ -914,18 +914,20 @@ void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransactio
  * Finalizes a PSBT if possible, combining partial signatures.
  *
  * @param[in,out] psbtx PartiallySignedTransaction to finalize
+ * @param[in] script_verify_flags Script verification flags to use while finalizing inputs.
  * return True if the PSBT is now complete, false otherwise
  */
-bool FinalizePSBT(PartiallySignedTransaction& psbtx);
+bool FinalizePSBT(PartiallySignedTransaction& psbtx, std::optional<unsigned int> script_verify_flags = std::nullopt);
 
 /**
  * Finalizes a PSBT if possible, and extracts it to a CMutableTransaction if it could be finalized.
  *
  * @param[in]  psbtx PartiallySignedTransaction
  * @param[out] result CMutableTransaction representing the complete transaction, if successful
+ * @param[in] script_verify_flags Script verification flags to use while finalizing inputs.
  * @return True if we successfully extracted the transaction, false otherwise
  */
-bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result);
+bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result, std::optional<unsigned int> script_verify_flags = std::nullopt);
 
 /**
  * Combines PSBTs with the same underlying transaction, resulting in a single PSBT with all partial signatures from each input.

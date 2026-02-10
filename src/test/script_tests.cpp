@@ -1128,7 +1128,7 @@ SignatureData CombineSignatures(const CTxOut& txout, const CMutableTransaction& 
     SignatureData data;
     data.MergeSignatureData(scriptSig1);
     data.MergeSignatureData(scriptSig2);
-    ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(tx, 0, txout.nValue, SIGHASH_DEFAULT), txout.scriptPubKey, data);
+    ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(tx, 0, txout.nValue, SIGHASH_ALL), txout.scriptPubKey, data);
     return data;
 }
 
@@ -1505,7 +1505,7 @@ BOOST_AUTO_TEST_CASE(script_sighash_v1_512_single_oob)
     BOOST_CHECK(hash == uint512::ONE);
 }
 
-BOOST_AUTO_TEST_CASE(script_sighash_v1_512_default_rejected)
+BOOST_AUTO_TEST_CASE(script_sighash_v1_512_zero_rejected)
 {
     CKey key;
     key.MakeNewKey(pq::SchemeId::FALCON_512);
@@ -1520,7 +1520,7 @@ BOOST_AUTO_TEST_CASE(script_sighash_v1_512_default_rejected)
 
     CScript scriptCode = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
 
-    MutableTransactionSignatureCreator creator(tx, 0, /*amount=*/1, SIGHASH_DEFAULT);
+    MutableTransactionSignatureCreator creator(tx, 0, /*amount=*/1, 0);
     std::vector<unsigned char> sig;
     BOOST_CHECK(!creator.CreateSig(provider, sig, pubkey.GetID(), scriptCode, SigVersion::WITNESS_V1_512));
 }

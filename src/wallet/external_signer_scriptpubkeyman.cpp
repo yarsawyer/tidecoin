@@ -7,6 +7,7 @@
 #include <common/system.h>
 #include <external_signer.h>
 #include <node/types.h>
+#include <policy/policy.h>
 #include <wallet/external_signer_scriptpubkeyman.h>
 
 #include <iostream>
@@ -104,7 +105,10 @@ std::optional<PSBTError> ExternalSignerScriptPubKeyMan::FillPSBT(PartiallySigned
         LogWarning("Failed to sign: %s\n", failure_reason);
         return PSBTError::EXTERNAL_SIGNER_FAILED;
     }
-    if (finalize) FinalizePSBT(psbt); // This won't work in a multisig setup
+    if (finalize) {
+        const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
+        FinalizePSBT(psbt, effective_flags); // This won't work in a multisig setup
+    }
     return {};
 }
 } // namespace wallet

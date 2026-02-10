@@ -31,8 +31,6 @@ enum
     SIGHASH_NONE = 2,
     SIGHASH_SINGLE = 3,
     SIGHASH_ANYONECANPAY = 0x80,
-
-    SIGHASH_DEFAULT = 0, //!< Implied when sighash byte is missing, equivalent to SIGHASH_ALL
 };
 
 /** Script verification flags.

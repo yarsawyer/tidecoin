@@ -237,7 +237,6 @@ bool DecodeHexBlk(CBlock& block, const std::string& strHexBlk)
 util::Result<int> SighashFromStr(const std::string& sighash)
 {
     static const std::map<std::string, int> map_sighash_values = {
-        {std::string("DEFAULT"), int(SIGHASH_DEFAULT)},
         {std::string("ALL"), int(SIGHASH_ALL)},
         {std::string("ALL|ANYONECANPAY"), int(SIGHASH_ALL|SIGHASH_ANYONECANPAY)},
         {std::string("NONE"), int(SIGHASH_NONE)},

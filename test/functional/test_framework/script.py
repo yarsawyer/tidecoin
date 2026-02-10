@@ -598,7 +598,6 @@ class CScript(bytes):
                 (self[1] + 2 == len(self)))
 
 
-SIGHASH_DEFAULT = 0 # Taproot-only default, semantics same as SIGHASH_ALL
 SIGHASH_ALL = 1
 SIGHASH_NONE = 2
 SIGHASH_SINGLE = 3

@@ -40,6 +40,8 @@ unsigned int GetPSBTAnalysisFlags(const ClientModel* client_model)
     const int next_height = tip_height >= 0 ? tip_height + 1 : 0;
     if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
         flags |= SCRIPT_VERIFY_PQ_STRICT;
+        flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        flags |= SCRIPT_VERIFY_SHA512;
     }
     return flags;
 }
@@ -73,7 +75,8 @@ void PSBTOperationsDialog::openWithPSBT(PartiallySignedTransaction psbtx)
 {
     m_transaction_data = psbtx;
 
-    bool complete = FinalizePSBT(psbtx); // Make sure all existing signatures are fully combined before checking for completeness.
+    const unsigned int flags = GetPSBTAnalysisFlags(m_client_model);
+    bool complete = FinalizePSBT(psbtx, flags); // Make sure all existing signatures are fully combined before checking for completeness.
     if (m_wallet_model) {
         size_t n_could_sign;
         const auto err{m_wallet_model->wallet().fillPSBT(std::nullopt, /*sign=*/false, &n_could_sign, m_transaction_data, complete)};
@@ -127,7 +130,8 @@ void PSBTOperationsDialog::signTransaction()
 void PSBTOperationsDialog::broadcastTransaction()
 {
     CMutableTransaction mtx;
-    if (!FinalizeAndExtractPSBT(m_transaction_data, mtx)) {
+    const unsigned int flags = GetPSBTAnalysisFlags(m_client_model);
+    if (!FinalizeAndExtractPSBT(m_transaction_data, mtx, flags)) {
         // This is never expected to fail unless we were given a malformed PSBT
         // (e.g. with an invalid signature.)
         showStatus(tr("Unknown error processing transaction."), StatusLevel::ERR);

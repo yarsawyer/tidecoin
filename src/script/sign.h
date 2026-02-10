@@ -89,9 +89,11 @@ struct SignatureData {
 
 /** Produce a script signature using a generic signature creator. */
 bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey, SignatureData& sigdata);
+bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey, SignatureData& sigdata, unsigned int script_verify_flags);
 
 /** Extract signature data from a transaction input, and insert it. */
 SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout);
+SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout, unsigned int script_verify_flags);
 void UpdateInput(CTxIn& input, const SignatureData& data);
 
 /** Check whether a scriptPubKey is known to be segwit. */

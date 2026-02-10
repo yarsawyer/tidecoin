@@ -59,10 +59,11 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
     // Signing without known amount does not work in witness scripts.
     if ((sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::WITNESS_V1_512) && !MoneyRange(amount)) return false;
 
+    if (nHashType == 0) {
+        return false;
+    }
+
     if (sigversion == SigVersion::WITNESS_V1_512) {
-        if (nHashType == SIGHASH_DEFAULT) {
-            return false;
-        }
         uint512 hash = SignatureHash512(scriptCode, m_txto, nIn, nHashType, amount, m_txdata);
         if (!key.Sign512(hash, vchSig, /*legacy_mode=*/false)) {
             return false;
@@ -71,13 +72,10 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
         return true;
     }
 
-    // BASE/WITNESS_V0 signatures don't support explicit SIGHASH_DEFAULT, use SIGHASH_ALL instead.
-    const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
-
-    uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
+    uint256 hash = SignatureHash(scriptCode, m_txto, nIn, nHashType, amount, sigversion, m_txdata);
     if (!key.Sign(hash, vchSig, false, 0, m_allow_legacy))
         return false;
-    vchSig.push_back((unsigned char)hashtype);
+    vchSig.push_back((unsigned char)nHashType);
     return true;
 }
 
@@ -371,6 +369,11 @@ static CScript PushAll(const std::vector<valtype>& values)
 
 bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& fromPubKey, SignatureData& sigdata)
 {
+    return ProduceSignature(provider, creator, fromPubKey, sigdata, STANDARD_SCRIPT_VERIFY_FLAGS);
+}
+
+bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& fromPubKey, SignatureData& sigdata, unsigned int script_verify_flags)
+{
     if (sigdata.complete) return true;
 
     std::vector<valtype> result;
@@ -451,7 +454,7 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
     sigdata.scriptSig = PushAll(result);
 
     // Test solution
-    sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
+    sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, script_verify_flags, creator.Checker());
     return sigdata.complete;
 }
 
@@ -491,6 +494,11 @@ struct Stacks
 // Extracts signatures and scripts from incomplete scriptSigs. Please do not extend this, use PSBT instead
 SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout)
 {
+    return DataFromTransaction(tx, nIn, txout, STANDARD_SCRIPT_VERIFY_FLAGS);
+}
+
+SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout, unsigned int script_verify_flags)
+{
     SignatureData data;
     assert(tx.vin.size() > nIn);
     data.scriptSig = tx.vin[nIn].scriptSig;
@@ -498,9 +506,10 @@ SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nI
     Stacks stack(data);
 
     // Get signatures
-    MutableTransactionSignatureChecker tx_checker(&tx, nIn, txout.nValue, MissingDataBehavior::FAIL, ALLOW_LEGACY_STANDARD);
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
+    MutableTransactionSignatureChecker tx_checker(&tx, nIn, txout.nValue, MissingDataBehavior::FAIL, allow_legacy);
     SignatureExtractorChecker extractor_checker(data, tx_checker);
-    if (VerifyScript(data.scriptSig, txout.scriptPubKey, &data.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, extractor_checker)) {
+    if (VerifyScript(data.scriptSig, txout.scriptPubKey, &data.scriptWitness, script_verify_flags, extractor_checker)) {
         data.complete = true;
         return data;
     }
@@ -533,6 +542,19 @@ SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nI
         stack.script = std::move(stack.witness);
         stack.witness.clear();
         sigversion = SigVersion::WITNESS_V0;
+    }
+    if (script_type == TxoutType::WITNESS_V1_SCRIPTHASH_512 && !stack.witness.empty() && !stack.witness.back().empty()) {
+        // Get the witnessScript for v1-512 spends.
+        CScript witness_script(stack.witness.back().begin(), stack.witness.back().end());
+        data.witness_script = witness_script;
+        next_script = std::move(witness_script);
+
+        // Get witnessScript type.
+        script_type = Solver(next_script, solutions);
+        stack.witness.pop_back();
+        stack.script = std::move(stack.witness);
+        stack.witness.clear();
+        sigversion = SigVersion::WITNESS_V1_512;
     }
     if (script_type == TxoutType::MULTISIG && !stack.script.empty()) {
         // Build a map of pubkey -> signature by matching sigs to pubkeys:
@@ -699,10 +721,10 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
         const CScript& prevPubKey = coin->second.out.scriptPubKey;
         const CAmount& amount = coin->second.out.nValue;
 
-        SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out);
+        SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out, script_verify_flags);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mtx.vout.size())) {
-            ProduceSignature(*keystore, MutableTransactionSignatureCreator(mtx, i, amount, &txdata, nHashType, allow_legacy), prevPubKey, sigdata);
+            ProduceSignature(*keystore, MutableTransactionSignatureCreator(mtx, i, amount, &txdata, nHashType, allow_legacy), prevPubKey, sigdata, script_verify_flags);
         }
 
         UpdateInput(txin, sigdata);

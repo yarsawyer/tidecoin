@@ -519,12 +519,11 @@ static void MutateTxDelOutput(CMutableTransaction& tx, const std::string& strOut
     tx.vout.erase(tx.vout.begin() + *idx);
 }
 
-static const unsigned int N_SIGHASH_OPTS = 7;
+static const unsigned int N_SIGHASH_OPTS = 6;
 static const struct {
     const char *flagStr;
     int flags;
 } sighashOptions[N_SIGHASH_OPTS] = {
-    {"DEFAULT", SIGHASH_DEFAULT},
     {"ALL", SIGHASH_ALL},
     {"NONE", SIGHASH_NONE},
     {"SINGLE", SIGHASH_SINGLE},
@@ -617,6 +616,27 @@ static void AddPrevTxsToView(CCoinsViewCache& view, const UniValue& prevtxsObj)
     }
 }
 
+static unsigned int GetScriptVerifyFlagsFromPrevTxs(const UniValue& prevtxsObj)
+{
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    for (unsigned int previdx = 0; previdx < prevtxsObj.size(); ++previdx) {
+        const UniValue& prevOut = prevtxsObj[previdx];
+        std::vector<unsigned char> pkData(ParseHexUV(prevOut["scriptPubKey"], "scriptPubKey"));
+        CScript script_pub_key(pkData.begin(), pkData.end());
+        int witness_version{0};
+        std::vector<unsigned char> witness_program;
+        if (script_pub_key.IsWitnessProgram(witness_version, witness_program) &&
+            witness_version == 1 &&
+            witness_program.size() == WITNESS_V1_SCRIPTHASH_512_SIZE) {
+            script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+            script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+            script_verify_flags |= SCRIPT_VERIFY_SHA512;
+            break;
+        }
+    }
+    return script_verify_flags;
+}
+
 static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 {
     int nHashType = SIGHASH_ALL;
@@ -651,6 +671,8 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
     if (!registers.count("prevtxs"))
         throw std::runtime_error("prevtxs register variable must be set.");
     UniValue prevtxsObj = registers["prevtxs"];
+    const unsigned int script_verify_flags = GetScriptVerifyFlagsFromPrevTxs(prevtxsObj);
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
     AddPrevTxsToView(view, prevtxsObj);
     for (unsigned int previdx = 0; previdx < prevtxsObj.size(); previdx++) {
         const UniValue& prevOut = prevtxsObj[previdx];
@@ -681,10 +703,10 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
         const CScript& prevPubKey = coin.out.scriptPubKey;
         const CAmount& amount = coin.out.nValue;
 
-        SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out);
+        SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out, script_verify_flags);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mergedTx.vout.size())) {
-            ProduceSignature(keystore, MutableTransactionSignatureCreator(mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+            ProduceSignature(keystore, MutableTransactionSignatureCreator(mergedTx, i, amount, nHashType, allow_legacy), prevPubKey, sigdata, script_verify_flags);
         }
 
         if (fVerify && !sigdata.complete) {
@@ -703,12 +725,12 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 
 static void VerifyTx(const CTransaction& tx)
 {
-    const unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
-    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
     if (!registers.count("prevtxs")) {
         throw std::runtime_error("prevtxs register variable must be set.");
     }
     UniValue prevtxsObj = registers["prevtxs"];
+    const unsigned int script_verify_flags = GetScriptVerifyFlagsFromPrevTxs(prevtxsObj);
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
     CCoinsView viewDummy;
     CCoinsViewCache view(&viewDummy);
     AddPrevTxsToView(view, prevtxsObj);

@@ -438,11 +438,15 @@ PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransact
     }
 
     // Get the sighash type
-    // If both the field and the parameter are provided, they must match
-    // If only the parameter is provided, use it and add it to the PSBT if it is other than SIGHASH_ALL.
-    // If neither are provided, use SIGHASH_ALL.
+    // If both the field and the parameter are provided, they must match.
+    // If only the parameter is provided, add it to the PSBT only if it is
+    // something other than ALL.
     if (!sighash) sighash = SIGHASH_ALL;
     Assert(sighash.has_value());
+    // Reject zero hashtype bytes (formerly a Taproot-only zero alias).
+    if ((input.sighash_type && *input.sighash_type == 0) || *sighash == 0) {
+        return PSBTError::SIGHASH_MISMATCH;
+    }
     // For user safety, the desired sighash must be provided if the PSBT wants something other than the default set in the previous line.
     if (input.sighash_type && input.sighash_type != sighash) {
         return PSBTError::SIGHASH_MISMATCH;
@@ -462,10 +466,10 @@ PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransact
     sigdata.witness = false;
     bool sig_complete;
     if (txdata == nullptr) {
-        sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
+        sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata, effective_flags);
     } else {
         MutableTransactionSignatureCreator creator(tx, index, utxo.nValue, txdata, *sighash, allow_legacy);
-        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
+        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata, effective_flags);
     }
     // Verify that a witness signature was produced in case one was required.
     if (require_witness_sig && !sigdata.witness) return PSBTError::INCOMPLETE;
@@ -531,8 +535,9 @@ void RemoveUnnecessaryTransactions(PartiallySignedTransaction& psbtx)
     }
 }
 
-bool FinalizePSBT(PartiallySignedTransaction& psbtx)
+bool FinalizePSBT(PartiallySignedTransaction& psbtx, std::optional<unsigned int> script_verify_flags)
 {
+    const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
     // Finalize input signatures -- in case we have partial signatures that add up to a complete
     //   signature, but have not combined them yet (e.g. because the combiner that created this
     //   PartiallySignedTransaction did not understand them), this will combine them into a final
@@ -541,17 +546,17 @@ bool FinalizePSBT(PartiallySignedTransaction& psbtx)
     const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
         PSBTInput& input = psbtx.inputs.at(i);
-        complete &= (SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, &txdata, input.sighash_type, nullptr, true) == PSBTError::OK);
+        complete &= (SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, &txdata, input.sighash_type, nullptr, true, effective_flags) == PSBTError::OK);
     }
 
     return complete;
 }
 
-bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result)
+bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result, std::optional<unsigned int> script_verify_flags)
 {
     // It's not safe to extract a PSBT that isn't finalized, and there's no easy way to check
     //   whether a PSBT is finalized without finalizing it, so we just do this.
-    if (!FinalizePSBT(psbtx)) {
+    if (!FinalizePSBT(psbtx, script_verify_flags)) {
         return false;
     }
 

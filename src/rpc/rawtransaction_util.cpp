@@ -238,7 +238,12 @@ void ParsePrevouts(const UniValue& prevTxsUnival, FlatSigningProvider* keystore,
             // if redeemScript and private keys were given, add redeemScript to the keystore so it can be signed
             const bool is_p2sh = scriptPubKey.IsPayToScriptHash();
             const bool is_p2wsh = scriptPubKey.IsPayToWitnessScriptHash();
-            if (keystore && (is_p2sh || is_p2wsh)) {
+            int witness_version{0};
+            std::vector<unsigned char> witness_program;
+            const bool is_p2wsh512 = scriptPubKey.IsWitnessProgram(witness_version, witness_program) &&
+                                     witness_version == 1 &&
+                                     witness_program.size() == WITNESS_V1_SCRIPTHASH_512_SIZE;
+            if (keystore && (is_p2sh || is_p2wsh || is_p2wsh512)) {
                 RPCTypeCheckObj(prevOut,
                     {
                         {"redeemScript", UniValueType(UniValue::VSTR)},
@@ -254,6 +259,10 @@ void ParsePrevouts(const UniValue& prevTxsUnival, FlatSigningProvider* keystore,
                 std::vector<unsigned char> scriptData(!ws.isNull() ? ParseHexV(ws, "witnessScript") : ParseHexV(rs, "redeemScript"));
                 CScript script(scriptData.begin(), scriptData.end());
                 keystore->scripts.emplace(CScriptID(script), script);
+                if (is_p2wsh512) {
+                    // WITNESS_V1_SCRIPTHASH_512 lookups use RIPEMD160(witness_program).
+                    keystore->scripts.emplace(CScriptID{RIPEMD160(witness_program)}, script);
+                }
                 // Automatically also add the P2WSH wrapped version of the script (to deal with P2SH-P2WSH).
                 // This is done for redeemScript only for compatibility, it is encouraged to use the explicit witnessScript field instead.
                 CScript witness_output_script{GetScriptForDestination(WitnessV0ScriptHash(script))};
@@ -302,23 +311,29 @@ void ParsePrevouts(const UniValue& prevTxsUnival, FlatSigningProvider* keystore,
                     if (scriptPubKey != GetScriptForDestination(p2wsh)) {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "redeemScript/witnessScript does not match scriptPubKey");
                     }
+                } else if (is_p2wsh512) {
+                    const CTxDestination p2wsh512{WitnessV1ScriptHash512(script)};
+                    if (scriptPubKey != GetScriptForDestination(p2wsh512)) {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "redeemScript/witnessScript does not match scriptPubKey");
+                    }
                 }
             }
         }
     }
 }
 
-void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result)
+void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result, std::optional<unsigned int> script_verify_flags)
 {
     std::optional<int> nHashType = ParseSighashString(hashType);
     if (!nHashType) {
-        nHashType = SIGHASH_DEFAULT;
+        nHashType = SIGHASH_ALL;
     }
 
     // Script verification errors
     std::map<int, bilingual_str> input_errors;
 
-    bool complete = SignTransaction(mtx, keystore, coins, *nHashType, input_errors);
+    const unsigned int effective_flags = script_verify_flags.value_or(STANDARD_SCRIPT_VERIFY_FLAGS);
+    bool complete = SignTransaction(mtx, keystore, coins, *nHashType, input_errors, effective_flags);
     SignTransactionResultToJSON(mtx, complete, coins, input_errors, result);
 }
 

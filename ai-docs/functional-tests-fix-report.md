@@ -117,6 +117,48 @@ Status meaning:
 ### Notes
 - No regressions observed in PQHD seed lifecycle, lock/unlock derivation behavior, or PSBT wallet update/decode flows after seed-memory hardening.
 
+## bech32pq post-activation signing/finalization regression snapshot (2026-02-10)
+
+### Scope
+- User-reported runtime failure on activated testnet: spending from a `bech32pq` (`witness_v1_scripthash_512`) address failed with transaction signing/finalization errors.
+- Ensure wallet/PSBT/RPC/GUI finalize paths correctly complete witness-v1-512 spends after activation.
+
+### Root cause summary
+- Multiple post-activation paths did not consistently include all required flags (`SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`).
+- `ProduceSignature()` completion verification used hardcoded `STANDARD_SCRIPT_VERIFY_FLAGS`, which left valid v1-512 signatures present in PSBT partials while reporting `complete=false`.
+- Some PSBT finalization/analysis paths invoked `SignPSBTInput` without the activation-aware flags.
+
+### Run command
+- `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200`
+
+### Result
+- `wallet_pqhd_seed_lifecycle.py` passed after fix.
+- Test now includes explicit post-activation `bech32pq` spend coverage and enforces `complete=true`.
+
+## Sighash policy hardening snapshot (2026-02-10)
+
+### Scope
+- Remove `SIGHASH_DEFAULT` usage from Tidecoin end-to-end (non-Taproot chain).
+- Eliminate aliasing paths that mapped `DEFAULT` to `ALL`.
+- Enforce strict rejection of zero (`0x00`) sighash values in PSBT/signing flows.
+
+### Root cause summary
+- `DEFAULT` remained accepted in parser/CLI/RPC surfaces even though Tidecoin does not implement Taproot semantics.
+- Alias behavior (`DEFAULT -> ALL`) introduced avoidable state branching and mismatch bugs in multi-step PSBT flows.
+
+### Fix summary
+- Removed `"DEFAULT"` from sighash string parser and CLI option maps.
+- Changed implicit defaults to `SIGHASH_ALL` directly in wallet/raw transaction signing entry points.
+- Removed `SIGHASH_DEFAULT` enum usage and zero-alias signer behavior.
+- PSBT signing now rejects explicit zero sighash types instead of normalizing them.
+- Updated RPC help text to list only supported sighash values.
+- Updated functional and unit tests to validate strict rejection behavior.
+
+### Result
+- Reduced API surface and state-space complexity around sighash handling.
+- Explicit `DEFAULT` now fails fast with invalid-parameter errors.
+- No consensus relaxation introduced; strictness increased.
+
 ## Per-test fix log
 
 ### Template
@@ -1456,6 +1498,39 @@ Status meaning:
   - `test/functional/wallet_pqhd_seed_lifecycle.py`
 - Why this is correct:
   - Preserves original lifecycle intent and adds direct validation for the new metadata privacy controls.
+- Verification:
+  - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200` passed.
+
+#### `wallet_pqhd_seed_lifecycle.py` (2026-02-10 bech32pq post-activation spend-signing regression)
+- Status: fixed (extended)
+- Failure:
+  - Runtime spend from `bech32pq` (witness-v1-512) could fail with signing/finalization errors despite populated PSBT partial signatures.
+- Root cause:
+  - Activation-era script flags were not propagated uniformly through all signing/finalization paths.
+  - `ProduceSignature()` completion check used default standard flags, so witness-v1-512 completion could fail even with otherwise valid signing material.
+- Fix:
+  - Added script-verify-flags-aware `ProduceSignature(...)` path and used it from PSBT input signing.
+  - Extended `FinalizePSBT` and `FinalizeAndExtractPSBT` to accept optional script verify flags and passed activation-aware flags through wallet/RPC/GUI call sites.
+  - Updated PSBT analysis path to use the same activation-aware flags during internal completion/missing-data checks.
+  - Added explicit lifecycle test coverage that spends a `bech32pq` UTXO with `wallet.send(..., {"inputs": [...], "add_inputs": false})` and asserts `complete=true`.
+- Files changed:
+  - `src/script/sign.h`
+  - `src/script/sign.cpp`
+  - `src/psbt.h`
+  - `src/psbt.cpp`
+  - `src/node/psbt.cpp`
+  - `src/wallet/wallet.cpp`
+  - `src/wallet/rpc/spend.cpp`
+  - `src/wallet/feebumper.cpp`
+  - `src/wallet/external_signer_scriptpubkeyman.cpp`
+  - `src/rpc/rawtransaction.cpp`
+  - `src/qt/psbtoperationsdialog.cpp`
+  - `src/qt/sendcoinsdialog.cpp`
+  - `test/functional/wallet_pqhd_seed_lifecycle.py`
+- Why this is correct:
+  - Aligns wallet/PSBT/RPC/GUI behavior with consensus activation requirements for witness-v1-512 validation.
+  - Prevents false `complete=false` outcomes when signatures are valid but completion checks previously used non-activation flags.
+  - Adds direct regression coverage at the functional-test layer for the exact user-observed failure mode.
 - Verification:
   - `python3 test/functional/test_runner.py wallet_pqhd_seed_lifecycle.py --jobs=1 --combinedlogslen=200` passed.
 

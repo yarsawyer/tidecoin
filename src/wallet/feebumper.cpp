@@ -214,6 +214,8 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
     unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
     if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
         script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+        script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        script_verify_flags |= SCRIPT_VERIFY_SHA512;
     }
     const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
     for (unsigned int i = 0; i < wtx.tx->vin.size(); ++i) {
@@ -347,7 +349,15 @@ bool SignTransaction(CWallet& wallet, CMutableTransaction& mtx) {
         wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false);
         auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true)};
         if (err) return false;
-        complete = FinalizeAndExtractPSBT(psbtx, mtx);
+        unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+        const std::optional<int> tip_height = wallet.chain().getHeight();
+        const int next_height = tip_height ? *tip_height + 1 : 0;
+        if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+            script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+            script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+            script_verify_flags |= SCRIPT_VERIFY_SHA512;
+        }
+        complete = FinalizeAndExtractPSBT(psbtx, mtx, script_verify_flags);
         return complete;
     } else {
         return wallet.SignTransaction(mtx);

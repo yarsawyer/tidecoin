@@ -23,6 +23,7 @@
 #include <node/interface_ui.h>
 #include <node/types.h>
 #include <policy/fees.h>
+#include <policy/policy.h>
 #include <txmempool.h>
 #include <validation.h>
 #include <wallet/coincontrol.h>
@@ -86,6 +87,22 @@ std::optional<uint8_t> SchemeOverrideFromCombo(const QComboBox* combo)
     const int value = data.toInt(&ok);
     if (!ok) return std::nullopt;
     return static_cast<uint8_t>(value);
+}
+
+unsigned int GetPSBTFinalizeFlags(const ClientModel* client_model)
+{
+    unsigned int flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (!client_model) {
+        return flags;
+    }
+    const int tip_height = client_model->getNumBlocks();
+    const int next_height = tip_height >= 0 ? tip_height + 1 : 0;
+    if (next_height >= Params().GetConsensus().nAuxpowStartHeight) {
+        flags |= SCRIPT_VERIFY_PQ_STRICT;
+        flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        flags |= SCRIPT_VERIFY_SHA512;
+    }
+    return flags;
 }
 
 } // namespace
@@ -513,7 +530,8 @@ bool SendCoinsDialog::signWithExternalSigner(PartiallySignedTransaction& psbtx, 
         return false;
     }
     // fillPSBT does not always properly finalize
-    complete = FinalizeAndExtractPSBT(psbtx, mtx);
+    const unsigned int flags = GetPSBTFinalizeFlags(clientModel);
+    complete = FinalizeAndExtractPSBT(psbtx, mtx, flags);
     return true;
 }
 

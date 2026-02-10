@@ -4,6 +4,8 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Verify PQHD seed import/list/select/remove lifecycle behavior."""
 
+from decimal import Decimal
+
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.wallet_util import WalletUnlock
@@ -76,6 +78,21 @@ class WalletPQHDSeedLifecycleTest(BitcoinTestFramework):
         assert "pqhd_origins" in decoded_with_origin["outputs"][0]
         assert "pqhd_origins" not in decoded_without_origin["inputs"][0]
         assert "pqhd_origins" not in decoded_without_origin["outputs"][0]
+
+        self.log.info("Spending a witness v1 (bech32pq) UTXO succeeds post-activation")
+        pq_addr = wallet.getnewaddress("", "bech32pq")
+        pq_outpoint = self.create_outpoints(wallet, outputs=[{pq_addr: 1}])[0]
+        self.generate(self.nodes[0], 1)
+        spend_dest = wallet.getnewaddress("", "bech32")
+        spend_res = wallet.send(
+            outputs=[{spend_dest: Decimal("0.5")}],
+            options={"inputs": [pq_outpoint], "add_inputs": False},
+        )
+        assert spend_res["complete"]
+        spend_tx = wallet.gettransaction(spend_res["txid"], verbose=True)["decoded"]
+        assert_equal(len(spend_tx["vin"]), 1)
+        assert_equal(spend_tx["vin"][0]["txid"], pq_outpoint["txid"])
+        assert_equal(spend_tx["vin"][0]["vout"], pq_outpoint["vout"])
 
         self.log.info("Removing an unreferenced non-default seed succeeds")
         removed = wallet.removepqhdseed(imported_b["seed_id"])

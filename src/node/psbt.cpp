@@ -64,7 +64,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx, unsigned int script_v
 
             // Figure out what is missing
             SignatureData outdata;
-            bool complete = SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, &txdata, std::nullopt, &outdata) == PSBTError::OK;
+            bool complete = SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, &txdata, std::nullopt, &outdata, /*finalize=*/true, script_verify_flags) == PSBTError::OK;
 
             // Things are missing
             if (!complete) {
@@ -124,7 +124,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx, unsigned int script_v
             PSBTInput& input = psbtx.inputs[i];
             Coin newcoin;
 
-            if (SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, nullptr, std::nullopt) != PSBTError::OK || !psbtx.GetInputUTXO(newcoin.out, i)) {
+            if (SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, nullptr, std::nullopt, nullptr, /*finalize=*/true, script_verify_flags) != PSBTError::OK || !psbtx.GetInputUTXO(newcoin.out, i)) {
                 success = false;
                 break;
             } else {

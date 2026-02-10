@@ -1467,8 +1467,8 @@ bool GenericTransactionSignatureChecker<T>::CheckPostQuantumSignature(const std:
     }
 
     if (sigversion == SigVersion::WITNESS_V1_512) {
-        if (nHashType == SIGHASH_DEFAULT) {
-            LogPrintf("CheckPostQuantumSignature: SIGHASH_DEFAULT not allowed for v1_512 pubkeysize=%u prefix=%s\n",
+        if (nHashType == 0) {
+            LogPrintf("CheckPostQuantumSignature: zero sighash byte not allowed for v1_512 pubkeysize=%u prefix=%s\n",
                       vchPubKey.size(), HexPrefix(vchPubKey, 4));
             return false;
         }

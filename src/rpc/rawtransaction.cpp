@@ -55,6 +55,21 @@ using node::PSBTAnalysis;
 
 static constexpr decltype(CTransaction::version) DEFAULT_RAWTX_VERSION{CTransaction::CURRENT_VERSION};
 
+static unsigned int GetCurrentScriptVerifyFlags(const std::any& context)
+{
+    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    NodeContext& node = EnsureAnyNodeContext(context);
+    ChainstateManager& chainman = EnsureChainman(node);
+    const CBlockIndex* tip = chainman.ActiveChain().Tip();
+    const int next_height = tip ? tip->nHeight + 1 : 0;
+    if (next_height >= chainman.GetConsensus().nAuxpowStartHeight) {
+        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
+        script_verify_flags |= SCRIPT_VERIFY_WITNESS_V1_512;
+        script_verify_flags |= SCRIPT_VERIFY_SHA512;
+    }
+    return script_verify_flags;
+}
+
 static void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry,
                      Chainstate& active_chainstate, const CTxUndo* txundo = nullptr,
                      TxVerbosity verbosity = TxVerbosity::SHOW_DETAILS)
@@ -166,7 +181,7 @@ static std::vector<RPCArg> CreateTxDoc()
 
 // Update PSBT with information from the mempool, the UTXO set, the txindex, and the provided descriptors.
 // Optionally, sign the inputs that we can using information from the descriptors.
-PartiallySignedTransaction ProcessPSBT(const std::string& psbt_string, const std::any& context, const HidingSigningProvider& provider, std::optional<int> sighash_type, bool finalize)
+PartiallySignedTransaction ProcessPSBT(const std::string& psbt_string, const std::any& context, const HidingSigningProvider& provider, std::optional<int> sighash_type, bool finalize, std::optional<unsigned int> script_verify_flags)
 {
     // Unserialize the transactions
     PartiallySignedTransaction psbtx;
@@ -239,7 +254,7 @@ PartiallySignedTransaction ProcessPSBT(const std::string& psbt_string, const std
         // We only actually care about those if our signing provider doesn't hide private
         // information, as is the case with `descriptorprocesspsbt`
         // Only error for mismatching sighash types as it is critical that the sighash to sign with matches the PSBT's
-        if (SignPSBTInput(provider, psbtx, /*index=*/i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize) == common::PSBTError::SIGHASH_MISMATCH) {
+        if (SignPSBTInput(provider, psbtx, /*index=*/i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize, script_verify_flags) == common::PSBTError::SIGHASH_MISMATCH) {
             throw JSONRPCPSBTError(common::PSBTError::SIGHASH_MISMATCH);
         }
     }
@@ -671,9 +686,9 @@ static RPCHelpMan combinerawtransaction()
         view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
     }
 
-    // Use CTransaction for the constant parts of the
-    // transaction to avoid rehashing.
-    const CTransaction txConst(mergedTx);
+    const unsigned int script_verify_flags = GetCurrentScriptVerifyFlags(request.context);
+    const bool allow_legacy = !(script_verify_flags & SCRIPT_VERIFY_PQ_STRICT);
+
     // Sign what we can:
     for (unsigned int i = 0; i < mergedTx.vin.size(); i++) {
         CTxIn& txin = mergedTx.vin[i];
@@ -686,10 +701,10 @@ static RPCHelpMan combinerawtransaction()
         // ... and merge in other signatures:
         for (const CMutableTransaction& txv : txVariants) {
             if (txv.vin.size() > i) {
-                sigdata.MergeSignatureData(DataFromTransaction(txv, i, coin.out));
+                sigdata.MergeSignatureData(DataFromTransaction(txv, i, coin.out, script_verify_flags));
             }
         }
-        ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(mergedTx, i, coin.out.nValue, 1), coin.out.scriptPubKey, sigdata);
+        ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(mergedTx, i, coin.out.nValue, 1, allow_legacy), coin.out.scriptPubKey, sigdata, script_verify_flags);
 
         UpdateInput(txin, sigdata);
     }
@@ -730,7 +745,6 @@ static RPCHelpMan signrawtransactionwithkey()
                         },
                         },
                     {"sighashtype", RPCArg::Type::STR, RPCArg::Default{"ALL"}, "The signature hash type. Must be one of:\n"
-            "       \"DEFAULT\"\n"
             "       \"ALL\"\n"
             "       \"NONE\"\n"
             "       \"SINGLE\"\n"
@@ -799,7 +813,7 @@ static RPCHelpMan signrawtransactionwithkey()
     ParsePrevouts(request.params[2], &keystore, coins);
 
     UniValue result(UniValue::VOBJ);
-    SignTransaction(mtx, &keystore, coins, request.params[3], result);
+    SignTransaction(mtx, &keystore, coins, request.params[3], result, GetCurrentScriptVerifyFlags(request.context));
     return result;
 },
     };
@@ -1340,8 +1354,10 @@ static RPCHelpMan finalizepsbt()
 
     bool extract = request.params[1].isNull() || (!request.params[1].isNull() && request.params[1].get_bool());
 
+    const unsigned int script_verify_flags = GetCurrentScriptVerifyFlags(request.context);
+
     CMutableTransaction mtx;
-    bool complete = FinalizeAndExtractPSBT(psbtx, mtx);
+    bool complete = FinalizeAndExtractPSBT(psbtx, mtx, script_verify_flags);
 
     UniValue result(UniValue::VOBJ);
     DataStream ssTx{};
@@ -1512,7 +1528,8 @@ static RPCHelpMan utxoupdatepsbt()
         request.context,
         HidingSigningProvider(&provider, /*hide_secret=*/true),
         /*sighash_type=*/std::nullopt,
-        /*finalize=*/false);
+        /*finalize=*/false,
+        GetCurrentScriptVerifyFlags(request.context));
 
     DataStream ssTx{};
     ssTx << psbtx;
@@ -1668,14 +1685,7 @@ static RPCHelpMan analyzepsbt()
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
     }
 
-    NodeContext& node = EnsureAnyNodeContext(request.context);
-    ChainstateManager& chainman = EnsureChainman(node);
-    const CBlockIndex* tip = chainman.ActiveChain().Tip();
-    const int next_height = tip ? tip->nHeight + 1 : 0;
-    unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
-    if (next_height >= chainman.GetConsensus().nAuxpowStartHeight) {
-        script_verify_flags |= SCRIPT_VERIFY_PQ_STRICT;
-    }
+    const unsigned int script_verify_flags = GetCurrentScriptVerifyFlags(request.context);
     PSBTAnalysis psbta = AnalyzePSBT(psbtx, script_verify_flags);
 
     UniValue result(UniValue::VOBJ);
@@ -1750,7 +1760,6 @@ RPCHelpMan descriptorprocesspsbt()
                         }},
                     }},
                     {"sighashtype", RPCArg::Type::STR, RPCArg::Default{"ALL"}, "The signature hash type to sign with if not specified by the PSBT. Must be one of\n"
-            "       \"DEFAULT\"\n"
             "       \"ALL\"\n"
             "       \"NONE\"\n"
             "       \"SINGLE\"\n"
@@ -1789,7 +1798,8 @@ RPCHelpMan descriptorprocesspsbt()
         request.context,
         HidingSigningProvider(&provider, /*hide_secret=*/false),
         sighash_type,
-        finalize);
+        finalize,
+        GetCurrentScriptVerifyFlags(request.context));
 
     // Check whether or not all of the inputs are now signed
     bool complete = true;
@@ -1805,9 +1815,10 @@ RPCHelpMan descriptorprocesspsbt()
     result.pushKV("psbt", EncodeBase64(ssTx));
     result.pushKV("complete", complete);
     if (complete) {
+        const unsigned int script_verify_flags = GetCurrentScriptVerifyFlags(request.context);
         CMutableTransaction mtx;
         PartiallySignedTransaction psbtx_copy = psbtx;
-        CHECK_NONFATAL(FinalizeAndExtractPSBT(psbtx_copy, mtx));
+        CHECK_NONFATAL(FinalizeAndExtractPSBT(psbtx_copy, mtx, script_verify_flags));
         DataStream ssTx_final;
         ssTx_final << TX_WITH_WITNESS(mtx);
         result.pushKV("hex", HexStr(ssTx_final));

@@ -251,7 +251,7 @@ class PSBTTest(BitcoinTestFramework):
         psbt = mod_psbt.to_base64()
 
         # Mismatching sighash type fails, including when no type is specified
-        for sighash in ["DEFAULT", "ALL", "NONE", "SINGLE", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY", None]:
+        for sighash in ["ALL", "NONE", "SINGLE", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY", None]:
             assert_raises_rpc_error(-22, "Specified sighash value does not match value stored in PSBT", wallet.walletprocesspsbt, psbt, True, sighash)
 
         # Matching sighash type succeeds
@@ -261,7 +261,7 @@ class PSBTTest(BitcoinTestFramework):
         # Repeat with descriptorprocesspsbt
         # Mismatching sighash type fails, including when no type is specified
         descriptor_signing_available = True
-        for sighash in ["DEFAULT", "ALL", "NONE", "SINGLE", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY", None]:
+        for sighash in ["ALL", "NONE", "SINGLE", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY", None]:
             try:
                 assert_raises_rpc_error(-22, "Specified sighash value does not match value stored in PSBT", self.nodes[0].descriptorprocesspsbt, psbt, descs, sighash)
             except AssertionError:
@@ -327,6 +327,19 @@ class PSBTTest(BitcoinTestFramework):
             mod_psbt.i[1].map[PSBT_IN_SIGHASH_TYPE] = (SIGHASH_ALL).to_bytes(4, byteorder="little")
             psbt = mod_psbt.to_base64()
             fin_res = self.nodes[0].finalizepsbt(psbt)
+
+        self.log.info("Test DEFAULT sighash string is rejected")
+        default_psbt = wallet.walletcreatefundedpsbt([], [{def_wallet.getnewaddress(): 0.5}])["psbt"]
+        assert_raises_rpc_error(-8, "'DEFAULT' is not a valid sighash parameter.", wallet.walletprocesspsbt, default_psbt, True, "DEFAULT")
+        try:
+            assert_raises_rpc_error(-8, "'DEFAULT' is not a valid sighash parameter.", self.nodes[0].descriptorprocesspsbt, default_psbt, descs, "DEFAULT")
+        except AssertionError:
+            # Descriptor signing may be unavailable without private descriptor derivation support.
+            try:
+                self.nodes[0].descriptorprocesspsbt(default_psbt, descs, "DEFAULT")
+            except JSONRPCException as e:
+                if e.error["code"] != -5 or "Cannot derive script without private keys" not in e.error["message"]:
+                    raise
 
         self.nodes[0].sendrawtransaction(fin_hex)
         self.generate(self.nodes[0], 1)
@@ -1225,6 +1238,21 @@ class PSBTTest(BitcoinTestFramework):
 
         # Broadcast transaction
         self.nodes[2].sendrawtransaction(processed_psbt['hex'])
+
+        self.log.info("Test descriptorprocesspsbt finalizes wsh512(pk(...)) spends post-activation")
+        pq_priv_key, pq_pub_key = generate_keypair(wif=True)
+        pq_fund_descriptor = descsum_create(f"wsh512(pk({pq_pub_key.hex()}))")
+        pq_sign_descriptor = descsum_create(f"wsh512(pk({pq_priv_key}))")
+        pq_address = self.nodes[0].deriveaddresses(pq_fund_descriptor)[0]
+        pq_utxo = self.create_outpoints(self.nodes[0], outputs=[{pq_address: 1}])[0]
+        self.sync_all()
+        pq_psbt = self.nodes[2].createpsbt([pq_utxo], {self.nodes[0].getnewaddress(): 0.99999})
+        pq_processed = self.nodes[2].descriptorprocesspsbt(psbt=pq_psbt, descriptors=[pq_sign_descriptor], sighashtype="ALL", finalize=True)
+        pq_decoded = self.nodes[2].decodepsbt(pq_processed['psbt'])
+        assert 'witness_utxo' in pq_decoded['inputs'][0]
+        assert 'final_scriptwitness' in pq_decoded['inputs'][0]
+        assert_equal(pq_processed['complete'], True)
+        self.nodes[2].sendrawtransaction(pq_processed['hex'])
 
         self.log.info("Test descriptorprocesspsbt raises if an invalid sighashtype is passed")
         assert_raises_rpc_error(-8, "'all' is not a valid sighash parameter.", self.nodes[2].descriptorprocesspsbt, psbt, [descriptor], sighashtype="all")
