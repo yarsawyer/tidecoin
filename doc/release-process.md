@@ -99,9 +99,9 @@ Install Guix using one of the installation methods detailed in
 Check out the source code in the following directory hierarchy.
 
     cd /path/to/your/toplevel/build
-    git clone https://github.com/bitcoin-core/guix.sigs.git
-    git clone https://github.com/bitcoin-core/bitcoin-detached-sigs.git
-    git clone https://github.com/bitcoin/bitcoin.git
+    git clone <url-to-your-guix-sigs-repo> ./guix.sigs
+    git clone <url-to-your-detached-sigs-repo> ./tidecoin-detached-sigs
+    git clone <url-to-your-tidecoin-repo> ./tidecoin
 
 ### Write the release notes
 
@@ -115,12 +115,12 @@ Generate list of authors:
 
 ### Setup and perform Guix builds
 
-Checkout the Bitcoin Core version you'd like to build:
+Checkout the Tidecoin version you'd like to build:
 
 ```sh
-pushd ./bitcoin
-SIGNER='(your builder key, ie bluematt, sipa, etc)'
-VERSION='(new version without v-prefix, e.g. 25.0)'
+pushd ./tidecoin
+SIGNER='(your builder key)'
+VERSION='(new version without v-prefix, e.g. 1.0.0)'
 git fetch origin "v${VERSION}"
 git checkout "v${VERSION}"
 popd
@@ -158,7 +158,7 @@ git commit -m "Add attestations by ${SIGNER} for ${VERSION} non-codesigned"
 popd
 ```
 
-Then open a Pull Request to the [guix.sigs repository](https://github.com/bitcoin-core/guix.sigs).
+Then open a Pull Request to your `guix.sigs` repository.
 
 ## Codesigning
 
@@ -166,7 +166,7 @@ Then open a Pull Request to the [guix.sigs repository](https://github.com/bitcoi
 
 In the `guix-build-${VERSION}/output/x86_64-apple-darwin` and `guix-build-${VERSION}/output/arm64-apple-darwin` directories:
 
-    tar xf bitcoin-${VERSION}-${ARCH}-apple-darwin-codesigning.tar.gz
+    tar xf tidecoin-${VERSION}-${ARCH}-apple-darwin-codesigning.tar.gz
     ./detached-sig-create.sh /path/to/codesign.p12 /path/to/AuthKey_foo.p8 uuid
     Enter the keychain password and authorize the signature
     signature-osx.tar.gz will be created
@@ -175,19 +175,19 @@ In the `guix-build-${VERSION}/output/x86_64-apple-darwin` and `guix-build-${VERS
 
 In the `guix-build-${VERSION}/output/x86_64-w64-mingw32` directory:
 
-    tar xf bitcoin-${VERSION}-win64-codesigning.tar.gz
+    tar xf tidecoin-${VERSION}-win64-codesigning.tar.gz
     ./detached-sig-create.sh /path/to/codesign.key
     Enter the passphrase for the key when prompted
     signature-win.tar.gz will be created
 
 ### Windows and macOS codesigners only: test code signatures
 It is advised to test that the code signature attaches properly prior to tagging by performing the `guix-codesign` step.
-However if this is done, once the release has been tagged in the bitcoin-detached-sigs repo, the `guix-codesign` step must be performed again in order for the guix attestation to be valid when compared against the attestations of non-codesigner builds. The directories created by `guix-codesign` will need to be cleared prior to running `guix-codesign` again.
+However if this is done, once the release has been tagged in the detached-signatures repo, the `guix-codesign` step must be performed again in order for the guix attestation to be valid when compared against the attestations of non-codesigner builds. The directories created by `guix-codesign` will need to be cleared prior to running `guix-codesign` again.
 
 ### Windows and macOS codesigners only: Commit the detached codesign payloads
 
 ```sh
-pushd ./bitcoin-detached-sigs
+pushd ./tidecoin-detached-sigs
 # checkout or create the appropriate branch for this release series
 git checkout --orphan <branch>
 # if you are the macOS codesigner
@@ -206,7 +206,7 @@ popd
 ### Non-codesigners: wait for Windows and macOS detached signatures
 
 - Once the Windows and macOS builds each have 3 matching signatures, they will be signed with their respective release keys.
-- Detached signatures will then be committed to the [bitcoin-detached-sigs](https://github.com/bitcoin-core/bitcoin-detached-sigs) repository, which can be combined with the unsigned apps to create signed binaries.
+- Detached signatures are then committed to your detached-signatures repository, which can be combined with the unsigned apps to create signed binaries.
 
 ### Create the codesigned build outputs
 
@@ -225,7 +225,7 @@ git commit -m "Add attestations by ${SIGNER} for ${VERSION} codesigned"
 popd
 ```
 
-Then open a Pull Request to the [guix.sigs repository](https://github.com/bitcoin-core/guix.sigs).
+Then open a Pull Request to your `guix.sigs` repository.
 
 ## After 6 or more people have guix-built and their results match
 
@@ -236,8 +236,8 @@ cat "$VERSION"/*/all.SHA256SUMS.asc > SHA256SUMS.asc
 ```
 
 
-- Upload to the bitcoincore.org server:
-    1. The contents of each `./bitcoin/guix-build-${VERSION}/output/${HOST}/` directory.
+- Upload to your release hosting server:
+    1. The contents of each `./tidecoin/guix-build-${VERSION}/output/${HOST}/` directory.
 
        Guix will output all of the results into host subdirectories, but the SHA256SUMS
        file does not include these subdirectories. In order for downloads via torrent
@@ -250,8 +250,8 @@ cat "$VERSION"/*/all.SHA256SUMS.asc > SHA256SUMS.asc
 
     3. The `SHA256SUMS.asc` combined signature file you just created.
 
-- After uploading release candidate binaries, notify the bitcoin-core-dev mailing list and
-  bitcoin-dev group that a release candidate is available for testing. Include a link to the release
+- After uploading release candidate binaries, notify your project's developer/community channels
+  that a release candidate is available for testing. Include a link to the release
   notes draft.
 
 - The server will automatically create an OpenTimestamps file and torrent of the directory.
@@ -263,47 +263,38 @@ cat "$VERSION"/*/all.SHA256SUMS.asc > SHA256SUMS.asc
   ```
 
   Insert the magnet URI into the announcement sent to mailing lists. This permits
-  people without access to `bitcoincore.org` to download the binary distribution.
-  Also put it into the `optional_magnetlink:` slot in the YAML file for
-  bitcoincore.org.
+  people without access to your primary release host to download the binary distribution.
+  Also publish it in your release metadata.
 
 - Archive the release notes for the new version to `doc/release-notes/release-notes-${VERSION}.md`
   (branch `master` and branch of the release).
 
-- Update the bitcoincore.org website
+- Update your project website/release portal
 
   - blog post
 
-  - maintained versions [table](https://github.com/bitcoin-core/bitcoincore.org/commits/master/_includes/posts/maintenance-table.md)
+  - maintained versions table
 
   - RPC documentation update
 
-      - See https://github.com/bitcoin-core/bitcoincore.org/blob/master/contrib/doc-gen/
+      - Regenerate and publish RPC documentation
 
 
 - Update repositories
 
-  - Delete post-EOL [release branches](https://github.com/bitcoin/bitcoin/branches/all) and create a tag `v${branch_name}-final`.
+  - Delete post-EOL release branches and create a tag `v${branch_name}-final`.
 
-  - Delete ["Needs backport" labels](https://github.com/bitcoin/bitcoin/labels?q=backport) for non-existing branches.
+  - Delete "Needs backport" labels for non-existing branches.
 
-  - Update packaging repo
+  - Update packaging repos
 
-      - Push the flatpak to flathub, e.g. https://github.com/flathub/org.bitcoincore.bitcoin-qt/pull/2
+      - Push/update Flatpak packaging
 
-      - Push the snap, see https://github.com/bitcoin-core/packaging/blob/main/snap/local/build.md
+      - Push/update Snap packaging
 
-  - Create a [new GitHub release](https://github.com/bitcoin/bitcoin/releases/new) with a link to the archived release notes
+  - Create a new GitHub release with a link to the archived release notes
 
-- Announce the release:
-
-  - bitcoin-dev and bitcoin-core-dev mailing list
-
-  - Bitcoin Core announcements list https://bitcoincore.org/en/list/announcements/join/
-
-  - Bitcoin Core Twitter https://twitter.com/bitcoincoreorg
-
-  - Celebrate
+- Announce the release using your project's official channels.
 
 ### Additional information
 

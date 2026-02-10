@@ -405,6 +405,7 @@ verbose = config.verbose
 
 app_bundle = config.app_bundle[0]
 appname = config.appname[0]
+bundle_name = os.path.basename(app_bundle)
 
 if not os.path.exists(app_bundle):
     sys.stderr.write(f"Error: Could not find app bundle \"{app_bundle}\"\n")
@@ -422,7 +423,7 @@ if os.path.exists(appname + ".zip"):
 
 # ------------------------------------------------
 
-target = os.path.join("dist", "Bitcoin-Qt.app")
+target = os.path.join("dist", bundle_name)
 
 print("+ Copying source bundle +")
 if verbose:
@@ -499,7 +500,7 @@ if platform.system() == "Darwin":
 # ------------------------------------------------
 
 if config.zip is not None:
-    shutil.make_archive('{}'.format(appname), format='zip', root_dir='dist', base_dir='Bitcoin-Qt.app')
+    shutil.make_archive('{}'.format(appname), format='zip', root_dir='dist', base_dir=bundle_name)
 
 # ------------------------------------------------
 

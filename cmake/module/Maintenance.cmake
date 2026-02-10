@@ -118,7 +118,7 @@ function(add_macos_deploy_target)
         VERBATIM
       )
       add_custom_target(deploydir
-        DEPENDS ${PROJECT_BINARY_DIR}/dist/${macos_app}/Contents/MacOS/Bitcoin-Qt
+        DEPENDS ${PROJECT_BINARY_DIR}/dist/${macos_app}/Contents/MacOS/Tidecoin-Qt
       )
 
       find_program(ZIP_EXECUTABLE zip)
