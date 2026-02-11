@@ -34,7 +34,7 @@
   <string>????</string>
 
   <key>CFBundleExecutable</key>
-  <string>Bitcoin-Qt</string>
+  <string>Tidecoin-Qt</string>
 
   <key>CFBundleName</key>
   <string>Bitcoin-Qt</string>

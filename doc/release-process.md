@@ -169,7 +169,7 @@ In the `guix-build-${VERSION}/output/x86_64-apple-darwin` and `guix-build-${VERS
     tar xf tidecoin-${VERSION}-${ARCH}-apple-darwin-codesigning.tar.gz
     ./detached-sig-create.sh /path/to/codesign.p12 /path/to/AuthKey_foo.p8 uuid
     Enter the keychain password and authorize the signature
-    signature-osx.tar.gz will be created
+    signature-osx-${ARCH}.tar.gz will be created
 
 ### Windows codesigner only: Create detached Windows signatures
 
@@ -192,7 +192,8 @@ pushd ./tidecoin-detached-sigs
 git checkout --orphan <branch>
 # if you are the macOS codesigner
 rm -rf osx
-tar xf signature-osx.tar.gz
+tar xf signature-osx-x86_64.tar.gz
+tar xf signature-osx-arm64.tar.gz
 # if you are the windows codesigner
 rm -rf win
 tar xf signature-win.tar.gz
