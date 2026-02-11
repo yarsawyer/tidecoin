@@ -26,6 +26,14 @@ function(install_binary_component component)
     set(manpage_name ${target_name})
     if(IC_MANPAGE)
       set(manpage_name ${IC_MANPAGE})
+    else()
+      # Prefer the installed binary name for manpage lookup. This keeps
+      # manpage installation aligned when targets use OUTPUT_NAME renames
+      # (e.g. bitcoin-wallet -> tidecoin-wallet).
+      get_target_property(output_name ${target_name} OUTPUT_NAME)
+      if(output_name AND NOT output_name STREQUAL "output_name-NOTFOUND")
+        set(manpage_name ${output_name})
+      endif()
     endif()
     install(FILES ${PROJECT_SOURCE_DIR}/doc/man/${manpage_name}.1
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
