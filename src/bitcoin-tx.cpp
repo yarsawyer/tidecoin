@@ -111,17 +111,17 @@ static int AppInitRawTx(int argc, char* argv[])
 
     if (argc < 2 || HelpRequested(gArgs) || gArgs.GetBoolArg("-version", false)) {
         // First part of help message is specific to this utility
-        std::string strUsage = CLIENT_NAME " bitcoin-tx utility version " + FormatFullVersion() + "\n";
+        std::string strUsage = CLIENT_NAME " tidecoin-tx utility version " + FormatFullVersion() + "\n";
 
         if (gArgs.GetBoolArg("-version", false)) {
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\n"
-                "The bitcoin-tx tool is used for creating and modifying bitcoin transactions.\n\n"
-                "bitcoin-tx can be used with \"<hex-tx> [commands]\" to update a hex-encoded bitcoin transaction, or with \"-create [commands]\" to create a hex-encoded bitcoin transaction.\n"
+                "The tidecoin-tx tool is used for creating and modifying " CLIENT_NAME " transactions.\n\n"
+                "tidecoin-tx can be used with \"<hex-tx> [commands]\" to update a hex-encoded " CLIENT_NAME " transaction, or with \"-create [commands]\" to create a hex-encoded " CLIENT_NAME " transaction.\n"
                 "\n"
-                "Usage: bitcoin-tx [options] <hex-tx> [commands]\n"
-                "or:    bitcoin-tx [options] -create [commands]\n"
+                "Usage: tidecoin-tx [options] <hex-tx> [commands]\n"
+                "or:    tidecoin-tx [options] -create [commands]\n"
                 "\n";
             strUsage += gArgs.GetHelpMessage();
         }

@@ -1,0 +1,33 @@
+# /etc/conf.d/tidecoind: config file for /etc/init.d/tidecoind
+
+# Config file location
+#TIDECOIND_CONFIGFILE="/etc/tidecoin/tidecoin.conf"
+
+# What directory to write pidfile to?  (created and owned by $TIDECOIND_USER)
+#TIDECOIND_PIDDIR="/var/run/tidecoind"
+
+# What filename to give the pidfile
+#TIDECOIND_PIDFILE="${TIDECOIND_PIDDIR}/tidecoind.pid"
+
+# Where to write tidecoind data (be mindful that the blockchain is large)
+#TIDECOIND_DATADIR="/var/lib/tidecoind"
+
+# User and group to own tidecoind process
+#TIDECOIND_USER="tidecoin"
+#TIDECOIND_GROUP="tidecoin"
+
+# Path to tidecoind executable
+#TIDECOIND_BIN="/usr/bin/tidecoind"
+
+# Nice value to run tidecoind under
+#TIDECOIND_NICE=0
+
+# Additional options (avoid -conf and -datadir, use flags above)
+#TIDECOIND_OPTS=""
+
+# The timeout in seconds OpenRC will wait for tidecoind to terminate
+# after a SIGTERM has been raised.
+# Note that this will be mapped as argument to start-stop-daemon's
+# '--retry' option, which means you can specify a retry schedule
+# here. For more information see man 8 start-stop-daemon.
+TIDECOIND_SIGTERM_TIMEOUT=600

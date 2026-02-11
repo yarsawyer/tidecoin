@@ -1,0 +1,87 @@
+#!/sbin/openrc-run
+
+TIDECOIND_DEFAULT_DATADIR="/var/lib/tidecoind"
+
+TIDECOIND_CONFIGFILE=${TIDECOIND_CONFIGFILE:-/etc/tidecoin/tidecoin.conf}
+TIDECOIND_PIDDIR=${TIDECOIND_PIDDIR:-/var/run/tidecoind}
+TIDECOIND_PIDFILE=${TIDECOIND_PIDFILE:-${TIDECOIND_PIDDIR}/tidecoind.pid}
+TIDECOIND_DATADIR=${TIDECOIND_DATADIR:-${TIDECOIND_DEFAULT_DATADIR}}
+TIDECOIND_USER=${TIDECOIND_USER:-tidecoin}
+TIDECOIND_GROUP=${TIDECOIND_GROUP:-tidecoin}
+TIDECOIND_BIN=${TIDECOIND_BIN:-/usr/bin/tidecoind}
+TIDECOIND_NICE=${TIDECOIND_NICE:-${NICELEVEL:-0}}
+TIDECOIND_OPTS="${TIDECOIND_OPTS:-${TIDECOIN_OPTS}}"
+
+name="Tidecoin Core Daemon"
+description="Tidecoin cryptocurrency P2P network daemon"
+
+command="/usr/bin/tidecoind"
+command_args="-pid=\"${TIDECOIND_PIDFILE}\" \
+		-conf=\"${TIDECOIND_CONFIGFILE}\" \
+		-datadir=\"${TIDECOIND_DATADIR}\" \
+		-daemon \
+		${TIDECOIND_OPTS}"
+
+required_files="${TIDECOIND_CONFIGFILE}"
+start_stop_daemon_args="-u ${TIDECOIND_USER} \
+			-N ${TIDECOIND_NICE} -w 2000"
+pidfile="${TIDECOIND_PIDFILE}"
+
+# The retry schedule to use when stopping the daemon. Could be either
+# a timeout in seconds or multiple signal/timeout pairs (like
+# "SIGKILL/180 SIGTERM/300")
+retry="${TIDECOIND_SIGTERM_TIMEOUT}"
+
+depend() {
+	need localmount net
+}
+
+# verify
+# 1) that the datadir exists and is writable (or create it)
+# 2) that a directory for the pid exists and is writable
+# 3) ownership and permissions on the config file
+start_pre() {
+	checkpath \
+	-d \
+	--mode 0750 \
+	--owner "${TIDECOIND_USER}:${TIDECOIND_GROUP}" \
+	"${TIDECOIND_DATADIR}"
+
+	checkpath \
+	-d \
+	--mode 0755 \
+	--owner "${TIDECOIND_USER}:${TIDECOIND_GROUP}" \
+	"${TIDECOIND_PIDDIR}"
+
+	checkpath -f \
+	-o "${TIDECOIND_USER}:${TIDECOIND_GROUP}" \
+	-m 0660 \
+	"${TIDECOIND_CONFIGFILE}"
+
+	checkconfig || return 1
+}
+
+checkconfig()
+{
+	if grep -qs '^rpcuser=' "${TIDECOIND_CONFIGFILE}" && \
+		! grep -qs '^rpcpassword=' "${TIDECOIND_CONFIGFILE}" ; then
+		eerror ""
+		eerror "ERROR: You must set a secure rpcpassword to run tidecoind."
+		eerror "The setting must appear in ${TIDECOIND_CONFIGFILE}"
+		eerror ""
+		eerror "This password is security critical to securing wallets "
+		eerror "and must not be the same as the rpcuser setting."
+		eerror "You can generate a suitable random password using the following "
+		eerror "command from the shell:"
+		eerror ""
+		eerror "bash -c 'tr -dc a-zA-Z0-9 < /dev/urandom | head -c32 && echo'"
+		eerror ""
+		eerror "It is recommended that you also set alertnotify so you are "
+		eerror "notified of problems:"
+		eerror ""
+		eerror "ie: alertnotify=echo %%s | mail -s \"Tidecoin Alert\"" \
+			"admin@foo.com"
+		eerror ""
+		return 1
+	fi
+}

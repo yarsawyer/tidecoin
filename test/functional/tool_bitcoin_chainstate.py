@@ -9,7 +9,7 @@ from test_framework.test_framework import BitcoinTestFramework
 
 class BitcoinChainstateTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
-        self.skip_if_no_bitcoin_chainstate()
+        self.skip_if_no_tidecoin_chainstate()
 
     def set_test_params(self):
         self.setup_clean_chain = True

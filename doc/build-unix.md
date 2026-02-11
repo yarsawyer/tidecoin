@@ -216,5 +216,5 @@ This example lists the steps necessary to setup and build a command line only di
     cmake -B build
     cmake --build build
     ctest --test-dir build
-    ./build/bin/bitcoind
+    ./build/bin/tidecoind
     ./build/bin/bitcoin help

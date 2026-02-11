@@ -61,11 +61,11 @@ class HTTPBasicsTest(BitcoinTestFramework):
         rpcauth3 = lines[1]
         self.password = lines[3]
 
-        with open(self.nodes[0].bitcoinconf, "a", encoding="utf8") as f:
+        with open(self.nodes[0].tidecoinconf, "a", encoding="utf8") as f:
             f.write(rpcauth + "\n")
             f.write(rpcauth2 + "\n")
             f.write(rpcauth3 + "\n")
-        with open(self.nodes[1].bitcoinconf, "a", encoding="utf8") as f:
+        with open(self.nodes[1].tidecoinconf, "a", encoding="utf8") as f:
             f.write("rpcuser={}\n".format(self.rpcuser))
             f.write("rpcpassword={}\n".format(self.rpcpassword))
         self.restart_node(0)

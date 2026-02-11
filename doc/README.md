@@ -15,15 +15,15 @@ The following are some helpful notes on how to run Bitcoin Core on your native p
 
 Unpack the files into a directory and run:
 
-- `bin/bitcoin-qt` (GUI) or
-- `bin/bitcoind` (headless)
+- `bin/tidecoin-qt` (GUI) or
+- `bin/tidecoind` (headless)
 - `bin/bitcoin` (wrapper command)
 
 The `bitcoin` command supports subcommands like `bitcoin gui`, `bitcoin node`, and `bitcoin rpc` exposing different functionality. Subcommands can be listed with `bitcoin help`.
 
 ### Windows
 
-Unpack the files into a directory, and then run bitcoin-qt.exe.
+Unpack the files into a directory, and then run tidecoin-qt.exe.
 
 ### macOS
 
@@ -31,7 +31,7 @@ Drag Bitcoin Core to your applications folder, and then run Bitcoin Core.
 
 ### Need Help?
 
-* See the documentation at the [Bitcoin Wiki](https://en.bitcoin.it/wiki/Main_Page)
+* See the documentation at the [Bitcoin Wiki](https://en.tidecoin.it/wiki/Main_Page)
 for help and more information.
 * Ask for help on [Bitcoin StackExchange](https://bitcoin.stackexchange.com).
 * Ask for help on #bitcoin on Libera Chat. If you don't have an IRC client, you can use [web.libera.chat](https://web.libera.chat/#bitcoin).
@@ -72,7 +72,7 @@ The Bitcoin repo's [root README](/README.md) contains relevant information on th
 
 ### Miscellaneous
 - [Assets Attribution](assets-attribution.md)
-- [bitcoin.conf Configuration File](bitcoin-conf.md)
+- [tidecoin.conf Configuration File](tidecoin-conf.md)
 - [CJDNS Support](cjdns.md)
 - [Files](files.md)
 - [Fuzz-testing](fuzzing.md)

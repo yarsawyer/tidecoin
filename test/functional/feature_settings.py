@@ -40,7 +40,7 @@ class SettingsTest(BitcoinTestFramework):
     def run_test(self):
         node, = self.nodes
         settings = node.chain_path / "settings.json"
-        conf = node.bitcoinconf
+        conf = node.tidecoinconf
 
         # Assert default settings file was created
         self.stop_node(0)

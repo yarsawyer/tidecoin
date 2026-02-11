@@ -21,8 +21,8 @@ How to Upgrade
 
 If you are running an older version, shut it down. Wait until it has completely
 shut down (which might take a few minutes in some cases), then run the
-installer (on Windows) or just copy over `/Applications/Bitcoin-Qt` (on macOS)
-or `bitcoind`/`bitcoin-qt` (on Linux).
+installer (on Windows) or just copy over `/Applications/Tidecoin-Qt` (on macOS)
+or `tidecoind`/`tidecoin-qt` (on Linux).
 
 Upgrading directly from a version of Bitcoin Core that has reached its EOL is
 possible, but it might take some time if the data directory needs to be migrated. Old
@@ -107,8 +107,8 @@ New `bitcoin` command
 - A new `bitcoin` command line tool has been added to make features more discoverable
   and convenient to use. The `bitcoin` tool just calls other executables and does not
   implement any functionality on its own. Specifically `bitcoin node` is a synonym for
-  `bitcoind`, `bitcoin gui` is a synonym for `bitcoin-qt`, and `bitcoin rpc` is a synonym
-  for `bitcoin-cli -named`. Other commands and options can be listed with `bitcoin help`.
+  `tidecoind`, `bitcoin gui` is a synonym for `tidecoin-qt`, and `bitcoin rpc` is a synonym
+  for `tidecoin-cli -named`. Other commands and options can be listed with `bitcoin help`.
   The new `bitcoin` command is an alternative to calling other commands directly, but it
   doesn't replace them, and there are no plans to deprecate existing commands. (#31375)
 
@@ -125,7 +125,7 @@ IPC Mining Interface
   see (#31098). When the node is started with `bitcoin -m node -ipcbind=unix` it will
   listen on a unix socket for IPC client connections, allowing clients to request block
   templates and submit mined blocks. The `-m` option launches a new internal binary
-  (`bitcoin-node` instead of `bitcoind`) and is currently required but will become optional
+  (`tidecoin-node` instead of `tidecoind`) and is currently required but will become optional
   in the future (with [#33229](https://github.com/bitcoin/bitcoin/pull/33229)).
 
 - IPC connectivity introduces new dependencies (see [multiprocess.md](https://github.com/bitcoin/bitcoin/blob/master/doc/multiprocess.md)),
@@ -135,13 +135,13 @@ IPC Mining Interface
 Install changes
 ---------------
 
-- The `test_bitcoin` executable is now installed in `libexec/` instead of `bin/`.
-  It can still be executed directly, or accessed through the new `bitcoin` command
-  as `bitcoin test`. The `libexec/` directory also contains new `bitcoin-node` and
-  `bitcoin-gui` binaries which support IPC features and are called through the
-  `bitcoin` tool. In source builds only, `test_bitcoin-qt`, `bench_bitcoin`, and
-  `bitcoin-chainstate` are also now installed to `libexec/` instead of `bin/` and
-  can be accessed through the new `bitcoin` command. See `bitcoin help` output for
+- The `test_tidecoin` executable is now installed in `libexec/` instead of `bin/`.
+  It can still be executed directly, or accessed through the new `tidecoin` command
+  as `tidecoin test`. The `libexec/` directory also contains new `tidecoin-node` and
+  `tidecoin-gui` binaries which support IPC features and are called through the
+  `tidecoin` tool. In source builds only, `test_tidecoin-qt`, `bench_tidecoin`, and
+  `tidecoin-chainstate` are also now installed to `libexec/` instead of `bin/` and
+  can be accessed through the new `tidecoin` command. See `tidecoin help` output for
   details. (#31679)
 
 - On Windows, the installer no longer adds a “(64-bit)” suffix to entries in the
@@ -262,7 +262,7 @@ Wallet
   to the new descriptor wallet format. Refer to the `migratewallet` RPC for more
   details.
 
-- The legacy wallet removal drops redundant options in the bitcoin-wallet tool,
+- The legacy wallet removal drops redundant options in the tidecoin-wallet tool,
   such as `-withinternalbdb`, `-legacy`, and `-descriptors`. Moreover, the
   legacy-only RPCs `addmultisigaddress`, `dumpprivkey`, `dumpwallet`,
   `importaddress`, `importmulti`, `importprivkey`, `importpubkey`,

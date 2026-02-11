@@ -2,7 +2,7 @@
 
 **Updated for OpenBSD [7.6](https://www.openbsd.org/76.html)**
 
-This guide describes how to build bitcoind, command-line utilities, and GUI on OpenBSD.
+This guide describes how to build tidecoind, command-line utilities, and GUI on OpenBSD.
 
 ## Preparation
 

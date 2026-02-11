@@ -66,6 +66,18 @@ Individual tests can be run by directly calling the test script, e.g.:
 test/lint/lint-files.py
 ```
 
+#### Tidecoin naming policy
+
+Active user/operator surfaces must use Tidecoin naming. In particular:
+
+- `tidecoin.conf` (not `bitcoin.conf`)
+- `tidecoind` (not `bitcoind`)
+- `tidecoin-*` executables for CLI/tooling references
+- Tidecoin datadir and service identifier names in docs and templates
+
+This policy is enforced by [`lint-tidecoin-naming.py`](/test/lint/lint-tidecoin-naming.py).
+Historical release notes under `doc/release-notes/**` are intentionally excluded.
+
 check-doc.py
 ============
 Check for missing documentation of command line options.

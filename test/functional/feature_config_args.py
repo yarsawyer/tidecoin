@@ -43,7 +43,7 @@ class ConfArgsTest(BitcoinTestFramework):
 
     def test_dir_config(self):
         self.log.info('Error should be emitted if config file is a directory')
-        conf_name = self.nodes[0].bitcoinconf.name
+        conf_name = self.nodes[0].tidecoinconf.name
         conf_path = self.nodes[0].datadir_path / conf_name
         os.rename(conf_path, conf_path.with_suffix('.confbkp'))
         conf_path.mkdir()
@@ -68,7 +68,7 @@ class ConfArgsTest(BitcoinTestFramework):
     def test_negated_config(self):
         self.log.info('Disabling configuration via -noconf')
 
-        conf_name = self.nodes[0].bitcoinconf.name
+        conf_name = self.nodes[0].tidecoinconf.name
         conf_path = self.nodes[0].datadir_path / conf_name
         with open(conf_path, encoding='utf-8') as conf:
             settings = [f'-{line.rstrip()}' for line in conf if len(line) > 1 and line[0] != '[']
@@ -100,8 +100,8 @@ class ConfArgsTest(BitcoinTestFramework):
     def test_config_file_parser(self):
         self.log.info('Test config file parser')
 
-        # Check that startup fails if conf= is set in bitcoin.conf or in an included conf file
-        conf_name = self.nodes[0].bitcoinconf.name
+        # Check that startup fails if conf= is set in tidecoin.conf or in an included conf file
+        conf_name = self.nodes[0].tidecoinconf.name
         bad_conf_file_path = self.nodes[0].datadir_path / "bitcoin_bad.conf"
         util.write_config(bad_conf_file_path, n=0, chain='', extra_config='conf=some.conf\n')
         conf_in_config_file_err = 'Error: Error reading configuration file: conf cannot be set in the configuration file; use includeconf= if you want to include additional config files'
@@ -190,17 +190,17 @@ class ConfArgsTest(BitcoinTestFramework):
             return
 
         self.log.info('Test that correct configuration path is changed when configuration file changes the datadir')
-        conf_name = self.nodes[0].bitcoinconf.name
+        conf_name = self.nodes[0].tidecoinconf.name
 
         # Create a temporary directory that will be treated as the default data
-        # directory by bitcoind.
+        # directory by tidecoind.
         env, default_datadir = util.get_temp_default_datadir(Path(self.options.tmpdir, "test_config_file_log"))
         default_datadir.mkdir(parents=True)
 
         # Write a config file in the default data directory containing a
         # datadir= line pointing at the node datadir.
         node = self.nodes[0]
-        conf_text = node.bitcoinconf.read_text()
+        conf_text = node.tidecoinconf.read_text()
         conf_path = default_datadir / conf_name
         conf_path.write_text(f"datadir={node.datadir_path}\n{conf_text}")
 
@@ -211,7 +211,7 @@ class ConfArgsTest(BitcoinTestFramework):
         node.args = [arg for arg in node.args if not arg.startswith("-datadir=")]
 
         # Check that correct configuration file path is actually logged
-        # (conf_path, not node.bitcoinconf)
+        # (conf_path, not node.tidecoinconf)
         with self.nodes[0].assert_debug_log(expected_msgs=[f"Config file: {conf_path}"]):
             self.start_node(0, ["-allowignoredconf"], env=env)
             self.stop_node(0)
@@ -416,7 +416,7 @@ class ConfArgsTest(BitcoinTestFramework):
         self.stop_node(0)
 
     def test_ignored_conf(self):
-        conf_name = self.nodes[0].bitcoinconf.name
+        conf_name = self.nodes[0].tidecoinconf.name
         self.log.info(f'Test error is triggered when the datadir in use contains a {conf_name} file that would be ignored '
                       'because a conflicting -conf file argument is passed.')
         node = self.nodes[0]
@@ -439,12 +439,12 @@ class ConfArgsTest(BitcoinTestFramework):
         if platform.system() == "Windows":
             return
 
-        conf_name = self.nodes[0].bitcoinconf.name
+        conf_name = self.nodes[0].tidecoinconf.name
         self.log.info(f'Test error is triggered when {conf_name} in the default data directory sets another datadir '
                       f'and it contains a different {conf_name} file that would be ignored')
 
         # Create a temporary directory that will be treated as the default data
-        # directory by bitcoind.
+        # directory by tidecoind.
         env, default_datadir = util.get_temp_default_datadir(Path(self.options.tmpdir, "home"))
         default_datadir.mkdir(parents=True)
 
@@ -468,7 +468,7 @@ class ConfArgsTest(BitcoinTestFramework):
 
     def test_acceptstalefeeestimates_arg_support(self):
         self.log.info("Test -acceptstalefeeestimates option support")
-        conf_file = self.nodes[0].bitcoinconf
+        conf_file = self.nodes[0].tidecoinconf
         for chain, chain_name in {("main", ""), ("test", "testnet")}:
             util.write_config(conf_file, n=0, chain=chain_name, extra_config='acceptstalefeeestimates=1\n')
             self.nodes[0].assert_start_raises_init_error(expected_msg=f'Error: acceptstalefeeestimates is not supported on {chain} chain.')
@@ -476,7 +476,7 @@ class ConfArgsTest(BitcoinTestFramework):
 
 
     def run_test(self):
-        conf_name = self.nodes[0].bitcoinconf.name
+        conf_name = self.nodes[0].tidecoinconf.name
         self.test_log_buffer()
         self.test_args_log()
         self.test_seed_peers()

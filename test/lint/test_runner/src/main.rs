@@ -98,6 +98,11 @@ fn get_linter_list() -> Vec<&'static Linter> {
             name: "all_python_linters",
             lint_fn: run_all_python_linters
         },
+        &Linter {
+            description: "Check that active surfaces use Tidecoin naming",
+            name: "tidecoin_naming",
+            lint_fn: lint_tidecoin_naming,
+        },
     ]
 }
 
@@ -478,7 +483,7 @@ fn get_pathspecs_exclude_whitespace() -> Vec<String> {
             "contrib/windeploy/win-codesign.cert",
             "doc/README_windows.txt",
             // Temporary excludes, or existing violations
-            "contrib/init/bitcoind.openrc",
+            "contrib/init/tidecoind.openrc",
             "contrib/macdeploy/macdeployqtplus",
             "src/crypto/sha256_sse4.cpp",
             "src/qt/res/src/*.svg",
@@ -737,6 +742,7 @@ fn run_all_python_linters() -> LintResult {
         let entry_fn = entry.file_name().into_string().unwrap();
         if entry_fn.starts_with("lint-")
             && entry_fn.ends_with(".py")
+            && entry_fn != "lint-tidecoin-naming.py"
             && !Command::new("python3")
                 .arg(entry.path())
                 .status()
@@ -748,6 +754,18 @@ fn run_all_python_linters() -> LintResult {
         }
     }
     if good {
+        Ok(())
+    } else {
+        Err("".to_string())
+    }
+}
+
+fn lint_tidecoin_naming() -> LintResult {
+    if Command::new("test/lint/lint-tidecoin-naming.py")
+        .status()
+        .expect("command error")
+        .success()
+    {
         Ok(())
     } else {
         Err("".to_string())
