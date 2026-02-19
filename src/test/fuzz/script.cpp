@@ -45,7 +45,7 @@ FUZZ_TARGET(script, .init = initialize_script)
     if (CompressScript(script, compressed)) {
         const unsigned int size = compressed[0];
         compressed.erase(compressed.begin());
-        assert(size <= 5);
+        assert(size < ScriptCompression::nSpecialScripts);
         CScript decompressed_script;
         const bool ok = DecompressScript(decompressed_script, size, compressed);
         assert(ok);
@@ -103,8 +103,8 @@ FUZZ_TARGET(script, .init = initialize_script)
         const std::vector<uint8_t> bytes = ConsumeRandomLengthByteVector(fuzzed_data_provider);
         CompressedScript compressed_script;
         compressed_script.assign(bytes.begin(), bytes.end());
-        // DecompressScript(..., ..., bytes) is not guaranteed to be defined if the bytes vector is too short
-        if (compressed_script.size() >= 32) {
+        // DecompressScript(..., ..., bytes) is not guaranteed to be defined if the bytes vector is too short.
+        if (compressed_script.size() >= 20) {
             CScript decompressed_script;
             DecompressScript(decompressed_script, fuzzed_data_provider.ConsumeIntegral<unsigned int>(), compressed_script);
         }

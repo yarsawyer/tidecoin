@@ -74,37 +74,15 @@ def decompress_amount(x):
 
 def decompress_script(f):
     """Equivalent of `DecompressScript()` (see compressor module)."""
-    size = read_varint(f)  # sizes 0-5 encode compressed script types
+    size = read_varint(f)  # sizes 0-1 encode compressed script types
     if size == 0:  # P2PKH
         return bytes([0x76, 0xa9, 20]) + f.read(20) + bytes([0x88, 0xac])
     elif size == 1:  # P2SH
         return bytes([0xa9, 20]) + f.read(20) + bytes([0x87])
-    elif size in (2, 3):  # P2PK (compressed)
-        return bytes([33, size]) + f.read(32) + bytes([0xac])
-    elif size in (4, 5):  # P2PK (uncompressed)
-        compressed_pubkey = bytes([size - 2]) + f.read(32)
-        return bytes([65]) + decompress_pubkey(compressed_pubkey) + bytes([0xac])
     else:  # others (bare multisig, segwit etc.)
-        size -= 6
+        size -= 2
         assert size <= 10000, f"too long script with size {size}"
         return f.read(size)
-
-
-def decompress_pubkey(compressed_pubkey):
-    """Decompress pubkey by calculating y = sqrt(x^3 + 7) % p
-       using the legacy short-Weierstrass curve parameters used by compressed keys.
-    """
-    P = 2**256 - 2**32 - 977  # Field prime for legacy compressed key decompression
-    assert len(compressed_pubkey) == 33 and compressed_pubkey[0] in (2, 3)
-    x = int.from_bytes(compressed_pubkey[1:], 'big')
-    rhs = (x**3 + 7) % P
-    y = pow(rhs, (P + 1)//4, P)  # get sqrt using Tonelli-Shanks algorithm (for p % 4 = 3)
-    assert pow(y, 2, P) == rhs, f"pubkey is not on curve ({compressed_pubkey.hex()})"
-    tag_is_odd = compressed_pubkey[0] == 3
-    y_is_odd = (y & 1) == 1
-    if tag_is_odd != y_is_odd:  # fix parity (even/odd) if necessary
-        y = P - y
-    return bytes([4]) + x.to_bytes(32, 'big') + y.to_bytes(32, 'big')
 
 
 def main():

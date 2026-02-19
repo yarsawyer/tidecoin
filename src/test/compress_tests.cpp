@@ -99,4 +99,15 @@ BOOST_AUTO_TEST_CASE(compress_script_to_cscript_id)
     BOOST_CHECK_EQUAL(memcmp(out.data() + 1, script.data() + 2, 20), 0); // compare the 20 relevant chars of the CScriptId in the script
 }
 
+BOOST_AUTO_TEST_CASE(compress_script_does_not_special_case_pubkey)
+{
+    CKey key = GenerateRandomKey(pq::SchemeId::FALCON_512);
+    CPubKey pubkey = key.GetPubKey();
+    CScript script = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+
+    CompressedScript out;
+    const bool done = CompressScript(script, out);
+    BOOST_CHECK_EQUAL(done, false);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
