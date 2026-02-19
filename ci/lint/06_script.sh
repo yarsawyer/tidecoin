@@ -16,6 +16,24 @@ if [ -n "$CIRRUS_PR" ]; then
   fi
 fi
 
+if [ -z "${COMMIT_RANGE:-}" ]; then
+  MERGE_BASE="$(git rev-list --max-count=1 --merges HEAD || true)"
+  if [ -n "$MERGE_BASE" ]; then
+    COMMIT_RANGE="${MERGE_BASE}..HEAD"
+  else
+    COMMIT_RANGE="HEAD~1..HEAD"
+  fi
+fi
+
+PQ_VENDOR_DEEP_PATHS_REGEX='^(src/pq/|contrib/devtools/check_pq_vendor.py$|test/lint/lint-pq-vendor.py$|test/lint/test_runner/src/main.rs$|doc/developer-notes.md$|test/lint/README.md$)'
+CHANGED_PATHS="$(git diff --name-only "${COMMIT_RANGE}" -- || true)"
+if printf '%s\n' "$CHANGED_PATHS" | grep -Eq "$PQ_VENDOR_DEEP_PATHS_REGEX"; then
+  export RUN_PQ_VENDOR_DEEP=1
+  echo "Enabling pq_vendor_deep lint (RUN_PQ_VENDOR_DEEP=1) for range ${COMMIT_RANGE}"
+else
+  echo "Skipping pq_vendor_deep auto-enable; no relevant path changes in ${COMMIT_RANGE}"
+fi
+
 RUST_BACKTRACE=1 cargo run --manifest-path "./test/lint/test_runner/Cargo.toml"
 
 if [ "$CIRRUS_REPO_FULL_NAME" = "bitcoin/bitcoin" ] && [ "$CIRRUS_PR" = "" ] ; then

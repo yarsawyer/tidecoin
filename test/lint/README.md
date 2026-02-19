@@ -78,6 +78,33 @@ Active user/operator surfaces must use Tidecoin naming. In particular:
 This policy is enforced by [`lint-tidecoin-naming.py`](/test/lint/lint-tidecoin-naming.py).
 Historical release notes under `doc/release-notes/**` are intentionally excluded.
 
+#### PQ vendor provenance policy
+
+Vendored post-quantum components under `src/pq/` are tracked by
+`src/pq/VERSIONS.toml`.
+
+- `test/lint/lint-pq-vendor.py` validates manifest schema and required metadata.
+- `contrib/devtools/check_pq_vendor.py` performs deep diffs against pinned
+  upstream PQClean commits and verifies that local divergence is declared.
+
+Run locally:
+
+```sh
+test/lint/lint-pq-vendor.py
+python3 contrib/devtools/check_pq_vendor.py
+```
+
+Deep vendor check is exposed in the Rust lint runner as `pq_vendor_deep` and is
+gated behind `RUN_PQ_VENDOR_DEEP=1`:
+
+```sh
+( cd ./test/lint/test_runner/ && RUN_PQ_VENDOR_DEEP=1 cargo run -- --lint=pq_vendor_deep )
+```
+
+In CI lint runs, `RUN_PQ_VENDOR_DEEP` is auto-enabled when relevant PQ vendor
+paths (for example `src/pq/**`, manifest/patch metadata, or checker scripts)
+change in the commit range.
+
 check-doc.py
 ============
 Check for missing documentation of command line options.

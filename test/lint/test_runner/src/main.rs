@@ -103,6 +103,16 @@ fn get_linter_list() -> Vec<&'static Linter> {
             name: "tidecoin_naming",
             lint_fn: lint_tidecoin_naming,
         },
+        &Linter {
+            description: "Check PQ vendored component manifest metadata",
+            name: "pq_vendor_manifest",
+            lint_fn: lint_pq_vendor_manifest,
+        },
+        &Linter {
+            description: "Check PQ vendored component diffs against pinned upstream commits",
+            name: "pq_vendor_deep",
+            lint_fn: lint_pq_vendor_deep,
+        },
     ]
 }
 
@@ -742,6 +752,7 @@ fn run_all_python_linters() -> LintResult {
         if entry_fn.starts_with("lint-")
             && entry_fn.ends_with(".py")
             && entry_fn != "lint-tidecoin-naming.py"
+            && entry_fn != "lint-pq-vendor.py"
             && !Command::new("python3")
                 .arg(entry.path())
                 .status()
@@ -761,6 +772,36 @@ fn run_all_python_linters() -> LintResult {
 
 fn lint_tidecoin_naming() -> LintResult {
     if Command::new("test/lint/lint-tidecoin-naming.py")
+        .status()
+        .expect("command error")
+        .success()
+    {
+        Ok(())
+    } else {
+        Err("".to_string())
+    }
+}
+
+fn lint_pq_vendor_manifest() -> LintResult {
+    if Command::new("test/lint/lint-pq-vendor.py")
+        .status()
+        .expect("command error")
+        .success()
+    {
+        Ok(())
+    } else {
+        Err("".to_string())
+    }
+}
+
+fn lint_pq_vendor_deep() -> LintResult {
+    if env::var("RUN_PQ_VENDOR_DEEP").unwrap_or_default() != "1" {
+        println!("Skipping pq_vendor_deep (set RUN_PQ_VENDOR_DEEP=1 to enable).");
+        return Ok(());
+    }
+
+    if Command::new("python3")
+        .arg("contrib/devtools/check_pq_vendor.py")
         .status()
         .expect("command error")
         .success()

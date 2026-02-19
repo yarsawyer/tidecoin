@@ -190,7 +190,7 @@ Refer to [/test/functional/README.md#style-guidelines](/test/functional/README.m
 
 ## Coding Style (Doxygen-compatible comments)
 
-Bitcoin Core uses [Doxygen](https://www.doxygen.nl/) to generate its official documentation.
+Tidecoin uses [Doxygen](https://www.doxygen.nl/) to generate its official documentation.
 
 Use Doxygen-compatible comment blocks for functions, methods, and fields.
 
@@ -353,7 +353,7 @@ to see it.
 
 If you are testing multi-machine code that needs to operate across the internet,
 you can run with the `-testnet` config option to test
-with "play bitcoins" on a test network.
+with test coins on a test network.
 
 If you are testing something that can run on one machine, run with the
 `-regtest` option.  In regression test mode, blocks can be created on demand;
@@ -361,7 +361,7 @@ see [test/functional/](/test/functional) for tests that run in `-regtest` mode.
 
 ### DEBUG_LOCKORDER
 
-Bitcoin Core is a multi-threaded application, and deadlocks or other
+Tidecoin is a multi-threaded application, and deadlocks or other
 multi-threading bugs can be very difficult to track down. The `-DCMAKE_BUILD_TYPE=Debug`
 build option adds `-DDEBUG_LOCKORDER` to the compiler flags. This inserts
 run-time checks to keep track of which locks are held and adds warnings to the
@@ -415,14 +415,14 @@ other input.
 
 Valgrind is a programming tool for memory debugging, memory leak detection, and
 profiling. The repo contains a Valgrind suppressions file
-([`valgrind.supp`](https://github.com/bitcoin/bitcoin/blob/master/contrib/valgrind.supp))
+([`valgrind.supp`](../contrib/valgrind.supp))
 which includes known Valgrind warnings in our dependencies that cannot be fixed
 in-tree. Example use:
 
 ```shell
-$ valgrind --suppressions=contrib/valgrind.supp build/bin/test_bitcoin
+$ valgrind --suppressions=contrib/valgrind.supp build/bin/test_tidecoin
 $ valgrind --suppressions=contrib/valgrind.supp --leak-check=full \
-      --show-leak-kinds=all build/bin/test_bitcoin --log_level=test_suite
+      --show-leak-kinds=all build/bin/test_tidecoin --log_level=test_suite
 $ valgrind -v --leak-check=full build/bin/tidecoind -printtoconsole
 $ ./build/test/functional/test_runner.py --valgrind
 ```
@@ -442,7 +442,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Coverage
 cmake --build build
 cmake -P build/Coverage.cmake
 
-# A coverage report will now be accessible at `./build/test_bitcoin.coverage/index.html`,
+# A coverage report will now be accessible at `./build/test_tidecoin.coverage/index.html`,
 # which covers unit tests, and `./build/total.coverage/index.html`, which covers
 # unit and functional tests.
 ```
@@ -499,7 +499,7 @@ Generating the coverage report:
 
 ```shell
 llvm-cov show \
-    --object=build/bin/test_bitcoin \
+    --object=build/bin/test_tidecoin \
     --object=build/bin/tidecoind \
     -Xdemangler=llvm-cxxfilt \
     --instr-profile=build/coverage.profdata \
@@ -509,7 +509,7 @@ llvm-cov show \
     --show-line-counts-or-regions \
     --show-expansions \
     --output-dir=build/coverage_report \
-    --project-title="Bitcoin Core Coverage Report"
+    --project-title="Tidecoin Coverage Report"
 ```
 
 > **Note:** The "functions have mismatched data" warning can be safely ignored, the coverage report will still be generated correctly despite this warning.
@@ -553,7 +553,7 @@ llvm-cov show \
     --show-line-counts-or-regions \
     --show-expansions \
     --output-dir=build/coverage_report \
-    --project-title="Bitcoin Core Fuzz Coverage Report"
+    --project-title="Tidecoin Fuzz Coverage Report"
 ```
 
 The generated coverage report can be accessed at `build/coverage_report/index.html`.
@@ -604,7 +604,7 @@ See the functional test documentation for how to invoke perf within tests.
 
 ### Sanitizers
 
-Bitcoin Core can be compiled with various "sanitizers" enabled, which add
+Tidecoin can be compiled with various "sanitizers" enabled, which add
 instrumentation for issues regarding things like memory safety, thread race
 conditions, or undefined behavior. This is controlled with the
 `-DSANITIZERS` cmake build flag, which should be a comma separated list of
@@ -674,63 +674,63 @@ and its `cs_KeyStore` lock for example).
 
 ## Threads
 
-- [Main thread (`tidecoind`)](https://doxygen.bitcoincore.org/bitcoind_8cpp.html#a0ddf1224851353fc92bfbff6f499fa97)
+- [Main thread (`tidecoind`)](../src/bitcoind.cpp)
   : Started from `main()` in `tidecoind.cpp`. Responsible for starting up and
   shutting down the application.
 
-- [Init load (`b-initload`)](https://doxygen.bitcoincore.org/namespacenode.html#ab4305679079866f0f420f7dbf278381d)
+- [Init load (`b-initload`)](../src/init.cpp)
   : Performs various loading tasks that are part of init but shouldn't block the node from being started: external block import,
    reindex, reindex-chainstate, main chain activation, spawn indexes background sync threads and mempool load.
 
-- [CCheckQueue::Loop (`b-scriptch.x`)](https://doxygen.bitcoincore.org/class_c_check_queue.html#a6e7fa51d3a25e7cb65446d4b50e6a987)
+- [CCheckQueue::Loop (`b-scriptch.x`)](../src/checkqueue.h)
   : Parallel script validation threads for transactions in blocks.
 
-- [ThreadHTTP (`b-http`)](https://doxygen.bitcoincore.org/httpserver_8cpp.html#abb9f6ea8819672bd9a62d3695070709c)
+- [ThreadHTTP (`b-http`)](../src/httpserver.cpp)
   : Libevent thread to listen for RPC and REST connections.
 
-- [HTTP worker threads(`b-httpworker.x`)](https://doxygen.bitcoincore.org/httpserver_8cpp.html#aa6a7bc27265043bc0193220c5ae3a55f)
+- [HTTP worker threads(`b-httpworker.x`)](../src/httpserver.cpp)
   : Threads to service RPC and REST requests.
 
-- [Indexer threads (`b-txindex`, etc)](https://doxygen.bitcoincore.org/class_base_index.html#a96a7407421fbf877509248bbe64f8d87)
+- [Indexer threads (`b-txindex`, etc)](../src/index/base.cpp)
   : One thread per indexer.
 
-- [SchedulerThread (`b-scheduler`)](https://doxygen.bitcoincore.org/class_c_scheduler.html#a14d2800815da93577858ea078aed1fba)
+- [SchedulerThread (`b-scheduler`)](../src/scheduler.cpp)
   : Does asynchronous background tasks like dumping wallet contents, dumping
   addrman and running asynchronous validationinterface callbacks.
 
-- [TorControlThread (`b-torcontrol`)](https://doxygen.bitcoincore.org/torcontrol_8cpp.html#a52a3efff23634500bb42c6474f306091)
+- [TorControlThread (`b-torcontrol`)](../src/torcontrol.cpp)
   : Libevent thread for tor connections.
 
 - Net threads:
 
-  - [ThreadMessageHandler (`b-msghand`)](https://doxygen.bitcoincore.org/class_c_connman.html#aacdbb7148575a31bb33bc345e2bf22a9)
+  - [ThreadMessageHandler (`b-msghand`)](../src/net.cpp)
     : Application level message handling (sending and receiving). Almost
     all net_processing and validation logic runs on this thread.
 
-  - [ThreadDNSAddressSeed (`b-dnsseed`)](https://doxygen.bitcoincore.org/class_c_connman.html#aa7c6970ed98a4a7bafbc071d24897d13)
+  - [ThreadDNSAddressSeed (`b-dnsseed`)](../src/net.cpp)
     : Loads addresses of peers from the DNS.
 
   - ThreadMapPort (`b-mapport`)
     : Universal plug-and-play startup/shutdown.
 
-  - [ThreadSocketHandler (`b-net`)](https://doxygen.bitcoincore.org/class_c_connman.html#a765597cbfe99c083d8fa3d61bb464e34)
+  - [ThreadSocketHandler (`b-net`)](../src/net.cpp)
     : Sends/Receives data from peers on port 8333.
 
-  - [ThreadOpenAddedConnections (`b-addcon`)](https://doxygen.bitcoincore.org/class_c_connman.html#a0b787caf95e52a346a2b31a580d60a62)
+  - [ThreadOpenAddedConnections (`b-addcon`)](../src/net.cpp)
     : Opens network connections to added nodes.
 
-  - [ThreadOpenConnections (`b-opencon`)](https://doxygen.bitcoincore.org/class_c_connman.html#a55e9feafc3bab78e5c9d408c207faa45)
+  - [ThreadOpenConnections (`b-opencon`)](../src/net.cpp)
     : Initiates new connections to peers.
 
-  - [ThreadI2PAcceptIncoming (`b-i2paccept`)](https://doxygen.bitcoincore.org/class_c_connman.html#a57787b4f9ac847d24065fbb0dd6e70f8)
+  - [ThreadI2PAcceptIncoming (`b-i2paccept`)](../src/net.cpp)
     : Listens for and accepts incoming I2P connections through the I2P SAM proxy.
 
 # Development guidelines
 
 A few non-style-related recommendations for developers, as well as points to
-pay attention to for reviewers of Bitcoin Core code.
+pay attention to for reviewers of Tidecoin code.
 
-## General Bitcoin Core
+## General Tidecoin
 
 - New features should be exposed on RPC first, then can be made available in the GUI.
 
@@ -899,7 +899,7 @@ int GetInt(Tabs tab)
 
 - For `strprintf`, `LogInfo`, `LogDebug`, etc formatting characters don't need size specifiers (hh, h, l, ll, j, z, t, L) for arithmetic types.
 
-  - *Rationale*: Bitcoin Core uses tinyformat, which is type safe. Leave them out to avoid confusion.
+  - *Rationale*: Tidecoin uses tinyformat, which is type safe. Leave them out to avoid confusion.
 
 - Use `.c_str()` sparingly. Its only valid use is to pass C++ strings to C functions that take NULL-terminated
   strings.
@@ -1105,31 +1105,54 @@ namespace {
 
 Several parts of the repository are subtrees of software maintained elsewhere.
 
-Normally, these are maintained by active developers of Bitcoin Core, in which case
+Normally, these are maintained by active developers of Tidecoin, in which case
 changes should go directly upstream without being PRed directly against the project.
 They will be merged back in the next subtree merge.
 
 Others are external projects without a tight relationship with our project. Changes
 to these should also be sent upstream, but bugfixes may also be prudent to PR against
-a Bitcoin Core subtree, so that they can be integrated quickly. Cosmetic changes
+our local subtree copy, so that they can be integrated quickly. Cosmetic changes
 should be taken upstream.
 
 There is a tool in `test/lint/git-subtree-check.sh` ([instructions](../test/lint#git-subtree-checksh))
 to check a subtree directory for consistency with its upstream repository.
 
-The tool instructions also include a list of the subtrees managed by Bitcoin Core.
+The tool instructions also include a list of the subtrees managed in this repository.
 
 The ultimate upstream of the few externally managed subtrees are:
 
 - src/leveldb
   - Upstream at https://github.com/google/leveldb ; maintained by Google. Open
-    important PRs to the Bitcoin Core subtree to avoid delay.
+    important PRs to the Tidecoin subtree to avoid delay.
   - **Note**: Follow the instructions in [Upgrading LevelDB](#upgrading-leveldb) when
     merging upstream changes to the LevelDB subtree.
 
 - src/crc32c
   - Used by leveldb for hardware acceleration of CRC32C checksums for data integrity.
   - Upstream at https://github.com/google/crc32c ; maintained by Google.
+
+## Vendored PQClean components
+
+Post-quantum implementations in `src/pq/` are vendored from PQClean, but this
+repository also carries explicit local integration patches (for deterministic
+keygen entrypoints, include-path wiring, and Tidecoin adapter integration).
+
+Governance artifacts:
+
+- `src/pq/VERSIONS.toml`: canonical provenance and patch metadata.
+- `src/pq/patches/`: local patch snapshots referenced by the manifest.
+- `test/lint/lint-pq-vendor.py`: fast schema/metadata lint gate.
+- `contrib/devtools/check_pq_vendor.py`: deep upstream-vs-local diff checker.
+
+When modifying vendored PQ code:
+
+1. Update `src/pq/VERSIONS.toml` in the same PR.
+2. Update patch snapshots under `src/pq/patches/` for any changed component.
+3. Run:
+   - `test/lint/lint-pq-vendor.py`
+   - `python3 contrib/devtools/check_pq_vendor.py`
+4. Include a short PR note with affected component names, patch reason, and
+   whether consensus behavior is impacted.
 
 ## Upgrading LevelDB
 
@@ -1140,7 +1163,7 @@ you must be aware of.
 
 In most configurations, we use the default LevelDB value for `max_open_files`,
 which is 1000 at the time of this writing. If LevelDB actually uses this many
-file descriptors, it will cause problems with Bitcoin's `select()` loop, because
+file descriptors, it will cause problems with Tidecoin's `select()` loop, because
 it may cause new sockets to be created where the fd value is >= 1024. For this
 reason, on 64-bit Unix systems, we rely on an internal LevelDB optimization that
 uses `mmap()` + `close()` to open table files without actually retaining
@@ -1166,14 +1189,14 @@ details.
 ### Consensus Compatibility
 
 It is possible for LevelDB changes to inadvertently change consensus
-compatibility between nodes. This happened in Bitcoin 0.8 (when LevelDB was
+compatibility between nodes. This happened in upstream Bitcoin 0.8 (when LevelDB was
 first introduced). When upgrading LevelDB, you should review the upstream changes
 to check for issues affecting consensus compatibility.
 
 For example, if LevelDB had a bug that accidentally prevented a key from being
 returned in an edge case, and that bug was fixed upstream, the bug "fix" would
 be an incompatible consensus change. In this situation, the correct behavior
-would be to revert the upstream fix before applying the updates to Bitcoin's
+would be to revert the upstream fix before applying the updates to Tidecoin's
 copy of LevelDB. In general, you should be wary of any upstream changes affecting
 what data is returned from LevelDB queries.
 
@@ -1215,17 +1238,6 @@ example, instead of a blanket `git ls-files src | xargs sed -i s/apple/orange/`,
 Also, it is good to keep the selection of files as specific as possible — for example, replace only in directories where
 you expect replacements — because it reduces the risk that a rebase of your commit by re-running the script will
 introduce accidental changes.
-
-Some good examples of scripted-diff:
-
-- [scripted-diff: Rename InitInterfaces to NodeContext](https://github.com/bitcoin/bitcoin/commit/301bd41a2e6765b185bd55f4c541f9e27aeea29d)
-uses an elegant script to replace occurrences of multiple terms in all source files.
-
-- [scripted-diff: Remove g_connman, g_banman globals](https://github.com/bitcoin/bitcoin/commit/8922d7f6b751a3e6b3b9f6fb7961c442877fb65a)
-replaces specific terms in a list of specific source files.
-
-- [scripted-diff: Replace fprintf with tfm::format](https://github.com/bitcoin/bitcoin/commit/fac03ec43a15ad547161e37e53ea82482cc508f9)
-does a global replacement but excludes certain directories.
 
 To find all previous uses of scripted diffs in the repository, do:
 
@@ -1323,7 +1335,7 @@ A few guidelines for introducing and reviewing new RPC interfaces:
   RPCs whose behavior does *not* depend on the current chainstate may omit this
   call.
 
-  - *Rationale*: In previous versions of Bitcoin Core, the wallet was always
+  - *Rationale*: In previous versions of Tidecoin, the wallet was always
     in-sync with the chainstate (by virtue of them all being updated in the
     same cs_main lock). In order to maintain the behavior that wallet RPCs
     return results as of at least the highest best-known block an RPC
@@ -1350,7 +1362,7 @@ A few guidelines for introducing and reviewing new RPC interfaces:
 
 A few guidelines for modifying existing RPC interfaces:
 
-- It's preferable to avoid changing an RPC in a backward-incompatible manner, but in that case, add an associated `-deprecatedrpc=` option to retain previous RPC behavior during the deprecation period. Backward-incompatible changes include: data type changes (e.g. from `{"warnings":""}` to `{"warnings":[]}`, changing a value from a string to a number, etc.), logical meaning changes of a value, or key name changes (e.g. `{"warning":""}` to `{"warnings":""}`). Adding a key to an object is generally considered backward-compatible. Include a release note that refers the user to the RPC help for details of feature deprecation and re-enabling previous behavior. [Example RPC help](https://github.com/bitcoin/bitcoin/blob/94f0adcc/src/rpc/blockchain.cpp#L1316-L1323).
+- It's preferable to avoid changing an RPC in a backward-incompatible manner, but in that case, add an associated `-deprecatedrpc=` option to retain previous RPC behavior during the deprecation period. Backward-incompatible changes include: data type changes (e.g. from `{"warnings":""}` to `{"warnings":[]}`, changing a value from a string to a number, etc.), logical meaning changes of a value, or key name changes (e.g. `{"warning":""}` to `{"warnings":""}`). Adding a key to an object is generally considered backward-compatible. Include a release note that refers the user to the RPC help for details of feature deprecation and re-enabling previous behavior. 
 
   - *Rationale*: Changes in RPC JSON structure can break downstream application compatibility. Implementation of `deprecatedrpc` provides a grace period for downstream applications to migrate. Release notes provide notification to downstream users.
 
@@ -1462,5 +1474,4 @@ communication:
   ```
 
   Note: This last convention isn't generally followed outside of
-  [`src/interfaces/`](../src/interfaces/), though it did come up for discussion
-  before in [#14635](https://github.com/bitcoin/bitcoin/pull/14635).
+  [`src/interfaces/`](../src/interfaces/)
