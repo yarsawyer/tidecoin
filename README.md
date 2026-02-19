@@ -177,6 +177,7 @@ NIST's finalization of FIPS 206 (FN-DSA/FALCON) validates Tidecoin's cryptograph
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow. Useful hints for developers can be found in [doc/developer-notes.md](doc/developer-notes.md).
+Community standards and enforcement are described in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Security
 

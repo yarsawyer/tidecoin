@@ -16,7 +16,7 @@ macOS comes with a built-in Terminal located in:
 ### 1. Xcode Command Line Tools
 
 The Xcode Command Line Tools are a collection of build tools for macOS.
-These tools must be installed in order to build Bitcoin Core from source.
+These tools must be installed in order to build Tidecoin from source.
 
 To install, run the following command from your terminal:
 
@@ -64,14 +64,14 @@ install anything.
 If you do not need IPC functionality (see [multiprocess.md](multiprocess.md))
 you can omit `capnp` and use `-DENABLE_IPC=OFF` in the `cmake -B` step below.
 
-### 4. Clone Bitcoin repository
+### 4. Clone Tidecoin repository
 
 `git` should already be installed by default on your system.
-Now that all the required dependencies are installed, let's clone the Bitcoin Core repository to a directory.
+Now that all the required dependencies are installed, let's clone the Tidecoin repository to a directory.
 All build scripts and commands will run from this directory.
 
 ``` bash
-git clone https://github.com/bitcoin/bitcoin.git
+git clone https://github.com/tidecoin/tidecoin.git
 ```
 
 ### 5. Install Optional Dependencies
@@ -80,7 +80,7 @@ git clone https://github.com/bitcoin/bitcoin.git
 
 ###### Qt
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Tidecoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 Qt, libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
 ``` bash
@@ -130,14 +130,14 @@ brew install python
 
 #### Deploy Dependencies
 
-You can [deploy](#3-deploy-optional) a `.zip` containing the Bitcoin Core application.
+You can [deploy](#3-deploy-optional) a `.zip` containing the Tidecoin application.
 It is required that you have `python` and `zip` installed.
 
-## Building Bitcoin Core
+## Building Tidecoin
 
 ### 1. Configuration
 
-There are many ways to configure Bitcoin Core, here are a few common examples:
+There are many ways to configure Tidecoin, here are a few common examples:
 
 ##### Wallet (only SQlite) and GUI Support:
 
@@ -166,7 +166,7 @@ cmake -B build -LH
 ### 2. Compile
 
 After configuration, you are ready to compile.
-Run the following in your terminal to compile Bitcoin Core:
+Run the following in your terminal to compile Tidecoin:
 
 ``` bash
 cmake --build build     # Append "-j N" here for N parallel jobs.
@@ -181,14 +181,14 @@ You can also create a  `.zip` containing the `.app` bundle by running the follow
 cmake --build build --target deploy
 ```
 
-## Running Bitcoin Core
+## Running Tidecoin
 
-Bitcoin Core should now be available at `./build/bin/tidecoind`.
+Tidecoin should now be available at `./build/bin/tidecoind`.
 If you compiled support for the GUI, it should be available at `./build/bin/tidecoin-qt`.
 
-There is also a multifunction command line interface at `./build/bin/bitcoin`
-supporting subcommands like `bitcoin node`, `bitcoin gui`, `bitcoin rpc`, and
-others that can be listed with `bitcoin help`.
+There is also a multifunction command line interface at `./build/bin/tidecoin`
+supporting subcommands like `tidecoin node`, `tidecoin gui`, `tidecoin rpc`, and
+others that can be listed with `tidecoin help`.
 
 The first time you run `tidecoind` or `tidecoin-qt`, it will start downloading the blockchain.
 This process could take many hours, or even days on slower than average systems.
@@ -202,7 +202,7 @@ By default, blockchain and wallet data files will be stored in:
 Before running, you may create an empty configuration file:
 
 ```shell
-mkdir -p "/Users/${USER}/Library/Application Support/Bitcoin"
+mkdir -p "/Users/${USER}/Library/Application Support/Tidecoin"
 
 touch "/Users/${USER}/Library/Application Support/Tidecoin/tidecoin.conf"
 

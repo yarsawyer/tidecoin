@@ -1,14 +1,14 @@
-# Support for signing transactions outside of Bitcoin Core
+# Support for signing transactions outside of Tidecoin
 
-Bitcoin Core can be launched with `-signer=<cmd>` where `<cmd>` is an external tool which can sign transactions and perform other functions. For example, it can be used to communicate with a hardware wallet.
+Tidecoin can be launched with `-signer=<cmd>` where `<cmd>` is an external tool which can sign transactions and perform other functions. For example, it can be used to communicate with a hardware wallet.
 
 ## Example usage
 
-The following example is based on the [HWI](https://github.com/bitcoin-core/HWI) tool. Version 2.0 or newer is required. Although this tool is hosted under the Bitcoin Core GitHub organization and maintained by Bitcoin Core developers, it should be used with caution. It is considered experimental and has far less review than Bitcoin Core itself. Be particularly careful when running tools such as these on a computer with private keys on it.
+The following example is based on the [HWI](https://github.com/bitcoin-core/HWI) tool. Version 2.0 or newer is required. Although this tool is hosted under the Tidecoin GitHub organization and maintained by Tidecoin developers, it should be used with caution. It is considered experimental and has far less review than Tidecoin itself. Be particularly careful when running tools such as these on a computer with private keys on it.
 
-When using a hardware wallet, consult the manufacturer website for (alternative) software they recommend. As long as their software conforms to the standard below, it should be able to work with Bitcoin Core.
+When using a hardware wallet, consult the manufacturer website for (alternative) software they recommend. As long as their software conforms to the standard below, it should be able to work with Tidecoin.
 
-Start Bitcoin Core:
+Start Tidecoin:
 
 ```sh
 $ tidecoind -signer=../HWI/hwi.py
@@ -57,7 +57,7 @@ Replace `<address>` with the result of `getnewaddress`.
 
 ### Spending
 
-Under the hood this uses a [Partially Signed Bitcoin Transaction](psbt.md).
+Under the hood this uses a [Partially Signed Tidecoin Transaction](psbt.md).
 
 ```sh
 $ tidecoin-cli -rpcwallet=<wallet> sendtoaddress <address> <amount>
@@ -72,11 +72,11 @@ it automatically broadcasts the transaction.
 
 ## Signer API
 
-In order to be compatible with Bitcoin Core any signer command should conform to the specification below. This specification is subject to change. Ideally a BIP should propose a standard so that other wallets can also make use of it.
+In order to be compatible with Tidecoin any signer command should conform to the specification below. This specification is subject to change. Ideally a BIP should propose a standard so that other wallets can also make use of it.
 
 Prerequisite knowledge:
 * [Output Descriptors](descriptors.md)
-* Partially Signed Bitcoin Transaction ([PSBT](psbt.md))
+* Partially Signed Tidecoin Transaction ([PSBT](psbt.md))
 
 ### `enumerate` (required)
 
@@ -163,7 +163,7 @@ If <descriptor> contains an xpub, the command MUST fail if it does not match the
 
 The command MAY complain if `--testnet` is set, but the BIP32 coin type is not `1h` (and vice versa).
 
-## How Bitcoin Core uses the Signer API
+## How Tidecoin uses the Signer API
 
 The `enumeratesigners` RPC simply calls `<cmd> enumerate`.
 

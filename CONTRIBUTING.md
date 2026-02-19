@@ -1,6 +1,9 @@
 Contributing to Tidecoin
 ========================
 
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards and
+enforcement expectations in project spaces.
+
 The Tidecoin project operates an open contributor model where anyone is
 welcome to contribute towards development in the form of peer review, testing
 and patches. This document explains the practical process and guidelines for

@@ -366,8 +366,8 @@ static RPCHelpMan setpqhdpolicy()
         },
         RPCExamples{
             HelpExampleCli("setpqhdpolicy", "\"falcon-512\" \"falcon-512\"")
-            + HelpExampleCli("setpqhdpolicy", "\"mldsa65\" \"mldsa65\"")
-            + HelpExampleRpc("setpqhdpolicy", "\"falcon1024\", \"falcon1024\"")
+            + HelpExampleCli("setpqhdpolicy", "\"ml-dsa-65\" \"ml-dsa-65\"")
+            + HelpExampleRpc("setpqhdpolicy", "\"falcon-1024\", \"falcon-1024\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
