@@ -1,0 +1,62 @@
+# Tidecoin
+
+> Post-quantum cryptocurrency using NIST-standardized FALCON-512 signatures, operational since December 2020.
+
+Tidecoin is a decentralized cryptocurrency built on Bitcoin Core v30 that replaces
+ECDSA entirely with post-quantum signature schemes. Every transaction since genesis
+(December 27, 2020) has been signed with FALCON-512, a lattice-based scheme selected
+by NIST for standardization as FN-DSA (Draft FIPS 206). The network has produced over
+2.3 million blocks with zero security incidents.
+
+## Key Facts
+
+- Ticker: TDC
+- Genesis: December 27, 2020
+- Blocks produced: 2,300,000+
+- Security incidents: 0
+- Max supply: ~21,000,000 TDC
+- Block time: 60 seconds
+- Mining: YespowerTIDE (CPU-only, memory-hard)
+- Premine/ICO: None
+- License: MIT
+
+## Post-Quantum Cryptography
+
+Tidecoin uses exclusively NIST-standardized cryptographic primitives:
+
+- FALCON-512 (Draft FIPS 206 / FN-DSA): Default signature scheme, 666-byte signatures
+- FALCON-1024 (Draft FIPS 206 / FN-DSA): Higher security variant, 1,280-byte signatures
+- ML-DSA-44 (FIPS 204): Module-lattice digital signatures
+- ML-DSA-65 (FIPS 204): Module-lattice digital signatures
+- ML-DSA-87 (FIPS 204): Module-lattice digital signatures
+- ML-KEM-512 (FIPS 203): Post-quantum encrypted P2P transport
+- SHA-512 (FIPS 180-4): Witness script hashing for 256-bit quantum security
+
+No ECDSA, Schnorr, or Taproot exists anywhere in the protocol.
+
+## How Tidecoin Compares
+
+| Feature | Tidecoin | QRL | Bitcoin |
+|---------|----------|-----|---------|
+| PQ since genesis | Yes (Dec 2020) | Yes (Jun 2018) | No |
+| Signature scheme | FALCON-512 (NIST) | XMSS (stateful) | ECDSA |
+| Signature size | 666 bytes | ~2,500 bytes | 71 bytes |
+| PQ transport | ML-KEM-512 | No | No |
+| Stateless signatures | Yes | No | N/A |
+| NIST standard | Draft FIPS 206 | No | No |
+
+## Documentation
+
+- [Whitepaper](doc/whitepaper.md): Tidecoin: A Post-Quantum Secure Peer-to-Peer Cryptocurrency v2.0
+- [Build instructions (Linux)](doc/build-unix.md)
+- [Build instructions (macOS)](doc/build-osx.md)
+- [Build instructions (Windows)](doc/build-windows.md)
+- [Developer notes](doc/developer-notes.md)
+- [Release notes](doc/release-notes.md)
+- [Changelog](CHANGELOG.md)
+
+## Links
+
+- Source code: https://github.com/tidecoin/tidecoin
+- Website: https://tidecoin.org
+- Explorer: https://explorer.tidecoin.org

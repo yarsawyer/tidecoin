@@ -881,72 +881,72 @@ Signing is only possible with addresses of the type &apos;legacy&apos;.</source>
     <group restype="x-trolltech-linguist-context" resname="CoinControlDialog">
       <trans-unit id="_msg199">
         <source xml:space="preserve">Copy amount</source>
-        <context-group purpose="location"><context context-type="linenumber">65</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">115</context></context-group>
       </trans-unit>
       <trans-unit id="_msg200">
         <source xml:space="preserve">&amp;Copy address</source>
-        <context-group purpose="location"><context context-type="linenumber">54</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">104</context></context-group>
       </trans-unit>
       <trans-unit id="_msg201">
         <source xml:space="preserve">Copy &amp;label</source>
-        <context-group purpose="location"><context context-type="linenumber">55</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">105</context></context-group>
       </trans-unit>
       <trans-unit id="_msg202">
         <source xml:space="preserve">Copy &amp;amount</source>
-        <context-group purpose="location"><context context-type="linenumber">56</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">106</context></context-group>
       </trans-unit>
       <trans-unit id="_msg203">
         <source xml:space="preserve">Copy transaction &amp;ID and output index</source>
-        <context-group purpose="location"><context context-type="linenumber">57</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">107</context></context-group>
       </trans-unit>
       <trans-unit id="_msg204">
         <source xml:space="preserve">L&amp;ock unspent</source>
-        <context-group purpose="location"><context context-type="linenumber">59</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">109</context></context-group>
       </trans-unit>
       <trans-unit id="_msg205">
         <source xml:space="preserve">&amp;Unlock unspent</source>
-        <context-group purpose="location"><context context-type="linenumber">60</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">110</context></context-group>
       </trans-unit>
       <trans-unit id="_msg206">
         <source xml:space="preserve">Copy quantity</source>
-        <context-group purpose="location"><context context-type="linenumber">64</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">114</context></context-group>
       </trans-unit>
       <trans-unit id="_msg207">
         <source xml:space="preserve">Copy fee</source>
-        <context-group purpose="location"><context context-type="linenumber">66</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">116</context></context-group>
       </trans-unit>
       <trans-unit id="_msg208">
         <source xml:space="preserve">Copy after fee</source>
-        <context-group purpose="location"><context context-type="linenumber">67</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">117</context></context-group>
       </trans-unit>
       <trans-unit id="_msg209">
         <source xml:space="preserve">Copy bytes</source>
-        <context-group purpose="location"><context context-type="linenumber">68</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">118</context></context-group>
       </trans-unit>
       <trans-unit id="_msg210">
         <source xml:space="preserve">Copy change</source>
-        <context-group purpose="location"><context context-type="linenumber">69</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">119</context></context-group>
       </trans-unit>
       <trans-unit id="_msg211">
         <source xml:space="preserve">(%1 locked)</source>
-        <context-group purpose="location"><context context-type="linenumber">363</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">413</context></context-group>
       </trans-unit>
       <trans-unit id="_msg212">
         <source xml:space="preserve">Can vary +/- %1 satoshi(s) per input.</source>
-        <context-group purpose="location"><context context-type="linenumber">514</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">560</context></context-group>
       </trans-unit>
       <trans-unit id="_msg213">
         <source xml:space="preserve">(no label)</source>
-        <context-group purpose="location"><context context-type="linenumber">559</context></context-group>
-        <context-group purpose="location"><context context-type="linenumber">613</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">605</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">659</context></context-group>
       </trans-unit>
       <trans-unit id="_msg214">
         <source xml:space="preserve">change from %1 (%2)</source>
-        <context-group purpose="location"><context context-type="linenumber">606</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">652</context></context-group>
       </trans-unit>
       <trans-unit id="_msg215">
         <source xml:space="preserve">(change)</source>
-        <context-group purpose="location"><context context-type="linenumber">607</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">653</context></context-group>
       </trans-unit>
     </group>
   </body></file>
@@ -1408,31 +1408,31 @@ The migration process will create a backup of the wallet before migrating. This 
         <context-group purpose="location"><context context-type="linenumber">14</context></context-group>
       </trans-unit>
       <trans-unit id="_msg309">
-        <source xml:space="preserve">Recent transactions may not yet be visible, and therefore your wallet&apos;s balance might be incorrect. This information will be correct once your wallet has finished synchronizing with the bitcoin network, as detailed below.</source>
-        <context-group purpose="location"><context context-type="linenumber">133</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg310">
         <source xml:space="preserve">Attempting to spend bitcoins that are affected by not-yet-displayed transactions will not be accepted by the network.</source>
         <context-group purpose="location"><context context-type="linenumber">152</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg311">
+      <trans-unit id="_msg310">
         <source xml:space="preserve">Number of blocks left</source>
         <context-group purpose="location"><context context-type="linenumber">215</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg312">
+      <trans-unit id="_msg311">
         <source xml:space="preserve">Unknown…</source>
         <context-group purpose="location"><context context-type="linenumber">222</context></context-group>
         <context-group purpose="location"><context context-type="linenumber">248</context></context-group>
         <context-group purpose="location"><context context-type="sourcefile">../modaloverlay.cpp</context><context context-type="linenumber">160</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg313">
+      <trans-unit id="_msg312">
         <source xml:space="preserve">calculating…</source>
         <context-group purpose="location"><context context-type="linenumber">292</context></context-group>
         <context-group purpose="location"><context context-type="linenumber">312</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg314">
+      <trans-unit id="_msg313">
         <source xml:space="preserve">Last block time</source>
         <context-group purpose="location"><context context-type="linenumber">235</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg314">
+        <source xml:space="preserve">Recent transactions may not yet be visible, and therefore your wallet&apos;s balance might be incorrect. This information will be correct once your wallet has finished synchronizing with the Tidecoin network, as detailed below.</source>
+        <context-group purpose="location"><context context-type="linenumber">133</context></context-group>
       </trans-unit>
       <trans-unit id="_msg315">
         <source xml:space="preserve">Progress</source>
@@ -2001,112 +2001,112 @@ The migration process will create a backup of the wallet before migrating. This 
     <group restype="x-trolltech-linguist-context" resname="PSBTOperationsDialog">
       <trans-unit id="_msg440">
         <source xml:space="preserve">Failed to load transaction: %1</source>
-        <context-group purpose="location"><context context-type="linenumber">81</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">84</context></context-group>
       </trans-unit>
       <trans-unit id="_msg441">
         <source xml:space="preserve">Failed to sign transaction: %1</source>
-        <context-group purpose="location"><context context-type="linenumber">106</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">109</context></context-group>
       </trans-unit>
       <trans-unit id="_msg442">
         <source xml:space="preserve">Cannot sign inputs while wallet is locked.</source>
-        <context-group purpose="location"><context context-type="linenumber">114</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">117</context></context-group>
       </trans-unit>
       <trans-unit id="_msg443">
         <source xml:space="preserve">Could not sign any more inputs.</source>
-        <context-group purpose="location"><context context-type="linenumber">116</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">119</context></context-group>
       </trans-unit>
       <trans-unit id="_msg444">
         <source xml:space="preserve">Signed %1 inputs, but more signatures are still required.</source>
-        <context-group purpose="location"><context context-type="linenumber">118</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">121</context></context-group>
       </trans-unit>
       <trans-unit id="_msg445">
         <source xml:space="preserve">Signed transaction successfully. Transaction is ready to broadcast.</source>
-        <context-group purpose="location"><context context-type="linenumber">121</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">124</context></context-group>
       </trans-unit>
       <trans-unit id="_msg446">
         <source xml:space="preserve">Unknown error processing transaction.</source>
-        <context-group purpose="location"><context context-type="linenumber">133</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">137</context></context-group>
       </trans-unit>
       <trans-unit id="_msg447">
         <source xml:space="preserve">Transaction broadcast successfully! Transaction ID: %1</source>
-        <context-group purpose="location"><context context-type="linenumber">143</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">147</context></context-group>
       </trans-unit>
       <trans-unit id="_msg448">
         <source xml:space="preserve">Transaction broadcast failed: %1</source>
-        <context-group purpose="location"><context context-type="linenumber">146</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">150</context></context-group>
       </trans-unit>
       <trans-unit id="_msg449">
         <source xml:space="preserve">PSBT copied to clipboard.</source>
-        <context-group purpose="location"><context context-type="linenumber">155</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">159</context></context-group>
       </trans-unit>
       <trans-unit id="_msg450">
         <source xml:space="preserve">Save Transaction Data</source>
-        <context-group purpose="location"><context context-type="linenumber">178</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">182</context></context-group>
       </trans-unit>
       <trans-unit id="_msg451">
         <source xml:space="preserve">Partially Signed Transaction (Binary)</source>
-        <context-group purpose="location"><context context-type="linenumber">180</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">184</context></context-group>
         <note annotates="source" from="developer">Expanded name of the binary PSBT file format. See: BIP 174.</note>
       </trans-unit>
       <trans-unit id="_msg452">
         <source xml:space="preserve">PSBT saved to disk.</source>
-        <context-group purpose="location"><context context-type="linenumber">187</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">191</context></context-group>
       </trans-unit>
       <trans-unit id="_msg453">
         <source xml:space="preserve">Sends %1 to %2</source>
-        <context-group purpose="location"><context context-type="linenumber">204</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">208</context></context-group>
       </trans-unit>
       <trans-unit id="_msg454">
         <source xml:space="preserve">own address</source>
-        <context-group purpose="location"><context context-type="linenumber">208</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">212</context></context-group>
       </trans-unit>
       <trans-unit id="_msg455">
         <source xml:space="preserve">Unable to calculate transaction fee or total transaction amount.</source>
-        <context-group purpose="location"><context context-type="linenumber">216</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">220</context></context-group>
       </trans-unit>
       <trans-unit id="_msg456">
         <source xml:space="preserve">Pays transaction fee: </source>
-        <context-group purpose="location"><context context-type="linenumber">218</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">222</context></context-group>
       </trans-unit>
       <trans-unit id="_msg457">
         <source xml:space="preserve">Total Amount</source>
-        <context-group purpose="location"><context context-type="linenumber">230</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">234</context></context-group>
       </trans-unit>
       <trans-unit id="_msg458">
         <source xml:space="preserve">or</source>
-        <context-group purpose="location"><context context-type="linenumber">233</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">237</context></context-group>
       </trans-unit>
       <trans-unit id="_msg459">
         <source xml:space="preserve">Transaction has %1 unsigned inputs.</source>
-        <context-group purpose="location"><context context-type="linenumber">239</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">243</context></context-group>
       </trans-unit>
       <trans-unit id="_msg460">
         <source xml:space="preserve">Transaction is missing some information about inputs.</source>
-        <context-group purpose="location"><context context-type="linenumber">285</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">289</context></context-group>
       </trans-unit>
       <trans-unit id="_msg461">
         <source xml:space="preserve">Transaction still needs signature(s).</source>
-        <context-group purpose="location"><context context-type="linenumber">289</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">293</context></context-group>
       </trans-unit>
       <trans-unit id="_msg462">
         <source xml:space="preserve">(But no wallet is loaded.)</source>
-        <context-group purpose="location"><context context-type="linenumber">292</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">296</context></context-group>
       </trans-unit>
       <trans-unit id="_msg463">
         <source xml:space="preserve">(But this wallet cannot sign transactions.)</source>
-        <context-group purpose="location"><context context-type="linenumber">295</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">299</context></context-group>
       </trans-unit>
       <trans-unit id="_msg464">
         <source xml:space="preserve">(But this wallet does not have the right keys.)</source>
-        <context-group purpose="location"><context context-type="linenumber">298</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">302</context></context-group>
       </trans-unit>
       <trans-unit id="_msg465">
         <source xml:space="preserve">Transaction is fully signed and ready for broadcast.</source>
-        <context-group purpose="location"><context context-type="linenumber">306</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">310</context></context-group>
       </trans-unit>
       <trans-unit id="_msg466">
         <source xml:space="preserve">Transaction status is unknown.</source>
-        <context-group purpose="location"><context context-type="linenumber">310</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">314</context></context-group>
       </trans-unit>
     </group>
   </body></file>
@@ -2425,7 +2425,7 @@ If you are receiving this error you should request the merchant provide a BIP21 
       <trans-unit id="_msg521">
         <source xml:space="preserve">Wallet default</source>
         <context-group purpose="location"><context context-type="linenumber">45</context></context-group>
-        <context-group purpose="location"><context context-type="sourcefile">../sendcoinsdialog.cpp</context><context context-type="linenumber">73</context></context-group>
+        <context-group purpose="location"><context context-type="sourcefile">../sendcoinsdialog.cpp</context><context context-type="linenumber">74</context></context-group>
       </trans-unit>
     </group>
     <group restype="x-trolltech-linguist-context" resname="ReceiveCoinsDialog">
@@ -3285,7 +3285,7 @@ For more information on using this console, type %6.
       <trans-unit id="_msg707">
         <source xml:space="preserve">Send Coins</source>
         <context-group purpose="location"><context context-type="linenumber">14</context></context-group>
-        <context-group purpose="location"><context context-type="sourcefile">../sendcoinsdialog.cpp</context><context context-type="linenumber">808</context></context-group>
+        <context-group purpose="location"><context context-type="sourcefile">../sendcoinsdialog.cpp</context><context context-type="linenumber">826</context></context-group>
       </trans-unit>
       <trans-unit id="_msg708">
         <source xml:space="preserve">Coin Control Features</source>
@@ -3439,201 +3439,201 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of &quot;100 
     <group restype="x-trolltech-linguist-context" resname="SendCoinsDialog">
       <trans-unit id="_msg744">
         <source xml:space="preserve">Copy quantity</source>
-        <context-group purpose="location"><context context-type="linenumber">138</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">155</context></context-group>
       </trans-unit>
       <trans-unit id="_msg745">
         <source xml:space="preserve">Copy amount</source>
-        <context-group purpose="location"><context context-type="linenumber">139</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">156</context></context-group>
       </trans-unit>
       <trans-unit id="_msg746">
         <source xml:space="preserve">Copy fee</source>
-        <context-group purpose="location"><context context-type="linenumber">140</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">157</context></context-group>
       </trans-unit>
       <trans-unit id="_msg747">
         <source xml:space="preserve">Copy after fee</source>
-        <context-group purpose="location"><context context-type="linenumber">141</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">158</context></context-group>
       </trans-unit>
       <trans-unit id="_msg748">
         <source xml:space="preserve">Copy bytes</source>
-        <context-group purpose="location"><context context-type="linenumber">142</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">159</context></context-group>
       </trans-unit>
       <trans-unit id="_msg749">
         <source xml:space="preserve">Copy change</source>
-        <context-group purpose="location"><context context-type="linenumber">143</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">160</context></context-group>
       </trans-unit>
       <trans-unit id="_msg750">
         <source xml:space="preserve">%1 (%2 blocks)</source>
-        <context-group purpose="location"><context context-type="linenumber">216</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">233</context></context-group>
       </trans-unit>
       <trans-unit id="_msg751">
         <source xml:space="preserve">Sign on device</source>
-        <context-group purpose="location"><context context-type="linenumber">246</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">263</context></context-group>
         <note annotates="source" from="developer">&quot;device&quot; usually means a hardware wallet.</note>
       </trans-unit>
       <trans-unit id="_msg752">
         <source xml:space="preserve">Connect your hardware wallet first.</source>
-        <context-group purpose="location"><context context-type="linenumber">249</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">266</context></context-group>
       </trans-unit>
       <trans-unit id="_msg753">
         <source xml:space="preserve">Set external signer script path in Options -&gt; Wallet</source>
-        <context-group purpose="location"><context context-type="linenumber">253</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">270</context></context-group>
         <note annotates="source" from="developer">&quot;External signer&quot; means using devices such as hardware wallets.</note>
       </trans-unit>
       <trans-unit id="_msg754">
         <source xml:space="preserve">Cr&amp;eate Unsigned</source>
-        <context-group purpose="location"><context context-type="linenumber">256</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">273</context></context-group>
       </trans-unit>
       <trans-unit id="_msg755">
         <source xml:space="preserve">%1 to &apos;%2&apos;</source>
-        <context-group purpose="location"><context context-type="linenumber">360</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">377</context></context-group>
       </trans-unit>
       <trans-unit id="_msg756">
         <source xml:space="preserve">%1 to %2</source>
-        <context-group purpose="location"><context context-type="linenumber">365</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">382</context></context-group>
       </trans-unit>
       <trans-unit id="_msg757">
         <source xml:space="preserve">Please, review your transaction proposal. This will produce a Partially Signed Tidecoin Transaction (PSBT) which you can save or copy and then sign with e.g. an offline %1 wallet, or a PSBT-compatible hardware wallet.</source>
-        <context-group purpose="location"><context context-type="linenumber">379</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">396</context></context-group>
         <note annotates="source" from="developer">Text to inform a user attempting to create a transaction of their current options. At this stage, a user can only create a PSBT. This string is displayed when private keys are disabled and an external signer is not available.</note>
       </trans-unit>
       <trans-unit id="_msg758">
         <source xml:space="preserve">Please, review your transaction. You can create and send this transaction or create a Partially Signed Tidecoin Transaction (PSBT), which you can save or copy and then sign with, e.g., an offline %1 wallet, or a PSBT-compatible hardware wallet.</source>
-        <context-group purpose="location"><context context-type="linenumber">384</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">401</context></context-group>
         <note annotates="source" from="developer">Text to inform a user attempting to create a transaction of their current options. At this stage, a user can send their transaction or create a PSBT. This string is displayed when both private keys and PSBT controls are enabled.</note>
       </trans-unit>
       <trans-unit id="_msg759">
         <source xml:space="preserve">To review recipient list click &quot;Show Details…&quot;</source>
-        <context-group purpose="location"><context context-type="linenumber">432</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">449</context></context-group>
       </trans-unit>
       <trans-unit id="_msg760">
         <source xml:space="preserve">Sign failed</source>
-        <context-group purpose="location"><context context-type="linenumber">495</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">512</context></context-group>
       </trans-unit>
       <trans-unit id="_msg761">
         <source xml:space="preserve">External signer not found</source>
-        <context-group purpose="location"><context context-type="linenumber">500</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">517</context></context-group>
         <note annotates="source" from="developer">&quot;External signer&quot; means using devices such as hardware wallets.</note>
       </trans-unit>
       <trans-unit id="_msg762">
         <source xml:space="preserve">External signer failure</source>
-        <context-group purpose="location"><context context-type="linenumber">506</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">523</context></context-group>
         <note annotates="source" from="developer">&quot;External signer&quot; means using devices such as hardware wallets.</note>
       </trans-unit>
       <trans-unit id="_msg763">
         <source xml:space="preserve">Save Transaction Data</source>
-        <context-group purpose="location"><context context-type="linenumber">470</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">487</context></context-group>
       </trans-unit>
       <trans-unit id="_msg764">
         <source xml:space="preserve">Creates a Partially Signed Tidecoin Transaction (PSBT) for use with e.g. an offline %1 wallet, or a PSBT-compatible hardware wallet.</source>
-        <context-group purpose="location"><context context-type="linenumber">257</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">274</context></context-group>
       </trans-unit>
       <trans-unit id="_msg765">
         <source xml:space="preserve">Partially Signed Transaction (Binary)</source>
-        <context-group purpose="location"><context context-type="linenumber">472</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">489</context></context-group>
         <note annotates="source" from="developer">Expanded name of the binary PSBT file format. See: BIP 174.</note>
       </trans-unit>
       <trans-unit id="_msg766">
         <source xml:space="preserve">PSBT saved</source>
-        <context-group purpose="location"><context context-type="linenumber">480</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">497</context></context-group>
         <note annotates="source" from="developer">Popup message when a PSBT has been saved to a file</note>
       </trans-unit>
       <trans-unit id="_msg767">
         <source xml:space="preserve">External balance:</source>
-        <context-group purpose="location"><context context-type="linenumber">757</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">775</context></context-group>
       </trans-unit>
       <trans-unit id="_msg768">
         <source xml:space="preserve">or</source>
-        <context-group purpose="location"><context context-type="linenumber">428</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">445</context></context-group>
       </trans-unit>
       <trans-unit id="_msg769">
         <source xml:space="preserve">You can increase the fee later (signals Replace-By-Fee, BIP-125).</source>
-        <context-group purpose="location"><context context-type="linenumber">410</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">427</context></context-group>
       </trans-unit>
       <trans-unit id="_msg770">
         <source xml:space="preserve">%1 from wallet &apos;%2&apos;</source>
-        <context-group purpose="location"><context context-type="linenumber">349</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">366</context></context-group>
       </trans-unit>
       <trans-unit id="_msg771">
         <source xml:space="preserve">Do you want to create this transaction?</source>
-        <context-group purpose="location"><context context-type="linenumber">373</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">390</context></context-group>
         <note annotates="source" from="developer">Message displayed when attempting to create a transaction. Cautionary text to prompt the user to verify that the displayed transaction details represent the transaction the user intends to create.</note>
       </trans-unit>
       <trans-unit id="_msg772">
         <source xml:space="preserve">Please, review your transaction.</source>
-        <context-group purpose="location"><context context-type="linenumber">387</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">404</context></context-group>
         <note annotates="source" from="developer">Text to prompt a user to review the details of the transaction they are attempting to send.</note>
       </trans-unit>
       <trans-unit id="_msg773">
         <source xml:space="preserve">Transaction fee</source>
-        <context-group purpose="location"><context context-type="linenumber">395</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">412</context></context-group>
       </trans-unit>
       <trans-unit id="_msg774">
         <source xml:space="preserve">%1 kvB</source>
-        <context-group purpose="location"><context context-type="linenumber">400</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">417</context></context-group>
         <context-group><context context-type="x-gettext-msgctxt">PSBT transaction creation</context></context-group>
         <note annotates="source" from="developer">When reviewing a newly created PSBT (via Send flow), the transaction fee is shown, with &quot;virtual size&quot; of the transaction displayed for context</note>
       </trans-unit>
       <trans-unit id="_msg775">
         <source xml:space="preserve">Not signalling Replace-By-Fee, BIP-125.</source>
-        <context-group purpose="location"><context context-type="linenumber">412</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">429</context></context-group>
       </trans-unit>
       <trans-unit id="_msg776">
         <source xml:space="preserve">Total Amount</source>
-        <context-group purpose="location"><context context-type="linenumber">425</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">442</context></context-group>
       </trans-unit>
       <trans-unit id="_msg777">
         <source xml:space="preserve">Unsigned Transaction</source>
-        <context-group purpose="location"><context context-type="linenumber">449</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">466</context></context-group>
         <context-group><context context-type="x-gettext-msgctxt">PSBT copied</context></context-group>
         <note annotates="source" from="developer">Caption of &quot;PSBT has been copied&quot; messagebox</note>
       </trans-unit>
       <trans-unit id="_msg778">
         <source xml:space="preserve">The PSBT has been copied to the clipboard. You can also save it.</source>
-        <context-group purpose="location"><context context-type="linenumber">450</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">467</context></context-group>
       </trans-unit>
       <trans-unit id="_msg779">
         <source xml:space="preserve">PSBT saved to disk</source>
-        <context-group purpose="location"><context context-type="linenumber">480</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">497</context></context-group>
       </trans-unit>
       <trans-unit id="_msg780">
         <source xml:space="preserve">Confirm send coins</source>
-        <context-group purpose="location"><context context-type="linenumber">529</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">547</context></context-group>
       </trans-unit>
       <trans-unit id="_msg781">
         <source xml:space="preserve">The recipient address is not valid. Please recheck.</source>
-        <context-group purpose="location"><context context-type="linenumber">781</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">799</context></context-group>
       </trans-unit>
       <trans-unit id="_msg782">
         <source xml:space="preserve">The amount to pay must be larger than 0.</source>
-        <context-group purpose="location"><context context-type="linenumber">784</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">802</context></context-group>
       </trans-unit>
       <trans-unit id="_msg783">
         <source xml:space="preserve">The amount exceeds your balance.</source>
-        <context-group purpose="location"><context context-type="linenumber">787</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">805</context></context-group>
       </trans-unit>
       <trans-unit id="_msg784">
         <source xml:space="preserve">The total exceeds your balance when the %1 transaction fee is included.</source>
-        <context-group purpose="location"><context context-type="linenumber">790</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">808</context></context-group>
       </trans-unit>
       <trans-unit id="_msg785">
         <source xml:space="preserve">Duplicate address found: addresses should only be used once each.</source>
-        <context-group purpose="location"><context context-type="linenumber">793</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">811</context></context-group>
       </trans-unit>
       <trans-unit id="_msg786">
         <source xml:space="preserve">Transaction creation failed!</source>
-        <context-group purpose="location"><context context-type="linenumber">796</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">814</context></context-group>
       </trans-unit>
       <trans-unit id="_msg787">
         <source xml:space="preserve">A fee higher than %1 is considered an absurdly high fee.</source>
-        <context-group purpose="location"><context context-type="linenumber">800</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">818</context></context-group>
       </trans-unit>
       <trans-unit id="_msg788">
         <source xml:space="preserve">%1/kvB</source>
-        <context-group purpose="location"><context context-type="linenumber">876</context></context-group>
-        <context-group purpose="location"><context context-type="linenumber">930</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">894</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">948</context></context-group>
       </trans-unit>
       <group restype="x-gettext-plurals">
-        <context-group purpose="location"><context context-type="linenumber">944</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">962</context></context-group>
         <trans-unit id="_msg789[0]">
           <source xml:space="preserve">Estimated to begin confirmation within %n block(s).</source>
         </trans-unit>
@@ -3643,23 +3643,23 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of &quot;100 
       </group>
       <trans-unit id="_msg790">
         <source xml:space="preserve">Warning: Invalid Tidecoin address</source>
-        <context-group purpose="location"><context context-type="linenumber">1045</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">1063</context></context-group>
       </trans-unit>
       <trans-unit id="_msg791">
         <source xml:space="preserve">Warning: Unknown change address</source>
-        <context-group purpose="location"><context context-type="linenumber">1050</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">1068</context></context-group>
       </trans-unit>
       <trans-unit id="_msg792">
         <source xml:space="preserve">Confirm custom change address</source>
-        <context-group purpose="location"><context context-type="linenumber">1053</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">1071</context></context-group>
       </trans-unit>
       <trans-unit id="_msg793">
         <source xml:space="preserve">The address you selected for change is not part of this wallet. Any or all funds in your wallet may be sent to this address. Are you sure?</source>
-        <context-group purpose="location"><context context-type="linenumber">1053</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">1071</context></context-group>
       </trans-unit>
       <trans-unit id="_msg794">
         <source xml:space="preserve">(no label)</source>
-        <context-group purpose="location"><context context-type="linenumber">1074</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">1092</context></context-group>
       </trans-unit>
     </group>
   </body></file>
@@ -4529,7 +4529,7 @@ Go to File &gt; Open Wallet to load a wallet.
     <group restype="x-trolltech-linguist-context" resname="bitcoin-core">
       <trans-unit id="_msg985">
         <source xml:space="preserve">The %s developers</source>
-        <context-group purpose="location"><context context-type="linenumber">211</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">212</context></context-group>
       </trans-unit>
       <trans-unit id="_msg986">
         <source xml:space="preserve">%s failed to validate the -assumeutxo snapshot state. This indicates a hardware problem, or a bug in the software, or a bad software modification that allowed an invalid snapshot to be loaded. As a result of this, the node will shut down and stop using any state that was built on the snapshot, resetting the chain height from %d to %d. On the next restart, the node will resume syncing from %d without using any snapshot data. Please report this incident to %s, including how you obtained the snapshot. The invalid snapshot chainstate will be left on disk in case it is helpful in diagnosing the issue that caused this error.</source>
@@ -4568,438 +4568,438 @@ Go to File &gt; Open Wallet to load a wallet.
         <context-group purpose="location"><context context-type="linenumber">74</context></context-group>
       </trans-unit>
       <trans-unit id="_msg995">
-        <source xml:space="preserve">Error: Dumpfile version is not supported. This version of bitcoin-wallet only supports version 1 dumpfiles. Got dumpfile with version %s</source>
-        <context-group purpose="location"><context context-type="linenumber">76</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg996">
         <source xml:space="preserve">Error: Unable to produce descriptors for this legacy wallet. Make sure to provide the wallet&apos;s passphrase if it is encrypted.</source>
         <context-group purpose="location"><context context-type="linenumber">92</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg997">
+      <trans-unit id="_msg996">
         <source xml:space="preserve">File %s already exists. If you are sure this is what you want, move it out of the way first.</source>
         <context-group purpose="location"><context context-type="linenumber">123</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg998">
+      <trans-unit id="_msg997">
         <source xml:space="preserve">Invalid or corrupt peers.dat (%s). If you believe this is a bug, please report it to %s. As a workaround, you can move the file (%s) out of the way (rename, move, or delete) to have a new one created on the next start.</source>
         <context-group purpose="location"><context context-type="linenumber">144</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg999">
+      <trans-unit id="_msg998">
         <source xml:space="preserve">Invalid value detected for &apos;-wallet&apos; or &apos;-nowallet&apos;. &apos;-wallet&apos; requires a string value, while &apos;-nowallet&apos; accepts only &apos;1&apos; to disable all wallets</source>
         <context-group purpose="location"><context context-type="linenumber">146</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1000">
+      <trans-unit id="_msg999">
         <source xml:space="preserve">More than one onion bind address is provided. Using %s for the automatically created Tor onion service.</source>
         <context-group purpose="location"><context context-type="linenumber">157</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1001">
+      <trans-unit id="_msg1000">
         <source xml:space="preserve">No dump file provided. To use createfromdump, -dumpfile=&lt;filename&gt; must be provided.</source>
         <context-group purpose="location"><context context-type="linenumber">160</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1002">
+      <trans-unit id="_msg1001">
         <source xml:space="preserve">No dump file provided. To use dump, -dumpfile=&lt;filename&gt; must be provided.</source>
         <context-group purpose="location"><context context-type="linenumber">161</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1003">
+      <trans-unit id="_msg1002">
         <source xml:space="preserve">Please contribute if you find %s useful. Visit %s for further information about the software.</source>
         <context-group purpose="location"><context context-type="linenumber">174</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1004">
+      <trans-unit id="_msg1003">
         <source xml:space="preserve">Prune configured below the minimum of %d MiB.  Please use a higher number.</source>
         <context-group purpose="location"><context context-type="linenumber">176</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1005">
+      <trans-unit id="_msg1004">
         <source xml:space="preserve">Prune mode is incompatible with -reindex-chainstate. Use full -reindex instead.</source>
         <context-group purpose="location"><context context-type="linenumber">177</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1006">
+      <trans-unit id="_msg1005">
         <source xml:space="preserve">Rename of &apos;%s&apos; -&gt; &apos;%s&apos; failed. You should resolve this by manually moving or deleting the invalid snapshot directory %s, otherwise you will encounter the same error again on the next startup.</source>
         <context-group purpose="location"><context context-type="linenumber">183</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1007">
+      <trans-unit id="_msg1006">
         <source xml:space="preserve">SQLiteDatabase: Unknown sqlite wallet schema version %d. Only version %d is supported</source>
         <context-group purpose="location"><context context-type="linenumber">190</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1008">
+      <trans-unit id="_msg1007">
         <source xml:space="preserve">The block database contains a block which appears to be from the future. This may be due to your computer&apos;s date and time being set incorrectly. Only rebuild the block database if you are sure that your computer&apos;s date and time are correct</source>
-        <context-group purpose="location"><context context-type="linenumber">213</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">214</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1008">
+        <source xml:space="preserve">The transaction amount is too small to send after the fee has been deducted</source>
+        <context-group purpose="location"><context context-type="linenumber">221</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1009">
-        <source xml:space="preserve">The transaction amount is too small to send after the fee has been deducted</source>
-        <context-group purpose="location"><context context-type="linenumber">220</context></context-group>
+        <source xml:space="preserve">This is a pre-release test build - use at your own risk - do not use for mining or merchant applications</source>
+        <context-group purpose="location"><context context-type="linenumber">225</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1010">
-        <source xml:space="preserve">This is a pre-release test build - use at your own risk - do not use for mining or merchant applications</source>
-        <context-group purpose="location"><context context-type="linenumber">224</context></context-group>
+        <source xml:space="preserve">This is the maximum transaction fee you pay (in addition to the normal fee) to prioritize partial spend avoidance over regular coin selection.</source>
+        <context-group purpose="location"><context context-type="linenumber">227</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1011">
-        <source xml:space="preserve">This is the maximum transaction fee you pay (in addition to the normal fee) to prioritize partial spend avoidance over regular coin selection.</source>
-        <context-group purpose="location"><context context-type="linenumber">226</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1012">
         <source xml:space="preserve">This is the transaction fee you may discard if change is smaller than dust at this level</source>
-        <context-group purpose="location"><context context-type="linenumber">228</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1013">
-        <source xml:space="preserve">This is the transaction fee you may pay when fee estimates are not available.</source>
         <context-group purpose="location"><context context-type="linenumber">229</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1014">
+      <trans-unit id="_msg1012">
+        <source xml:space="preserve">This is the transaction fee you may pay when fee estimates are not available.</source>
+        <context-group purpose="location"><context context-type="linenumber">230</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1013">
         <source xml:space="preserve">Total length of network version string (%i) exceeds maximum length (%i). Reduce the number or size of uacomments.</source>
-        <context-group purpose="location"><context context-type="linenumber">231</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">232</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1014">
+        <source xml:space="preserve">Unable to replay blocks. You will need to rebuild the database using -reindex-chainstate.</source>
+        <context-group purpose="location"><context context-type="linenumber">248</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1015">
-        <source xml:space="preserve">Unable to replay blocks. You will need to rebuild the database using -reindex-chainstate.</source>
-        <context-group purpose="location"><context context-type="linenumber">247</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1016">
         <source xml:space="preserve">Unsupported category-specific logging level %1$s=%2$s. Expected %1$s=&lt;category&gt;:&lt;loglevel&gt;. Valid categories: %3$s. Valid loglevels: %4$s.</source>
-        <context-group purpose="location"><context context-type="linenumber">260</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1017">
-        <source xml:space="preserve">Unsupported chainstate database format found. Please restart with -reindex-chainstate. This will rebuild the chainstate database.</source>
         <context-group purpose="location"><context context-type="linenumber">261</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1018">
-        <source xml:space="preserve">Warning: Private keys detected in wallet {%s} with disabled private keys</source>
-        <context-group purpose="location"><context context-type="linenumber">269</context></context-group>
+      <trans-unit id="_msg1016">
+        <source xml:space="preserve">Unsupported chainstate database format found. Please restart with -reindex-chainstate. This will rebuild the chainstate database.</source>
+        <context-group purpose="location"><context context-type="linenumber">262</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1019">
-        <source xml:space="preserve">Warning: We do not appear to fully agree with our peers! You may need to upgrade, or other nodes may need to upgrade.</source>
+      <trans-unit id="_msg1017">
+        <source xml:space="preserve">Warning: Private keys detected in wallet {%s} with disabled private keys</source>
         <context-group purpose="location"><context context-type="linenumber">270</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1020">
-        <source xml:space="preserve">Witness data for blocks after height %d requires validation. Please restart with -reindex.</source>
+      <trans-unit id="_msg1018">
+        <source xml:space="preserve">Warning: We do not appear to fully agree with our peers! You may need to upgrade, or other nodes may need to upgrade.</source>
         <context-group purpose="location"><context context-type="linenumber">271</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1021">
-        <source xml:space="preserve">You need to rebuild the database using -reindex to go back to unpruned mode.  This will redownload the entire blockchain</source>
+      <trans-unit id="_msg1019">
+        <source xml:space="preserve">Witness data for blocks after height %d requires validation. Please restart with -reindex.</source>
         <context-group purpose="location"><context context-type="linenumber">272</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1022">
+      <trans-unit id="_msg1020">
+        <source xml:space="preserve">You need to rebuild the database using -reindex to go back to unpruned mode.  This will redownload the entire blockchain</source>
+        <context-group purpose="location"><context context-type="linenumber">273</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1021">
         <source xml:space="preserve">%s is set very high!</source>
         <context-group purpose="location"><context context-type="linenumber">13</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1023">
+      <trans-unit id="_msg1022">
         <source xml:space="preserve">-maxmempool must be at least %d MB</source>
         <context-group purpose="location"><context context-type="linenumber">17</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1024">
+      <trans-unit id="_msg1023">
         <source xml:space="preserve">Cannot obtain a lock on directory %s. %s is probably already running.</source>
         <context-group purpose="location"><context context-type="linenumber">26</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1025">
+      <trans-unit id="_msg1024">
         <source xml:space="preserve">Cannot resolve -%s address: &apos;%s&apos;</source>
         <context-group purpose="location"><context context-type="linenumber">28</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1026">
+      <trans-unit id="_msg1025">
         <source xml:space="preserve">Cannot set -forcednsseed to true when setting -dnsseed to false.</source>
         <context-group purpose="location"><context context-type="linenumber">29</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1027">
+      <trans-unit id="_msg1026">
         <source xml:space="preserve">Cannot set -peerblockfilters without -blockfilterindex.</source>
         <context-group purpose="location"><context context-type="linenumber">30</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1028">
+      <trans-unit id="_msg1027">
         <source xml:space="preserve">%s is set very high! Fees this large could be paid on a single transaction.</source>
         <context-group purpose="location"><context context-type="linenumber">14</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1029">
+      <trans-unit id="_msg1028">
         <source xml:space="preserve">Cannot provide specific connections and have addrman find outgoing connections at the same time.</source>
         <context-group purpose="location"><context context-type="linenumber">27</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1030">
+      <trans-unit id="_msg1029">
         <source xml:space="preserve">Error loading %s: External signer wallet being loaded without external signer support compiled</source>
         <context-group purpose="location"><context context-type="linenumber">50</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1031">
+      <trans-unit id="_msg1030">
         <source xml:space="preserve">Error reading %s! All keys read correctly, but transaction data or address metadata may be missing or incorrect.</source>
         <context-group purpose="location"><context context-type="linenumber">60</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1032">
+      <trans-unit id="_msg1031">
         <source xml:space="preserve">Error: Address book data in wallet cannot be identified to belong to migrated wallets</source>
         <context-group purpose="location"><context context-type="linenumber">66</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1033">
+      <trans-unit id="_msg1032">
         <source xml:space="preserve">Error: Duplicate descriptors created during migration. Your wallet may be corrupted.</source>
         <context-group purpose="location"><context context-type="linenumber">77</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1034">
+      <trans-unit id="_msg1033">
         <source xml:space="preserve">Error: Transaction %s in wallet cannot be identified to belong to migrated wallets</source>
         <context-group purpose="location"><context context-type="linenumber">88</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1035">
+      <trans-unit id="_msg1034">
         <source xml:space="preserve">Failed to remove snapshot chainstate dir (%s). Manually remove it before restarting.
 </source>
         <context-group purpose="location"><context context-type="linenumber">111</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1036">
+      <trans-unit id="_msg1035">
         <source xml:space="preserve">Failed to rename invalid peers.dat file. Please move or delete it and try again.</source>
         <context-group purpose="location"><context context-type="linenumber">112</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1037">
+      <trans-unit id="_msg1036">
         <source xml:space="preserve">Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable %s.</source>
         <context-group purpose="location"><context context-type="linenumber">121</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1038">
+      <trans-unit id="_msg1037">
         <source xml:space="preserve">Flushing block file to disk failed. This is likely the result of an I/O error.</source>
         <context-group purpose="location"><context context-type="linenumber">124</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1039">
+      <trans-unit id="_msg1038">
         <source xml:space="preserve">Flushing undo file to disk failed. This is likely the result of an I/O error.</source>
         <context-group purpose="location"><context context-type="linenumber">125</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1040">
+      <trans-unit id="_msg1039">
         <source xml:space="preserve">Incompatible options: -dnsseed=1 was explicitly specified, but -onlynet forbids connections to IPv4/IPv6</source>
         <context-group purpose="location"><context context-type="linenumber">128</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1041">
+      <trans-unit id="_msg1040">
         <source xml:space="preserve">Invalid amount for %s=&lt;amount&gt;: &apos;%s&apos; (must be at least the minrelay fee of %s to prevent stuck transactions)</source>
         <context-group purpose="location"><context context-type="linenumber">141</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1042">
+      <trans-unit id="_msg1041">
         <source xml:space="preserve">Maximum transaction weight is less than transaction weight without inputs</source>
         <context-group purpose="location"><context context-type="linenumber">152</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1043">
+      <trans-unit id="_msg1042">
         <source xml:space="preserve">Maximum transaction weight is too low, can not accommodate change output</source>
         <context-group purpose="location"><context context-type="linenumber">153</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1044">
+      <trans-unit id="_msg1043">
         <source xml:space="preserve">Option &apos;-checkpoints&apos; is set but checkpoints were removed. This option has no effect.</source>
         <context-group purpose="location"><context context-type="linenumber">166</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1045">
+      <trans-unit id="_msg1044">
         <source xml:space="preserve">Option &apos;-maxorphantx&apos; is set but no longer has any effect (see release notes). Please remove it from your configuration.</source>
         <context-group purpose="location"><context context-type="linenumber">167</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1046">
+      <trans-unit id="_msg1045">
         <source xml:space="preserve">Outbound connections restricted to CJDNS (-onlynet=cjdns) but -cjdnsreachable is not provided</source>
         <context-group purpose="location"><context context-type="linenumber">168</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1047">
+      <trans-unit id="_msg1046">
         <source xml:space="preserve">Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is explicitly forbidden: -onion=0</source>
         <context-group purpose="location"><context context-type="linenumber">169</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1048">
+      <trans-unit id="_msg1047">
         <source xml:space="preserve">Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is not provided: none of -proxy, -onion or -listenonion is given</source>
         <context-group purpose="location"><context context-type="linenumber">170</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1049">
+      <trans-unit id="_msg1048">
         <source xml:space="preserve">Outbound connections restricted to i2p (-onlynet=i2p) but -i2psam is not provided</source>
         <context-group purpose="location"><context context-type="linenumber">171</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1050">
+      <trans-unit id="_msg1049">
         <source xml:space="preserve">Prune: last wallet synchronisation goes beyond pruned data. You need to -reindex (download the whole blockchain again in case of a pruned node)</source>
         <context-group purpose="location"><context context-type="linenumber">179</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1051">
+      <trans-unit id="_msg1050">
         <source xml:space="preserve">Rename of &apos;%s&apos; -&gt; &apos;%s&apos; failed. Cannot clean up the background chainstate leveldb directory.</source>
         <context-group purpose="location"><context context-type="linenumber">182</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1052">
+      <trans-unit id="_msg1051">
         <source xml:space="preserve">Specified -blockmaxweight (%d) exceeds consensus maximum block weight (%d)</source>
         <context-group purpose="location"><context context-type="linenumber">199</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1053">
+      <trans-unit id="_msg1052">
         <source xml:space="preserve">Specified -blockreservedweight (%d) exceeds consensus maximum block weight (%d)</source>
         <context-group purpose="location"><context context-type="linenumber">200</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1054">
+      <trans-unit id="_msg1053">
         <source xml:space="preserve">Specified -blockreservedweight (%d) is lower than minimum safety value of (%d)</source>
         <context-group purpose="location"><context context-type="linenumber">201</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1055">
+      <trans-unit id="_msg1054">
         <source xml:space="preserve">The combination of the pre-selected inputs and the wallet automatic inputs selection exceeds the transaction maximum weight. Please try sending a smaller amount or manually consolidating your wallet&apos;s UTXOs</source>
-        <context-group purpose="location"><context context-type="linenumber">214</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1056">
-        <source xml:space="preserve">The inputs size exceeds the maximum weight. Please try sending a smaller amount or manually consolidating your wallet&apos;s UTXOs</source>
         <context-group purpose="location"><context context-type="linenumber">215</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1057">
-        <source xml:space="preserve">The preselected coins total amount does not cover the transaction target. Please allow other inputs to be automatically selected or include more coins manually</source>
+      <trans-unit id="_msg1055">
+        <source xml:space="preserve">The inputs size exceeds the maximum weight. Please try sending a smaller amount or manually consolidating your wallet&apos;s UTXOs</source>
         <context-group purpose="location"><context context-type="linenumber">216</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1058">
+      <trans-unit id="_msg1056">
+        <source xml:space="preserve">The preselected coins total amount does not cover the transaction target. Please allow other inputs to be automatically selected or include more coins manually</source>
+        <context-group purpose="location"><context context-type="linenumber">217</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1057">
         <source xml:space="preserve">UTXO snapshot failed to validate. Restart to resume normal initial block download, or try loading a different snapshot.</source>
-        <context-group purpose="location"><context context-type="linenumber">240</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">241</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1058">
+        <source xml:space="preserve">Unconfirmed UTXOs are available, but spending them creates a chain of transactions that will be rejected by the mempool</source>
+        <context-group purpose="location"><context context-type="linenumber">250</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1059">
-        <source xml:space="preserve">Unconfirmed UTXOs are available, but spending them creates a chain of transactions that will be rejected by the mempool</source>
-        <context-group purpose="location"><context context-type="linenumber">249</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1060">
         <source xml:space="preserve">Unexpected legacy entry in descriptor wallet found. Loading wallet %s
 
 The wallet might have been tampered with or created with malicious intent.
 </source>
-        <context-group purpose="location"><context context-type="linenumber">250</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">251</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1060">
+        <source xml:space="preserve">Your computer&apos;s date and time appear to be more than %d minutes out of sync with the network, this may lead to consensus failure. After you&apos;ve confirmed your computer&apos;s clock, this message should no longer appear when you restart your node. Without a restart, it should stop showing automatically after you&apos;ve connected to a sufficient number of new outbound peers, which may take some time. You can inspect the `timeoffset` field of the `getpeerinfo` and `getnetworkinfo` RPC methods to get more info.</source>
+        <context-group purpose="location"><context context-type="linenumber">274</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1061">
-        <source xml:space="preserve">Your computer&apos;s date and time appear to be more than %d minutes out of sync with the network, this may lead to consensus failure. After you&apos;ve confirmed your computer&apos;s clock, this message should no longer appear when you restart your node. Without a restart, it should stop showing automatically after you&apos;ve connected to a sufficient number of new outbound peers, which may take some time. You can inspect the `timeoffset` field of the `getpeerinfo` and `getnetworkinfo` RPC methods to get more info.</source>
-        <context-group purpose="location"><context context-type="linenumber">273</context></context-group>
+        <source xml:space="preserve">
+Unable to cleanup failed migration</source>
+        <context-group purpose="location"><context context-type="linenumber">275</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1062">
         <source xml:space="preserve">
-Unable to cleanup failed migration</source>
-        <context-group purpose="location"><context context-type="linenumber">274</context></context-group>
+Unable to restore backup of wallet.</source>
+        <context-group purpose="location"><context context-type="linenumber">276</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1063">
-        <source xml:space="preserve">
-Unable to restore backup of wallet.</source>
-        <context-group purpose="location"><context context-type="linenumber">275</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1064">
         <source xml:space="preserve">default wallet</source>
-        <context-group purpose="location"><context context-type="linenumber">277</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1065">
-        <source xml:space="preserve">whitebind may only be used for incoming connections (&quot;out&quot; was passed)</source>
         <context-group purpose="location"><context context-type="linenumber">278</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1066">
+      <trans-unit id="_msg1064">
+        <source xml:space="preserve">whitebind may only be used for incoming connections (&quot;out&quot; was passed)</source>
+        <context-group purpose="location"><context context-type="linenumber">279</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1065">
         <source xml:space="preserve">-paytxfee is deprecated and will be fully removed in v31.0.</source>
         <context-group purpose="location"><context context-type="linenumber">18</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1067">
+      <trans-unit id="_msg1066">
         <source xml:space="preserve">A fatal internal error occurred, see debug.log for details: </source>
         <context-group purpose="location"><context context-type="linenumber">20</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1068">
+      <trans-unit id="_msg1067">
         <source xml:space="preserve">Assumeutxo data not found for the given blockhash &apos;%s&apos;.</source>
         <context-group purpose="location"><context context-type="linenumber">21</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1069">
+      <trans-unit id="_msg1068">
         <source xml:space="preserve">Block verification was interrupted</source>
         <context-group purpose="location"><context context-type="linenumber">22</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1070">
+      <trans-unit id="_msg1069">
         <source xml:space="preserve">Can&apos;t spend unconfirmed version %d pre-selected input with a version 3 tx</source>
         <context-group purpose="location"><context context-type="linenumber">23</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1071">
+      <trans-unit id="_msg1070">
         <source xml:space="preserve">Can&apos;t spend unconfirmed version 3 pre-selected input with a version %d tx</source>
         <context-group purpose="location"><context context-type="linenumber">24</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1072">
+      <trans-unit id="_msg1071">
         <source xml:space="preserve">Cannot add WalletDescriptor to a non-descriptor wallet</source>
         <context-group purpose="location"><context context-type="linenumber">25</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1073">
+      <trans-unit id="_msg1072">
         <source xml:space="preserve">Cannot write to directory &apos;%s&apos;; check permissions.</source>
         <context-group purpose="location"><context context-type="linenumber">31</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1074">
+      <trans-unit id="_msg1073">
         <source xml:space="preserve">Config setting for %s only applied on %s network when in [%s] section.</source>
         <context-group purpose="location"><context context-type="linenumber">32</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1075">
+      <trans-unit id="_msg1074">
         <source xml:space="preserve">Copyright (C) %i-%i</source>
         <context-group purpose="location"><context context-type="linenumber">33</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1076">
+      <trans-unit id="_msg1075">
         <source xml:space="preserve">Corrupt block found indicating potential hardware failure.</source>
         <context-group purpose="location"><context context-type="linenumber">34</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1077">
+      <trans-unit id="_msg1076">
         <source xml:space="preserve">Corrupted block database detected</source>
         <context-group purpose="location"><context context-type="linenumber">35</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1078">
+      <trans-unit id="_msg1077">
         <source xml:space="preserve">Could not find asmap file %s</source>
         <context-group purpose="location"><context context-type="linenumber">36</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1079">
+      <trans-unit id="_msg1078">
         <source xml:space="preserve">Could not generate scriptPubKeys (cache is empty)</source>
         <context-group purpose="location"><context context-type="linenumber">37</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1080">
+      <trans-unit id="_msg1079">
         <source xml:space="preserve">Could not parse asmap file %s</source>
         <context-group purpose="location"><context context-type="linenumber">38</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1081">
+      <trans-unit id="_msg1080">
         <source xml:space="preserve">Could not top up scriptPubKeys</source>
         <context-group purpose="location"><context context-type="linenumber">39</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1082">
+      <trans-unit id="_msg1081">
         <source xml:space="preserve">Disk space is too low!</source>
         <context-group purpose="location"><context context-type="linenumber">42</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1083">
+      <trans-unit id="_msg1082">
         <source xml:space="preserve">Done loading</source>
         <context-group purpose="location"><context context-type="linenumber">45</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1084">
+      <trans-unit id="_msg1083">
         <source xml:space="preserve">Dump file %s does not exist.</source>
         <context-group purpose="location"><context context-type="linenumber">46</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1085">
+      <trans-unit id="_msg1084">
         <source xml:space="preserve">Error creating %s</source>
         <context-group purpose="location"><context context-type="linenumber">47</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1086">
+      <trans-unit id="_msg1085">
         <source xml:space="preserve">Error initializing block database</source>
         <context-group purpose="location"><context context-type="linenumber">48</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1087">
+      <trans-unit id="_msg1086">
         <source xml:space="preserve">Error loading %s</source>
         <context-group purpose="location"><context context-type="linenumber">49</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1088">
+      <trans-unit id="_msg1087">
         <source xml:space="preserve">Error loading %s: Private keys can only be disabled during creation</source>
         <context-group purpose="location"><context context-type="linenumber">51</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1089">
+      <trans-unit id="_msg1088">
         <source xml:space="preserve">Error loading %s: Wallet corrupted</source>
         <context-group purpose="location"><context context-type="linenumber">52</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1090">
+      <trans-unit id="_msg1089">
         <source xml:space="preserve">Error loading %s: Wallet requires newer version of %s</source>
         <context-group purpose="location"><context context-type="linenumber">54</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1091">
+      <trans-unit id="_msg1090">
         <source xml:space="preserve">Error loading block database</source>
         <context-group purpose="location"><context context-type="linenumber">55</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1092">
+      <trans-unit id="_msg1091">
         <source xml:space="preserve">Error loading databases</source>
         <context-group purpose="location"><context context-type="linenumber">56</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1093">
+      <trans-unit id="_msg1092">
         <source xml:space="preserve">Error opening block database</source>
         <context-group purpose="location"><context context-type="linenumber">58</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1094">
+      <trans-unit id="_msg1093">
         <source xml:space="preserve">Error opening coins database</source>
         <context-group purpose="location"><context context-type="linenumber">59</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1095">
+      <trans-unit id="_msg1094">
         <source xml:space="preserve">Error reading configuration file: %s</source>
         <context-group purpose="location"><context context-type="linenumber">62</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1096">
+      <trans-unit id="_msg1095">
         <source xml:space="preserve">Error reading from database, shutting down.</source>
         <context-group purpose="location"><context context-type="linenumber">63</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1097">
+      <trans-unit id="_msg1096">
         <source xml:space="preserve">Error reading next record from wallet database</source>
         <context-group purpose="location"><context context-type="linenumber">64</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1098">
+      <trans-unit id="_msg1097">
         <source xml:space="preserve">Error: Cannot extract destination from the generated scriptpubkey</source>
         <context-group purpose="location"><context context-type="linenumber">67</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1099">
+      <trans-unit id="_msg1098">
         <source xml:space="preserve">Error: Couldn&apos;t create cursor into database</source>
         <context-group purpose="location"><context context-type="linenumber">70</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1100">
+      <trans-unit id="_msg1099">
         <source xml:space="preserve">Error: Disk space is low for %s</source>
         <context-group purpose="location"><context context-type="linenumber">71</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1101">
+      <trans-unit id="_msg1100">
         <source xml:space="preserve">Error: Dumpfile checksum does not match. Computed %s, expected %s</source>
         <context-group purpose="location"><context context-type="linenumber">72</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1101">
+        <source xml:space="preserve">Error: Dumpfile version is not supported. This version of tidecoin-wallet only supports version 1 dumpfiles. Got dumpfile with version %s</source>
+        <context-group purpose="location"><context context-type="linenumber">76</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1102">
         <source xml:space="preserve">Error: Failed to create new watchonly wallet</source>
@@ -5366,242 +5366,246 @@ Unable to restore backup of wallet.</source>
         <context-group purpose="location"><context context-type="linenumber">206</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1193">
-        <source xml:space="preserve">Starting network threads…</source>
+        <source xml:space="preserve">Specified input weight is too low for pre-selected input %s</source>
         <context-group purpose="location"><context context-type="linenumber">207</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1194">
-        <source xml:space="preserve">System error while flushing: %s</source>
+        <source xml:space="preserve">Starting network threads…</source>
         <context-group purpose="location"><context context-type="linenumber">208</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1195">
-        <source xml:space="preserve">System error while loading external block file: %s</source>
+        <source xml:space="preserve">System error while flushing: %s</source>
         <context-group purpose="location"><context context-type="linenumber">209</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1196">
-        <source xml:space="preserve">System error while saving block to disk: %s</source>
+        <source xml:space="preserve">System error while loading external block file: %s</source>
         <context-group purpose="location"><context context-type="linenumber">210</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1197">
-        <source xml:space="preserve">The %s path uses exFAT, which is known to have intermittent corruption problems on macOS. Move this directory to a different filesystem to avoid data loss.</source>
-        <context-group purpose="location"><context context-type="linenumber">212</context></context-group>
+        <source xml:space="preserve">System error while saving block to disk: %s</source>
+        <context-group purpose="location"><context context-type="linenumber">211</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1198">
-        <source xml:space="preserve">The source code is available from %s.</source>
-        <context-group purpose="location"><context context-type="linenumber">217</context></context-group>
+        <source xml:space="preserve">The %s path uses exFAT, which is known to have intermittent corruption problems on macOS. Move this directory to a different filesystem to avoid data loss.</source>
+        <context-group purpose="location"><context context-type="linenumber">213</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1199">
-        <source xml:space="preserve">The specified config file %s does not exist</source>
+        <source xml:space="preserve">The source code is available from %s.</source>
         <context-group purpose="location"><context context-type="linenumber">218</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1200">
-        <source xml:space="preserve">The transaction amount is too small to pay the fee</source>
+        <source xml:space="preserve">The specified config file %s does not exist</source>
         <context-group purpose="location"><context context-type="linenumber">219</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1201">
-        <source xml:space="preserve">The transactions removal process can only be executed within a db txn</source>
-        <context-group purpose="location"><context context-type="linenumber">221</context></context-group>
+        <source xml:space="preserve">The transaction amount is too small to pay the fee</source>
+        <context-group purpose="location"><context context-type="linenumber">220</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1202">
-        <source xml:space="preserve">The wallet will avoid paying less than the minimum relay fee.</source>
+        <source xml:space="preserve">The transactions removal process can only be executed within a db txn</source>
         <context-group purpose="location"><context context-type="linenumber">222</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1203">
-        <source xml:space="preserve">There is no ScriptPubKeyManager for this address</source>
+        <source xml:space="preserve">The wallet will avoid paying less than the minimum relay fee.</source>
         <context-group purpose="location"><context context-type="linenumber">223</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1204">
-        <source xml:space="preserve">This is experimental software.</source>
-        <context-group purpose="location"><context context-type="linenumber">225</context></context-group>
+        <source xml:space="preserve">There is no ScriptPubKeyManager for this address</source>
+        <context-group purpose="location"><context context-type="linenumber">224</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1205">
-        <source xml:space="preserve">This is the minimum transaction fee you pay on every transaction.</source>
-        <context-group purpose="location"><context context-type="linenumber">227</context></context-group>
+        <source xml:space="preserve">This is experimental software.</source>
+        <context-group purpose="location"><context context-type="linenumber">226</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1206">
-        <source xml:space="preserve">This is the transaction fee you will pay if you send a transaction.</source>
-        <context-group purpose="location"><context context-type="linenumber">230</context></context-group>
+        <source xml:space="preserve">This is the minimum transaction fee you pay on every transaction.</source>
+        <context-group purpose="location"><context context-type="linenumber">228</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1207">
-        <source xml:space="preserve">Transaction %s does not belong to this wallet</source>
-        <context-group purpose="location"><context context-type="linenumber">232</context></context-group>
+        <source xml:space="preserve">This is the transaction fee you will pay if you send a transaction.</source>
+        <context-group purpose="location"><context context-type="linenumber">231</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1208">
-        <source xml:space="preserve">Transaction amount too small</source>
+        <source xml:space="preserve">Transaction %s does not belong to this wallet</source>
         <context-group purpose="location"><context context-type="linenumber">233</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1209">
-        <source xml:space="preserve">Transaction amounts must not be negative</source>
+        <source xml:space="preserve">Transaction amount too small</source>
         <context-group purpose="location"><context context-type="linenumber">234</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1210">
-        <source xml:space="preserve">Transaction change output index out of range</source>
+        <source xml:space="preserve">Transaction amounts must not be negative</source>
         <context-group purpose="location"><context context-type="linenumber">235</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1211">
-        <source xml:space="preserve">Transaction must have at least one recipient</source>
+        <source xml:space="preserve">Transaction change output index out of range</source>
         <context-group purpose="location"><context context-type="linenumber">236</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1212">
-        <source xml:space="preserve">Transaction needs a change address, but we can&apos;t generate it.</source>
+        <source xml:space="preserve">Transaction must have at least one recipient</source>
         <context-group purpose="location"><context context-type="linenumber">237</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1213">
-        <source xml:space="preserve">Transaction too large</source>
-        <context-group purpose="location"><context context-type="linenumber">239</context></context-group>
+        <source xml:space="preserve">Transaction needs a change address, but we can&apos;t generate it.</source>
+        <context-group purpose="location"><context context-type="linenumber">238</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1214">
-        <source xml:space="preserve">Unable to bind to %s on this computer (bind returned error %s)</source>
-        <context-group purpose="location"><context context-type="linenumber">241</context></context-group>
+        <source xml:space="preserve">Transaction too large</source>
+        <context-group purpose="location"><context context-type="linenumber">240</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1215">
-        <source xml:space="preserve">Unable to bind to %s on this computer. %s is probably already running.</source>
+        <source xml:space="preserve">Unable to bind to %s on this computer (bind returned error %s)</source>
         <context-group purpose="location"><context context-type="linenumber">242</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1216">
-        <source xml:space="preserve">Unable to create the PID file &apos;%s&apos;: %s</source>
+        <source xml:space="preserve">Unable to bind to %s on this computer. %s is probably already running.</source>
         <context-group purpose="location"><context context-type="linenumber">243</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1217">
-        <source xml:space="preserve">Unable to find UTXO for external input</source>
+        <source xml:space="preserve">Unable to create the PID file &apos;%s&apos;: %s</source>
         <context-group purpose="location"><context context-type="linenumber">244</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1218">
-        <source xml:space="preserve">Unable to open %s for writing</source>
+        <source xml:space="preserve">Unable to find UTXO for external input</source>
         <context-group purpose="location"><context context-type="linenumber">245</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1219">
-        <source xml:space="preserve">Unable to parse -maxuploadtarget: &apos;%s&apos;</source>
+        <source xml:space="preserve">Unable to open %s for writing</source>
         <context-group purpose="location"><context context-type="linenumber">246</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1220">
-        <source xml:space="preserve">Unable to start HTTP server. See debug log for details.</source>
-        <context-group purpose="location"><context context-type="linenumber">248</context></context-group>
+        <source xml:space="preserve">Unable to parse -maxuploadtarget: &apos;%s&apos;</source>
+        <context-group purpose="location"><context context-type="linenumber">247</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1221">
-        <source xml:space="preserve">Unknown -blockfilterindex value %s.</source>
-        <context-group purpose="location"><context context-type="linenumber">251</context></context-group>
+        <source xml:space="preserve">Unable to start HTTP server. See debug log for details.</source>
+        <context-group purpose="location"><context context-type="linenumber">249</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1222">
-        <source xml:space="preserve">Unknown PQ scheme prefix.</source>
+        <source xml:space="preserve">Unknown -blockfilterindex value %s.</source>
         <context-group purpose="location"><context context-type="linenumber">252</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1223">
-        <source xml:space="preserve">Unknown address type &apos;%s&apos;</source>
+        <source xml:space="preserve">Unknown PQ scheme prefix.</source>
         <context-group purpose="location"><context context-type="linenumber">253</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1224">
-        <source xml:space="preserve">Unknown change type &apos;%s&apos;</source>
+        <source xml:space="preserve">Unknown address type &apos;%s&apos;</source>
         <context-group purpose="location"><context context-type="linenumber">254</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1225">
-        <source xml:space="preserve">Unknown network specified in -onlynet: &apos;%s&apos;</source>
+        <source xml:space="preserve">Unknown change type &apos;%s&apos;</source>
         <context-group purpose="location"><context context-type="linenumber">255</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1226">
-        <source xml:space="preserve">Unknown new rules activated (versionbit %i)</source>
+        <source xml:space="preserve">Unknown network specified in -onlynet: &apos;%s&apos;</source>
         <context-group purpose="location"><context context-type="linenumber">256</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1227">
-        <source xml:space="preserve">Unrecognised option &quot;%s&quot; provided in -test=&lt;option&gt;.</source>
+        <source xml:space="preserve">Unknown new rules activated (versionbit %i)</source>
         <context-group purpose="location"><context context-type="linenumber">257</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1228">
-        <source xml:space="preserve">Unsupported global logging level %s=%s. Valid values: %s.</source>
-        <context-group purpose="location"><context context-type="linenumber">262</context></context-group>
+        <source xml:space="preserve">Unrecognised option &quot;%s&quot; provided in -test=&lt;option&gt;.</source>
+        <context-group purpose="location"><context context-type="linenumber">258</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1229">
-        <source xml:space="preserve">Wallet file creation failed: %s</source>
-        <context-group purpose="location"><context context-type="linenumber">267</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1230">
-        <source xml:space="preserve">acceptstalefeeestimates is not supported on %s chain.</source>
-        <context-group purpose="location"><context context-type="linenumber">276</context></context-group>
-      </trans-unit>
-      <trans-unit id="_msg1231">
-        <source xml:space="preserve">Unsupported logging category %s=%s.</source>
+        <source xml:space="preserve">Unsupported global logging level %s=%s. Valid values: %s.</source>
         <context-group purpose="location"><context context-type="linenumber">263</context></context-group>
       </trans-unit>
+      <trans-unit id="_msg1230">
+        <source xml:space="preserve">Wallet file creation failed: %s</source>
+        <context-group purpose="location"><context context-type="linenumber">268</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1231">
+        <source xml:space="preserve">acceptstalefeeestimates is not supported on %s chain.</source>
+        <context-group purpose="location"><context context-type="linenumber">277</context></context-group>
+      </trans-unit>
       <trans-unit id="_msg1232">
+        <source xml:space="preserve">Unsupported logging category %s=%s.</source>
+        <context-group purpose="location"><context context-type="linenumber">264</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1233">
         <source xml:space="preserve">Error loading %s: Wallet is a legacy wallet. Please migrate to a descriptor wallet using the migration tool (migratewallet RPC).</source>
         <context-group purpose="location"><context context-type="linenumber">53</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1233">
+      <trans-unit id="_msg1234">
         <source xml:space="preserve">Error: Dumpfile specifies an unsupported database format (%s). Only sqlite database dumps are supported</source>
         <context-group purpose="location"><context context-type="linenumber">75</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1234">
+      <trans-unit id="_msg1235">
         <source xml:space="preserve">Failed to calculate bump fees, because unconfirmed UTXOs depend on an enormous cluster of unconfirmed transactions.</source>
         <context-group purpose="location"><context context-type="linenumber">104</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1235">
-        <source xml:space="preserve">Transaction requires one destination of non-zero value, a non-zero feerate, or a pre-selected input</source>
-        <context-group purpose="location"><context context-type="linenumber">238</context></context-group>
-      </trans-unit>
       <trans-unit id="_msg1236">
+        <source xml:space="preserve">Transaction requires one destination of non-zero value, a non-zero feerate, or a pre-selected input</source>
+        <context-group purpose="location"><context context-type="linenumber">239</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1237">
         <source xml:space="preserve">Unrecognized descriptor found. Loading wallet %s
 
 The wallet might have been created on a newer version.
 Please try running the latest software version.
 </source>
-        <context-group purpose="location"><context context-type="linenumber">258</context></context-group>
+        <context-group purpose="location"><context context-type="linenumber">259</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1237">
+      <trans-unit id="_msg1238">
         <source xml:space="preserve">Do you want to rebuild the databases now?</source>
         <context-group purpose="location"><context context-type="linenumber">44</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1238">
+      <trans-unit id="_msg1239">
         <source xml:space="preserve">Error: Could not add watchonly tx %s to watchonly wallet</source>
         <context-group purpose="location"><context context-type="linenumber">68</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1239">
+      <trans-unit id="_msg1240">
         <source xml:space="preserve">Error: Could not delete watchonly transactions. </source>
         <context-group purpose="location"><context context-type="linenumber">69</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1240">
+      <trans-unit id="_msg1241">
         <source xml:space="preserve">Error: Wallet does not exist</source>
         <context-group purpose="location"><context context-type="linenumber">100</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1241">
+      <trans-unit id="_msg1242">
         <source xml:space="preserve">Error: cannot remove legacy wallet records</source>
         <context-group purpose="location"><context context-type="linenumber">101</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1242">
+      <trans-unit id="_msg1243">
         <source xml:space="preserve">Failed to start indexes, shutting down…</source>
         <context-group purpose="location"><context context-type="linenumber">114</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1243">
+      <trans-unit id="_msg1244">
         <source xml:space="preserve">Invalid -proxy address or hostname, ends with &apos;=&apos;: &apos;%s&apos;</source>
         <context-group purpose="location"><context context-type="linenumber">136</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1244">
+      <trans-unit id="_msg1245">
         <source xml:space="preserve">Not enough file descriptors available. %d available, %d required.</source>
         <context-group purpose="location"><context context-type="linenumber">162</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1245">
-        <source xml:space="preserve">Unrecognized network in -proxy=&apos;%s&apos;: &apos;%s&apos;</source>
-        <context-group purpose="location"><context context-type="linenumber">259</context></context-group>
-      </trans-unit>
       <trans-unit id="_msg1246">
-        <source xml:space="preserve">User Agent comment (%s) contains unsafe characters.</source>
-        <context-group purpose="location"><context context-type="linenumber">264</context></context-group>
+        <source xml:space="preserve">Unrecognized network in -proxy=&apos;%s&apos;: &apos;%s&apos;</source>
+        <context-group purpose="location"><context context-type="linenumber">260</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1247">
-        <source xml:space="preserve">Verifying blocks…</source>
+        <source xml:space="preserve">User Agent comment (%s) contains unsafe characters.</source>
         <context-group purpose="location"><context context-type="linenumber">265</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1248">
-        <source xml:space="preserve">Verifying wallet(s)…</source>
+        <source xml:space="preserve">Verifying blocks…</source>
         <context-group purpose="location"><context context-type="linenumber">266</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1249">
-        <source xml:space="preserve">Wallet needed to be rewritten: restart %s to complete</source>
-        <context-group purpose="location"><context context-type="linenumber">268</context></context-group>
+        <source xml:space="preserve">Verifying wallet(s)…</source>
+        <context-group purpose="location"><context context-type="linenumber">267</context></context-group>
       </trans-unit>
       <trans-unit id="_msg1250">
+        <source xml:space="preserve">Wallet needed to be rewritten: restart %s to complete</source>
+        <context-group purpose="location"><context context-type="linenumber">269</context></context-group>
+      </trans-unit>
+      <trans-unit id="_msg1251">
         <source xml:space="preserve">Settings file could not be read</source>
         <context-group purpose="location"><context context-type="linenumber">193</context></context-group>
       </trans-unit>
-      <trans-unit id="_msg1251">
+      <trans-unit id="_msg1252">
         <source xml:space="preserve">Settings file could not be written</source>
         <context-group purpose="location"><context context-type="linenumber">194</context></context-group>
       </trans-unit>

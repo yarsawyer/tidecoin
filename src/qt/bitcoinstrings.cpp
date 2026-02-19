@@ -204,6 +204,7 @@ QT_TRANSLATE_NOOP("bitcoin-core", "Specified -walletdir \"%s\" is a relative pat
 QT_TRANSLATE_NOOP("bitcoin-core", "Specified -walletdir \"%s\" is not a directory"),
 QT_TRANSLATE_NOOP("bitcoin-core", "Specified blocks directory \"%s\" does not exist."),
 QT_TRANSLATE_NOOP("bitcoin-core", "Specified data directory \"%s\" does not exist."),
+QT_TRANSLATE_NOOP("bitcoin-core", "Specified input weight is too low for pre-selected input %s"),
 QT_TRANSLATE_NOOP("bitcoin-core", "Starting network threads…"),
 QT_TRANSLATE_NOOP("bitcoin-core", "System error while flushing: %s"),
 QT_TRANSLATE_NOOP("bitcoin-core", "System error while loading external block file: %s"),

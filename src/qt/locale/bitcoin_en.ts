@@ -1026,7 +1026,7 @@ Signing is only possible with addresses of the type &apos;legacy&apos;.</source>
         <translation type="unfinished">Confirmed</translation>
     </message>
     <message>
-        <location filename="../coincontroldialog.cpp" line="+65"/>
+        <location filename="../coincontroldialog.cpp" line="+115"/>
         <source>Copy amount</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1091,7 +1091,7 @@ Signing is only possible with addresses of the type &apos;legacy&apos;.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+151"/>
+        <location line="+147"/>
         <source>Can vary +/- %1 satoshi(s) per input.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1544,12 +1544,7 @@ The migration process will create a backup of the wallet before migrating. This 
         <translation type="unfinished">Form</translation>
     </message>
     <message>
-        <location line="+119"/>
-        <source>Recent transactions may not yet be visible, and therefore your wallet&apos;s balance might be incorrect. This information will be correct once your wallet has finished synchronizing with the bitcoin network, as detailed below.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+19"/>
+        <location line="+138"/>
         <source>Attempting to spend bitcoins that are affected by not-yet-displayed transactions will not be accepted by the network.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1577,7 +1572,12 @@ The migration process will create a backup of the wallet before migrating. This 
         <translation type="unfinished">Last block time</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="-102"/>
+        <source>Recent transactions may not yet be visible, and therefore your wallet&apos;s balance might be incorrect. This information will be correct once your wallet has finished synchronizing with the Tidecoin network, as detailed below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+128"/>
         <source>Progress</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2247,7 +2247,7 @@ The migration process will create a backup of the wallet before migrating. This 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../psbtoperationsdialog.cpp" line="+81"/>
+        <location filename="../psbtoperationsdialog.cpp" line="+84"/>
         <source>Failed to load transaction: %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2277,7 +2277,7 @@ The migration process will create a backup of the wallet before migrating. This 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+13"/>
         <source>Unknown error processing transaction.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2767,7 +2767,7 @@ If you are receiving this error you should request the merchant provide a BIP21 
     </message>
     <message>
         <location filename="../receivecoinsdialog.cpp" line="+45"/>
-        <location filename="../sendcoinsdialog.cpp" line="+73"/>
+        <location filename="../sendcoinsdialog.cpp" line="+74"/>
         <source>Wallet default</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3826,7 +3826,7 @@ For more information on using this console, type %6.
     <name>SendCoinsDialog</name>
     <message>
         <location filename="../forms/sendcoinsdialog.ui" line="+14"/>
-        <location filename="../sendcoinsdialog.cpp" line="+735"/>
+        <location filename="../sendcoinsdialog.cpp" line="+752"/>
         <source>Send Coins</source>
         <translation>Send Coins</translation>
     </message>
@@ -4013,7 +4013,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of &quot;100 
         <translation>S&amp;end</translation>
     </message>
     <message>
-        <location filename="../sendcoinsdialog.cpp" line="-670"/>
+        <location filename="../sendcoinsdialog.cpp" line="-671"/>
         <source>Copy quantity</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4136,12 +4136,12 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of &quot;100 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+277"/>
+        <location line="+278"/>
         <source>External balance:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-329"/>
+        <location line="-330"/>
         <source>or</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4207,7 +4207,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of &quot;100 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+50"/>
         <source>Confirm send coins</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5368,12 +5368,12 @@ Go to File &gt; Open Wallet to load a wallet.
 <context>
     <name>bitcoin-core</name>
     <message>
-        <location filename="../bitcoinstrings.cpp" line="+211"/>
+        <location filename="../bitcoinstrings.cpp" line="+212"/>
         <source>The %s developers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-199"/>
+        <location line="-200"/>
         <source>%s failed to validate the -assumeutxo snapshot state. This indicates a hardware problem, or a bug in the software, or a bad software modification that allowed an invalid snapshot to be loaded. As a result of this, the node will shut down and stop using any state that was built on the snapshot, resetting the chain height from %d to %d. On the next restart, the node will resume syncing from %d without using any snapshot data. Please report this incident to %s, including how you obtained the snapshot. The invalid snapshot chainstate will be left on disk in case it is helpful in diagnosing the issue that caused this error.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5418,12 +5418,7 @@ Go to File &gt; Open Wallet to load a wallet.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+2"/>
-        <source>Error: Dumpfile version is not supported. This version of bitcoin-wallet only supports version 1 dumpfiles. Got dumpfile with version %s</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+16"/>
+        <location line="+18"/>
         <source>Error: Unable to produce descriptors for this legacy wallet. Make sure to provide the wallet&apos;s passphrase if it is encrypted.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5483,7 +5478,7 @@ Go to File &gt; Open Wallet to load a wallet.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+24"/>
         <source>The block database contains a block which appears to be from the future. This may be due to your computer&apos;s date and time being set incorrectly. Only rebuild the block database if you are sure that your computer&apos;s date and time are correct</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5553,7 +5548,7 @@ Go to File &gt; Open Wallet to load a wallet.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-259"/>
+        <location line="-260"/>
         <source>%s is set very high!</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5719,7 +5714,7 @@ Go to File &gt; Open Wallet to load a wallet.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>The combination of the pre-selected inputs and the wallet automatic inputs selection exceeds the transaction maximum weight. Please try sending a smaller amount or manually consolidating your wallet&apos;s UTXOs</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5779,7 +5774,7 @@ Unable to restore backup of wallet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-260"/>
+        <location line="-261"/>
         <source>-paytxfee is deprecated and will be fully removed in v31.0.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5959,7 +5954,12 @@ Unable to restore backup of wallet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+4"/>
+        <source>Error: Dumpfile version is not supported. This version of tidecoin-wallet only supports version 1 dumpfiles. Got dumpfile with version %s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
         <source>Error: Failed to create new watchonly wallet</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6415,6 +6415,11 @@ Unable to restore backup of wallet.</source>
     </message>
     <message>
         <location line="+1"/>
+        <source>Specified input weight is too low for pre-selected input %s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Starting network threads…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6609,7 +6614,7 @@ Unable to restore backup of wallet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-210"/>
+        <location line="-211"/>
         <source>Error loading %s: Wallet is a legacy wallet. Please migrate to a descriptor wallet using the migration tool (migratewallet RPC).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6624,7 +6629,7 @@ Unable to restore backup of wallet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+134"/>
+        <location line="+135"/>
         <source>Transaction requires one destination of non-zero value, a non-zero feerate, or a pre-selected input</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6638,7 +6643,7 @@ Please try running the latest software version.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-214"/>
+        <location line="-215"/>
         <source>Do you want to rebuild the databases now?</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6678,7 +6683,7 @@ Please try running the latest software version.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+97"/>
+        <location line="+98"/>
         <source>Unrecognized network in -proxy=&apos;%s&apos;: &apos;%s&apos;</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6703,7 +6708,7 @@ Please try running the latest software version.
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-76"/>
         <source>Settings file could not be read</source>
         <translation type="unfinished"></translation>
     </message>
