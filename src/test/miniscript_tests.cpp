@@ -178,7 +178,7 @@ struct KeyConverter {
         auto bytes = ParseHex(std::string(first, last));
         Key key{bytes.begin(), bytes.end()};
         if (key.IsValid()) return key;
-        // Legacy secp256k1 pubkeys (33 bytes) are no longer valid in PQ builds.
+        // Legacy compressed classical pubkeys (33 bytes) are no longer valid in PQ builds.
         // Map them deterministically onto the PQ test key set for miniscript tests.
         if (bytes.size() == 33 && g_testdata && !g_testdata->pubkeys.empty()) {
             static std::map<std::string, CPubKey> legacy_map;

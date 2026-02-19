@@ -193,8 +193,6 @@ include(CheckLinkerSupportsPIE)
 check_linker_supports_pie(configure_warnings)
 
 # The core_interface library aims to encapsulate common build flags.
-# It is a usage requirement for all targets except for secp256k1, which
-# gets its flags by other means.
 add_library(core_interface INTERFACE)
 add_library(core_interface_relwithdebinfo INTERFACE)
 add_library(core_interface_debug INTERFACE)

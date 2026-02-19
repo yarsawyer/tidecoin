@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(cpubkey_accepts_all_current_pq_schemes)
 
 BOOST_AUTO_TEST_CASE(cpubkey_rejects_hybrid_07_len_33)
 {
-    // Hybrid secp256k1 pubkeys use prefix 0x06/0x07, but 0x07 is reserved for Falcon-512 in Tidecoin.
+    // Hybrid legacy pubkeys use prefix 0x06/0x07, but 0x07 is reserved for Falcon-512 in Tidecoin.
     std::vector<uint8_t> hybrid_like(33);
     hybrid_like[0] = 0x07;
     CPubKey pk(hybrid_like);

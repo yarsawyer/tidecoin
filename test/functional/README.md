@@ -159,9 +159,6 @@ Test objects for interacting with a tidecoind node over the p2p interface.
 #### [script.py](test_framework/script.py)
 Utilities for manipulating transaction scripts (originally from python-bitcoinlib)
 
-#### [key.py](test_framework/key.py)
-Test-only secp256k1 elliptic curve implementation
-
 #### [blocktools.py](test_framework/blocktools.py)
 Helper functions for creating blocks and transactions.
 On Tidecoin regtest, AuxPoW activates at height 0 and PoW switches to scrypt, but AuxPoW is optional.

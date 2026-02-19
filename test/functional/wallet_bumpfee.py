@@ -151,7 +151,7 @@ class BumpFeeTest(BitcoinTestFramework):
             assert_raises_rpc_error(-3, "Unexpected key {}".format(key), rbf_node.bumpfee, rbfid, {key: NORMAL})
 
         # Bumping to just above minrelay should fail to increase the total fee enough.
-        # The exact fee text depends on tx size, which differs between secp and PQ signatures.
+        # The exact fee text depends on tx size, which differs between legacy and PQ signatures.
         assert_raises_rpc_error(-8, "Insufficient total fee", rbf_node.bumpfee, rbfid, fee_rate=INSUFFICIENT)
 
         self.log.info("Test invalid fee rate settings")
@@ -485,7 +485,7 @@ def test_bumpfee_with_abandoned_descendant_succeeds(self, rbf_node, rbf_node_add
     self.log.info('Test that fee can be bumped when it has abandoned descendant')
     # parent is send-to-self, so we don't have to check which output is change when creating the child tx
     # Keep the parent above the post-restart relay floor. PQ witness inputs are
-    # larger than secp inputs, so the default 1000 sat fee can be too low here.
+    # larger than legacy inputs, so the default 1000 sat fee can be too low here.
     parent_id = spend_one_input(rbf_node, rbf_node_address, change_size=Decimal("0.00046000"))
     # Submit child transaction with low fee
     child_id = rbf_node.send(outputs={dest_address: 0.00020000},

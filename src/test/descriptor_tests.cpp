@@ -158,7 +158,7 @@ BOOST_AUTO_TEST_CASE(descriptor_explicit_pq_pubkey_matrix)
     auto parsed_mixed = parse_ok(mixed);
     BOOST_CHECK(!parsed_mixed.at(0)->GetPQHDSchemePrefix().has_value());
 
-    // Explicit secp pubkeys are not accepted in PQ-only descriptor parsing.
+    // Explicit legacy compressed pubkeys are not accepted in PQ-only descriptor parsing.
     parse_fail("pk(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)", "is invalid");
     // BIP32/xpub/xprv expressions are not part of Tidecoin PQ descriptor surface.
     parse_fail("wpkh(xpub661MyMwAqRbcF9QxvA3GvH7Tn2Y4m4v5hJ4Qqg1j9n7S7g7J8q9r3kQ3mLZ2kJ1w4Vw1Y8r6mQ6W2j3s5E5n7jL9pQ2aB6v2mN2QhM8mY8/0/*)", "not valid");

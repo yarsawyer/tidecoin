@@ -92,9 +92,9 @@ def decompress_script(f):
 
 def decompress_pubkey(compressed_pubkey):
     """Decompress pubkey by calculating y = sqrt(x^3 + 7) % p
-       (see functions `secp256k1_eckey_pubkey_parse` and `secp256k1_ge_set_xo_var`).
+       using the legacy short-Weierstrass curve parameters used by compressed keys.
     """
-    P = 2**256 - 2**32 - 977  # secp256k1 field size
+    P = 2**256 - 2**32 - 977  # Field prime for legacy compressed key decompression
     assert len(compressed_pubkey) == 33 and compressed_pubkey[0] in (2, 3)
     x = int.from_bytes(compressed_pubkey[1:], 'big')
     rhs = (x**3 + 7) % P

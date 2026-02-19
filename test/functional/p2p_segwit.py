@@ -1433,7 +1433,7 @@ class SegWitTest(BitcoinTestFramework):
 
         Uncompressed pubkeys are no longer supported in default relay policy,
         but (for now) are still valid in blocks."""
-        self.log.info("Skipping uncompressed pubkey segwit test (secp-only)")
+        self.log.info("Skipping uncompressed pubkey segwit test (legacy-key-only)")
         return
 
         # Segwit transactions using uncompressed pubkeys are not accepted
