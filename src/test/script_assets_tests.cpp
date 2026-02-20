@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <test/data/script_assets_test.json.h>
+
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
@@ -12,12 +14,9 @@
 #include <streams.h>
 #include <test/util/json.h>
 #include <util/check.h>
-#include <util/fs.h>
 #include <util/strencodings.h>
 
 #include <cstdint>
-#include <cstdlib>
-#include <fstream>
 #include <utility>
 #include <vector>
 
@@ -148,35 +147,13 @@ BOOST_AUTO_TEST_CASE(script_assets_test)
     // See src/test/fuzz/script_assets_test_minimizer.cpp for information on how to generate
     // the script_assets_test.json file used by this test.
     SignatureCache signature_cache{DEFAULT_SIGNATURE_CACHE_BYTES};
-
-    const char* dir = std::getenv("DIR_UNIT_TEST_DATA");
-    if (dir == nullptr) {
-        BOOST_TEST_MESSAGE("Variable DIR_UNIT_TEST_DATA unset, skipping script_assets_test");
-        BOOST_CHECK(true);
-        return;
-    }
-    auto path = fs::path(dir) / "script_assets_test.json";
-    bool exists = fs::exists(path);
-    if (!exists) {
-        BOOST_TEST_MESSAGE("File $DIR_UNIT_TEST_DATA/script_assets_test.json not found, skipping script_assets_test");
-        BOOST_CHECK(true);
-        return;
-    }
-    std::ifstream file{path};
-    BOOST_CHECK(file.is_open());
-    file.seekg(0, std::ios::end);
-    size_t length = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::string data(length, '\0');
-    file.read(data.data(), data.size());
-    UniValue tests = read_json(data);
+    UniValue tests = read_json(json_tests::script_assets_test);
     BOOST_CHECK(tests.isArray());
     BOOST_CHECK(tests.size() > 0);
 
     for (size_t i = 0; i < tests.size(); i++) {
         AssetTest(tests[i], signature_cache);
     }
-    file.close();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

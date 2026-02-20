@@ -30,7 +30,7 @@ using util::SplitString;
 //
 // (normal build)
 // $ mkdir dump
-// $ for N in $(seq 1 10); do TEST_DUMP_DIR=dump test/functional/<test>.py --dumptests; done
+// $ for N in $(seq 1 10); do TEST_DUMP_DIR=dump test/functional/feature_pq_script_assets.py --dumptests; done
 // $ ...
 //
 // (libFuzzer build)
@@ -92,7 +92,6 @@ CScriptWitness ScriptWitnessFromJSON(const UniValue& univalue)
 
 const std::map<std::string, unsigned int> FLAG_NAMES = {
     {std::string("P2SH"), (unsigned int)SCRIPT_VERIFY_P2SH},
-    {std::string("DERSIG"), (unsigned int)0},
     {std::string("NULLDUMMY"), (unsigned int)SCRIPT_VERIFY_NULLDUMMY},
     {std::string("CHECKLOCKTIMEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY},
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
@@ -104,15 +103,14 @@ std::vector<unsigned int> AllFlags()
 {
     std::vector<unsigned int> ret;
 
-    for (unsigned int i = 0; i < 128; ++i) {
+    for (unsigned int i = 0; i < 64; ++i) {
         unsigned int flag = 0;
         if (i & 1) flag |= SCRIPT_VERIFY_P2SH;
-        if (i & 2) flag |= 0;
-        if (i & 4) flag |= SCRIPT_VERIFY_NULLDUMMY;
-        if (i & 8) flag |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
-        if (i & 16) flag |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
-        if (i & 32) flag |= SCRIPT_VERIFY_WITNESS;
-        if (i & 64) flag |= SCRIPT_VERIFY_PQ_STRICT;
+        if (i & 2) flag |= SCRIPT_VERIFY_NULLDUMMY;
+        if (i & 4) flag |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
+        if (i & 8) flag |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+        if (i & 16) flag |= SCRIPT_VERIFY_WITNESS;
+        if (i & 32) flag |= SCRIPT_VERIFY_PQ_STRICT;
 
         // SCRIPT_VERIFY_WITNESS requires SCRIPT_VERIFY_P2SH
         if (flag & SCRIPT_VERIFY_WITNESS && !(flag & SCRIPT_VERIFY_P2SH)) continue;

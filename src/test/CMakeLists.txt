@@ -157,10 +157,11 @@ target_json_data_sources(test_bitcoin
   data/blockfilters.json
   data/key_io_invalid.json
   data/key_io_valid.json
-  data/script_tests.json
+  data/script_assets_test.json
+  data/script_tests_pq.json
   data/sighash.json
-  data/tx_invalid.json
-  data/tx_valid.json
+  data/tx_invalid_pq.json
+  data/tx_valid_pq.json
 )
 target_raw_data_sources(test_bitcoin NAMESPACE test::data
   data/asmap.raw
@@ -218,7 +219,6 @@ function(add_boost_test source_file)
     set_property(TEST ${test_suite_name} PROPERTY
       SKIP_REGULAR_EXPRESSION
         "no test cases matching filter"
-        "skipping script_assets_test"
         "skipping total_ram"
     )
   endforeach()

@@ -172,6 +172,11 @@ struct ScriptParserContext {
     struct Key {
         bool is_hash;
         std::vector<unsigned char> data;
+
+        size_t size() const
+        {
+            return data.size();
+        }
     };
 
     bool KeyCompare(const Key& a, const Key& b) const {
@@ -818,8 +823,16 @@ NodeRef GenNode(MsCtx script_ctx, F ConsumeNode, Type root_type, bool strict_val
             // Update predicted resource limits. Since every leaf Miniscript node is at least one
             // byte long, we move one byte from each child to their parent. A similar technique is
             // used in the miniscript::internal::Parse function to prevent runaway string parsing.
+            size_t key_push_size = 0;
+            size_t keys_push_size = 0;
+            if (!node_info->keys.empty()) {
+                key_push_size = miniscript::internal::ScriptPushSize(node_info->keys[0].size());
+                for (const auto& key : node_info->keys) {
+                    keys_push_size += miniscript::internal::ScriptPushSize(key.size());
+                }
+            }
             scriptsize += miniscript::internal::ComputeScriptLen(node_info->fragment, ""_mst, node_info->subtypes.size(), node_info->k, node_info->subtypes.size(),
-                                                                 node_info->keys.size(), script_ctx) - 1;
+                                                                 node_info->keys.size(), key_push_size, keys_push_size, script_ctx) - 1;
             if (scriptsize > MAX_STANDARD_P2WSH_SCRIPT_SIZE) return {};
             switch (node_info->fragment) {
             case Fragment::JUST_0:

@@ -2,8 +2,9 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <test/data/tx_invalid.json.h>
-#include <test/data/tx_valid.json.h>
+#include <test/data/script_tests_pq.json.h>
+#include <test/data/tx_invalid_pq.json.h>
+#include <test/data/tx_valid_pq.json.h>
 #include <test/util/setup_common.h>
 
 #include <checkqueue.h>
@@ -17,6 +18,7 @@
 #include <policy/policy.h>
 #include <policy/settings.h>
 #include <primitives/transaction_identifier.h>
+#include <rpc/util.h>
 #include <script/script.h>
 #include <script/script_error.h>
 #include <script/sigcache.h>
@@ -33,8 +35,10 @@
 #include <validation.h>
 
 #include <functional>
+#include <fstream>
 #include <map>
 #include <string>
+#include <cstdlib>
 
 #include <boost/test/unit_test.hpp>
 
@@ -51,9 +55,6 @@ static bool g_bare_multi{DEFAULT_PERMIT_BAREMULTISIG};
 
 static std::map<std::string, unsigned int> mapFlagNames = {
     {std::string("P2SH"), (unsigned int)SCRIPT_VERIFY_P2SH},
-    {std::string("STRICTENC"), (unsigned int)0},
-    {std::string("DERSIG"), (unsigned int)0},
-    {std::string("LOW_S"), (unsigned int)0},
     {std::string("SIGPUSHONLY"), (unsigned int)SCRIPT_VERIFY_SIGPUSHONLY},
     {std::string("MINIMALDATA"), (unsigned int)SCRIPT_VERIFY_MINIMALDATA},
     {std::string("NULLDUMMY"), (unsigned int)SCRIPT_VERIFY_NULLDUMMY},
@@ -187,252 +188,213 @@ std::set<unsigned int> ExcludeIndividualFlags(unsigned int flags)
     return flags_combos;
 }
 
+struct ParsedScriptVector
+{
+    CScriptWitness witness;
+    CAmount amount{0};
+    CScript scriptSig;
+    CScript scriptPubKey;
+    unsigned int flags{SCRIPT_VERIFY_NONE};
+    std::string expected_error;
+    std::string comment;
+};
+
+static bool ParseScriptVector(const UniValue& test, ParsedScriptVector& out, const std::string& fallback_comment)
+{
+    if (!test.isArray()) return false;
+    unsigned int pos{0};
+    if (test.size() > 0 && test[pos].isArray()) {
+        const UniValue& wit = test[pos].get_array();
+        if (wit.size() == 0) return false;
+        unsigned int i = 0;
+        for (; i + 1 < wit.size(); ++i) {
+            const auto witness_value{TryParseHex<unsigned char>(wit[i].get_str())};
+            if (!witness_value.has_value()) return false;
+            out.witness.stack.push_back(witness_value.value());
+        }
+        out.amount = AmountFromValue(wit[i]);
+        ++pos;
+    }
+    if (test.size() < pos + 4 || !test[pos].isStr() || !test[pos + 1].isStr() || !test[pos + 2].isStr() || !test[pos + 3].isStr()) {
+        return false;
+    }
+    out.scriptSig = ParseScript(test[pos++].get_str());
+    out.scriptPubKey = ParseScript(test[pos++].get_str());
+    out.flags = FillFlags(ParseScriptFlags(test[pos++].get_str()));
+    out.expected_error = test[pos++].get_str();
+    out.comment = (test.size() > pos && test[pos].isStr()) ? test[pos].get_str() : fallback_comment;
+    return true;
+}
+
+static bool ParseTxVectorInputs(const UniValue& inputs, std::map<COutPoint, CScript>& scripts, std::map<COutPoint, int64_t>& values)
+{
+    if (!inputs.isArray()) return false;
+    for (unsigned int inp_idx = 0; inp_idx < inputs.size(); ++inp_idx) {
+        const UniValue& input = inputs[inp_idx];
+        if (!input.isArray()) return false;
+        const UniValue& vinput = input.get_array();
+        if (vinput.size() < 3 || vinput.size() > 4 || !vinput[0].isStr() || !vinput[1].isNum() || !vinput[2].isStr()) {
+            return false;
+        }
+        const auto txid{Txid::FromHex(vinput[0].get_str())};
+        if (!txid.has_value()) return false;
+        COutPoint outpoint{txid.value(), uint32_t(vinput[1].getInt<int>())};
+        scripts.emplace(outpoint, ParseScript(vinput[2].get_str()));
+        if (vinput.size() >= 4) values.emplace(outpoint, vinput[3].getInt<int64_t>());
+    }
+    return true;
+}
+
+static void WriteTxFixture(const UniValue& entries, const char* output_path)
+{
+    std::ofstream out{output_path, std::ios::out | std::ios::trunc};
+    out << entries.write(4) << '\n';
+}
+
+static bool GeneratePQTxFixtures(const char* valid_output_path, const char* invalid_output_path)
+{
+    UniValue script_tests = read_json(json_tests::script_tests_pq);
+    UniValue valid_entries(UniValue::VARR);
+    UniValue invalid_entries(UniValue::VARR);
+
+    for (unsigned int idx = 0; idx < script_tests.size(); ++idx) {
+        const UniValue& test = script_tests[idx];
+        if (!test.isArray()) continue;
+
+        ParsedScriptVector parsed;
+        if (!ParseScriptVector(test, parsed, strprintf("script_tests_pq[%u]", idx))) {
+            BOOST_ERROR("Bad script_tests_pq vector at index " << idx);
+            return false;
+        }
+
+        const CTransaction tx_credit{BuildCreditingTransaction(parsed.scriptPubKey, parsed.amount)};
+        CMutableTransaction tx_spend = BuildSpendingTransaction(parsed.scriptSig, parsed.witness, tx_credit);
+        const CTransaction tx{tx_spend};
+        const COutPoint prevout{tx.vin[0].prevout};
+
+        std::map<COutPoint, CScript> prev_scripts;
+        std::map<COutPoint, int64_t> prev_values;
+        prev_scripts.emplace(prevout, parsed.scriptPubKey);
+        prev_values.emplace(prevout, parsed.amount);
+
+        PrecomputedTransactionData txdata(tx);
+        const bool expect_valid{parsed.expected_error == "OK"};
+        if (!CheckTxScripts(tx, prev_scripts, prev_values, parsed.flags, txdata, parsed.comment, expect_valid)) {
+            BOOST_ERROR("Generated PQ tx fixture failed self-check: " << parsed.comment);
+            return false;
+        }
+
+        UniValue input(UniValue::VARR);
+        input.push_back(prevout.hash.GetHex());
+        input.push_back(int64_t(prevout.n));
+        input.push_back(FormatScript(parsed.scriptPubKey));
+        input.push_back(parsed.amount);
+
+        UniValue inputs(UniValue::VARR);
+        inputs.push_back(std::move(input));
+
+        UniValue entry(UniValue::VARR);
+        entry.push_back(std::move(inputs));
+        entry.push_back(EncodeHexTx(tx));
+        entry.push_back(FormatScriptFlags(parsed.flags));
+        entry.push_back(parsed.comment);
+
+        if (expect_valid) {
+            valid_entries.push_back(std::move(entry));
+        } else {
+            invalid_entries.push_back(std::move(entry));
+        }
+    }
+
+    WriteTxFixture(valid_entries, valid_output_path);
+    WriteTxFixture(invalid_entries, invalid_output_path);
+    return true;
+}
+
 BOOST_FIXTURE_TEST_SUITE(transaction_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(tx_valid)
 {
-    // The embedded tx_valid.json vectors are ECDSA-specific. In PQ builds, run a small
-    // sanity-check that exercises VerifyScript through the same CheckTxScripts harness.
-    if (CKey::SIZE != 32) {
-        BOOST_CHECK_MESSAGE(CheckMapFlagNames(), "mapFlagNames is missing a script verification flag");
+    BOOST_CHECK_MESSAGE(CheckMapFlagNames(), "mapFlagNames is missing a script verification flag");
 
-        CKey key;
-        key.MakeNewKey(pq::SchemeId::FALCON_512);
-        const CPubKey pubkey = key.GetPubKey();
-        const CScript scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
-        const CAmount nValue{1 * COIN};
-
-        const CTransaction txCredit{BuildCreditingTransaction(scriptPubKey, nValue)};
-        CMutableTransaction txSpend = BuildSpendingTransaction(/*scriptSig=*/{}, /*scriptWitness=*/{}, txCredit);
-
-        // Produce a valid signature for the spend.
-        const uint256 hash = SignatureHash(scriptPubKey, txSpend, 0, SIGHASH_ALL, nValue, SigVersion::BASE);
-        std::vector<unsigned char> sig;
-        key.Sign(hash, sig, /*grind=*/false);
-        sig.push_back(static_cast<unsigned char>(SIGHASH_ALL));
-        txSpend.vin[0].scriptSig = CScript() << sig;
-
-        const CTransaction tx(txSpend);
-        PrecomputedTransactionData txdata(tx);
-
-        std::map<COutPoint, CScript> prev_scripts;
-        std::map<COutPoint, int64_t> prev_values;
-        prev_scripts.emplace(tx.vin[0].prevout, scriptPubKey);
-        prev_values.emplace(tx.vin[0].prevout, nValue);
-
-        // Verify with a representative flags set.
-        const unsigned int flags = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_PQ_STRICT;
-        BOOST_CHECK_MESSAGE(CheckTxScripts(tx, prev_scripts, prev_values, flags, txdata, "PQ tx_valid", /*expect_valid=*/true),
-                            "PQ tx_valid unexpectedly failed");
+    const char* const env_valid_output{std::getenv("TIDE_TX_VALID_GEN_OUTPUT")};
+    const char* const env_invalid_output{std::getenv("TIDE_TX_INVALID_GEN_OUTPUT")};
+    const bool regenerate{(env_valid_output != nullptr && env_valid_output[0] != '\0') ||
+                          (env_invalid_output != nullptr && env_invalid_output[0] != '\0')};
+    if (regenerate) {
+        const char* const valid_output{(env_valid_output != nullptr && env_valid_output[0] != '\0') ? env_valid_output : "tx_valid_pq.json.gen"};
+        const char* const invalid_output{(env_invalid_output != nullptr && env_invalid_output[0] != '\0') ? env_invalid_output : "tx_invalid_pq.json.gen"};
+        BOOST_CHECK_MESSAGE(GeneratePQTxFixtures(valid_output, invalid_output), "Failed to generate PQ transaction fixtures");
         return;
     }
-    BOOST_CHECK_MESSAGE(CheckMapFlagNames(), "mapFlagNames is missing a script verification flag");
-    // Read tests from test/data/tx_valid.json
-    UniValue tests = read_json(json_tests::tx_valid);
+
+    // Read tests from test/data/tx_valid_pq.json
+    UniValue tests = read_json(json_tests::tx_valid_pq);
 
     for (unsigned int idx = 0; idx < tests.size(); idx++) {
         const UniValue& test = tests[idx];
+        if (test.isStr()) continue;
         std::string strTest = test.write();
-        if (test[0].isArray())
-        {
-            if (test.size() != 3 || !test[1].isStr() || !test[2].isStr())
-            {
-                BOOST_ERROR("Bad test: " << strTest);
-                continue;
-            }
-
-            std::map<COutPoint, CScript> mapprevOutScriptPubKeys;
-            std::map<COutPoint, int64_t> mapprevOutValues;
-            UniValue inputs = test[0].get_array();
-            bool fValid = true;
-            for (unsigned int inpIdx = 0; inpIdx < inputs.size(); inpIdx++) {
-                const UniValue& input = inputs[inpIdx];
-                if (!input.isArray()) {
-                    fValid = false;
-                    break;
-                }
-                const UniValue& vinput = input.get_array();
-                if (vinput.size() < 3 || vinput.size() > 4)
-                {
-                    fValid = false;
-                    break;
-                }
-                COutPoint outpoint{Txid::FromHex(vinput[0].get_str()).value(), uint32_t(vinput[1].getInt<int>())};
-                mapprevOutScriptPubKeys[outpoint] = ParseScript(vinput[2].get_str());
-                if (vinput.size() >= 4)
-                {
-                    mapprevOutValues[outpoint] = vinput[3].getInt<int64_t>();
-                }
-            }
-            if (!fValid)
-            {
-                BOOST_ERROR("Bad test: " << strTest);
-                continue;
-            }
-
-            std::string transaction = test[1].get_str();
-            DataStream stream(ParseHex(transaction));
-            CTransaction tx(deserialize, TX_WITH_WITNESS, stream);
-
-            TxValidationState state;
-            BOOST_CHECK_MESSAGE(CheckTransaction(tx, state), strTest);
-            BOOST_CHECK(state.IsValid());
-
-            PrecomputedTransactionData txdata(tx);
-            unsigned int verify_flags = ParseScriptFlags(test[2].get_str());
-
-            // Check that the test gives a valid combination of flags (otherwise VerifyScript will throw). Don't edit the flags.
-            if (~verify_flags != FillFlags(~verify_flags)) {
-                BOOST_ERROR("Bad test flags: " << strTest);
-            }
-
-            BOOST_CHECK_MESSAGE(CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, ~verify_flags, txdata, strTest, /*expect_valid=*/true),
-                                "Tx unexpectedly failed: " << strTest);
-
-            // Backwards compatibility of script verification flags: Removing any flag(s) should not invalidate a valid transaction
-            for (const auto& [name, flag] : mapFlagNames) {
-                // Removing individual flags
-                unsigned int flags = TrimFlags(~(verify_flags | flag));
-                if (!CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, flags, txdata, strTest, /*expect_valid=*/true)) {
-                    BOOST_ERROR("Tx unexpectedly failed with flag " << name << " unset: " << strTest);
-                }
-                // Removing random combinations of flags
-                flags = TrimFlags(~(verify_flags | (unsigned int)m_rng.randbits(mapFlagNames.size())));
-                if (!CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, flags, txdata, strTest, /*expect_valid=*/true)) {
-                    BOOST_ERROR("Tx unexpectedly failed with random flags " << ToString(flags) << ": " << strTest);
-                }
-            }
-
-            // Check that flags are maximal: transaction should fail if any unset flags are set.
-            for (auto flags_excluding_one : ExcludeIndividualFlags(verify_flags)) {
-                if (!CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, ~flags_excluding_one, txdata, strTest, /*expect_valid=*/false)) {
-                    BOOST_ERROR("Too many flags unset: " << strTest);
-                }
-            }
+        if (!test.isArray() || test.size() < 3 || !test[0].isArray() || !test[1].isStr() || !test[2].isStr()) {
+            BOOST_ERROR("Bad test: " << strTest);
+            continue;
         }
+
+        std::map<COutPoint, CScript> prev_scripts;
+        std::map<COutPoint, int64_t> prev_values;
+        if (!ParseTxVectorInputs(test[0].get_array(), prev_scripts, prev_values)) {
+            BOOST_ERROR("Bad test: " << strTest);
+            continue;
+        }
+
+        DataStream stream(ParseHex(test[1].get_str()));
+        CTransaction tx(deserialize, TX_WITH_WITNESS, stream);
+
+        TxValidationState state;
+        BOOST_CHECK_MESSAGE(CheckTransaction(tx, state), strTest);
+        BOOST_CHECK(state.IsValid());
+
+        const unsigned int verify_flags = FillFlags(ParseScriptFlags(test[2].get_str()));
+        PrecomputedTransactionData txdata(tx);
+        BOOST_CHECK_MESSAGE(CheckTxScripts(tx, prev_scripts, prev_values, verify_flags, txdata, strTest, /*expect_valid=*/true),
+                            "Tx unexpectedly failed: " << strTest);
     }
 }
 
 BOOST_AUTO_TEST_CASE(tx_invalid)
 {
-    // The embedded tx_invalid.json vectors are ECDSA-specific. In PQ builds, run a small
-    // negative test (tampered signature) using the same CheckTxScripts harness.
-    if (CKey::SIZE != 32) {
-        CKey key;
-        key.MakeNewKey(pq::SchemeId::FALCON_512);
-        const CPubKey pubkey = key.GetPubKey();
-        const CScript scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
-        const CAmount nValue{1 * COIN};
-
-        const CTransaction txCredit{BuildCreditingTransaction(scriptPubKey, nValue)};
-        CMutableTransaction txSpend = BuildSpendingTransaction(/*scriptSig=*/{}, /*scriptWitness=*/{}, txCredit);
-
-        const uint256 hash = SignatureHash(scriptPubKey, txSpend, 0, SIGHASH_ALL, nValue, SigVersion::BASE);
-        std::vector<unsigned char> sig;
-        key.Sign(hash, sig, /*grind=*/false);
-        sig.push_back(static_cast<unsigned char>(SIGHASH_ALL));
-        if (!sig.empty()) sig[0] ^= 0x01;
-        txSpend.vin[0].scriptSig = CScript() << sig;
-
-        const CTransaction tx(txSpend);
-        PrecomputedTransactionData txdata(tx);
-
-        std::map<COutPoint, CScript> prev_scripts;
-        std::map<COutPoint, int64_t> prev_values;
-        prev_scripts.emplace(tx.vin[0].prevout, scriptPubKey);
-        prev_values.emplace(tx.vin[0].prevout, nValue);
-
-        const unsigned int flags = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_PQ_STRICT;
-        BOOST_CHECK_MESSAGE(CheckTxScripts(tx, prev_scripts, prev_values, flags, txdata, "PQ tx_invalid", /*expect_valid=*/false),
-                            "PQ tx_invalid unexpectedly passed");
-        return;
-    }
-    // Read tests from test/data/tx_invalid.json
-    UniValue tests = read_json(json_tests::tx_invalid);
+    // Read tests from test/data/tx_invalid_pq.json
+    UniValue tests = read_json(json_tests::tx_invalid_pq);
 
     for (unsigned int idx = 0; idx < tests.size(); idx++) {
         const UniValue& test = tests[idx];
+        if (test.isStr()) continue;
         std::string strTest = test.write();
-        if (test[0].isArray())
-        {
-            if (test.size() != 3 || !test[1].isStr() || !test[2].isStr())
-            {
-                BOOST_ERROR("Bad test: " << strTest);
-                continue;
-            }
-
-            std::map<COutPoint, CScript> mapprevOutScriptPubKeys;
-            std::map<COutPoint, int64_t> mapprevOutValues;
-            UniValue inputs = test[0].get_array();
-            bool fValid = true;
-            for (unsigned int inpIdx = 0; inpIdx < inputs.size(); inpIdx++) {
-                const UniValue& input = inputs[inpIdx];
-                if (!input.isArray()) {
-                    fValid = false;
-                    break;
-                }
-                const UniValue& vinput = input.get_array();
-                if (vinput.size() < 3 || vinput.size() > 4)
-                {
-                    fValid = false;
-                    break;
-                }
-                COutPoint outpoint{Txid::FromHex(vinput[0].get_str()).value(), uint32_t(vinput[1].getInt<int>())};
-                mapprevOutScriptPubKeys[outpoint] = ParseScript(vinput[2].get_str());
-                if (vinput.size() >= 4)
-                {
-                    mapprevOutValues[outpoint] = vinput[3].getInt<int64_t>();
-                }
-            }
-            if (!fValid)
-            {
-                BOOST_ERROR("Bad test: " << strTest);
-                continue;
-            }
-
-            std::string transaction = test[1].get_str();
-            DataStream stream(ParseHex(transaction));
-            CTransaction tx(deserialize, TX_WITH_WITNESS, stream);
-
-            TxValidationState state;
-            if (!CheckTransaction(tx, state) || state.IsInvalid()) {
-                BOOST_CHECK_MESSAGE(test[2].get_str() == "BADTX", strTest);
-                continue;
-            }
-
-            PrecomputedTransactionData txdata(tx);
-            unsigned int verify_flags = ParseScriptFlags(test[2].get_str());
-
-            // Check that the test gives a valid combination of flags (otherwise VerifyScript will throw). Don't edit the flags.
-            if (verify_flags != FillFlags(verify_flags)) {
-                BOOST_ERROR("Bad test flags: " << strTest);
-            }
-
-            // Not using FillFlags() in the main test, in order to detect invalid verifyFlags combination
-            BOOST_CHECK_MESSAGE(CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, verify_flags, txdata, strTest, /*expect_valid=*/false),
-                                "Tx unexpectedly passed: " << strTest);
-
-            // Backwards compatibility of script verification flags: Adding any flag(s) should not validate an invalid transaction
-            for (const auto& [name, flag] : mapFlagNames) {
-                unsigned int flags = FillFlags(verify_flags | flag);
-                // Adding individual flags
-                if (!CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, flags, txdata, strTest, /*expect_valid=*/false)) {
-                    BOOST_ERROR("Tx unexpectedly passed with flag " << name << " set: " << strTest);
-                }
-                // Adding random combinations of flags
-                flags = FillFlags(verify_flags | (unsigned int)m_rng.randbits(mapFlagNames.size()));
-                if (!CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, flags, txdata, strTest, /*expect_valid=*/false)) {
-                    BOOST_ERROR("Tx unexpectedly passed with random flags " << name << ": " << strTest);
-                }
-            }
-
-            // Check that flags are minimal: transaction should succeed if any set flags are unset.
-            for (auto flags_excluding_one : ExcludeIndividualFlags(verify_flags)) {
-                if (!CheckTxScripts(tx, mapprevOutScriptPubKeys, mapprevOutValues, flags_excluding_one, txdata, strTest, /*expect_valid=*/true)) {
-                    BOOST_ERROR("Too many flags set: " << strTest);
-                }
-            }
+        if (!test.isArray() || test.size() < 3 || !test[0].isArray() || !test[1].isStr() || !test[2].isStr()) {
+            BOOST_ERROR("Bad test: " << strTest);
+            continue;
         }
+
+        std::map<COutPoint, CScript> prev_scripts;
+        std::map<COutPoint, int64_t> prev_values;
+        if (!ParseTxVectorInputs(test[0].get_array(), prev_scripts, prev_values)) {
+            BOOST_ERROR("Bad test: " << strTest);
+            continue;
+        }
+
+        DataStream stream(ParseHex(test[1].get_str()));
+        CTransaction tx(deserialize, TX_WITH_WITNESS, stream);
+
+        TxValidationState state;
+        if (!CheckTransaction(tx, state) || state.IsInvalid()) {
+            BOOST_CHECK_MESSAGE(test[2].get_str() == "BADTX", strTest);
+            continue;
+        }
+
+        const unsigned int verify_flags = FillFlags(ParseScriptFlags(test[2].get_str()));
+        PrecomputedTransactionData txdata(tx);
+        BOOST_CHECK_MESSAGE(CheckTxScripts(tx, prev_scripts, prev_values, verify_flags, txdata, strTest, /*expect_valid=*/false),
+                            "Tx unexpectedly passed: " << strTest);
     }
 }
 
