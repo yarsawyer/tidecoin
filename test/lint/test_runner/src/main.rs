@@ -113,6 +113,11 @@ fn get_linter_list() -> Vec<&'static Linter> {
             name: "pq_vendor_deep",
             lint_fn: lint_pq_vendor_deep,
         },
+        &Linter {
+            description: "Check PQ script fixture/corpus coverage scorecard and hard-cutover invariants",
+            name: "pq_script_coverage",
+            lint_fn: lint_pq_script_coverage,
+        },
     ]
 }
 
@@ -753,6 +758,7 @@ fn run_all_python_linters() -> LintResult {
             && entry_fn.ends_with(".py")
             && entry_fn != "lint-tidecoin-naming.py"
             && entry_fn != "lint-pq-vendor.py"
+            && entry_fn != "lint-pq-script-coverage.py"
             && !Command::new("python3")
                 .arg(entry.path())
                 .status()
@@ -802,6 +808,19 @@ fn lint_pq_vendor_deep() -> LintResult {
 
     if Command::new("python3")
         .arg("contrib/devtools/check_pq_vendor.py")
+        .status()
+        .expect("command error")
+        .success()
+    {
+        Ok(())
+    } else {
+        Err("".to_string())
+    }
+}
+
+fn lint_pq_script_coverage() -> LintResult {
+    if Command::new("python3")
+        .arg("test/lint/lint-pq-script-coverage.py")
         .status()
         .expect("command error")
         .success()

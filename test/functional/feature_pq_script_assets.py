@@ -16,11 +16,40 @@ from pathlib import Path
 from test_framework.authproxy import JSONRPCException
 from test_framework.messages import (
     COIN,
+    MAX_SEQUENCE_NONFINAL,
+    COutPoint,
+    CTransaction,
+    CTxIn,
     CTxOut,
+    sha256,
     tx_from_hex,
+)
+from test_framework.script import (
+    CScript,
+    LOCKTIME_THRESHOLD,
+    OP_CHECKLOCKTIMEVERIFY,
+    OP_CHECKSEQUENCEVERIFY,
+    OP_DROP,
+    OP_EQUAL,
+    OP_HASH160,
+    OP_0,
+    OP_TRUE,
+    bn2vch,
+    hash160,
 )
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_greater_than
+
+FLAG_ORDER = (
+    "P2SH",
+    "NULLDUMMY",
+    "CHECKLOCKTIMEVERIFY",
+    "CHECKSEQUENCEVERIFY",
+    "WITNESS",
+    "PQ_STRICT",
+)
+
+SEQUENCE_LOCKTIME_TYPE_FLAG = 1 << 22
 
 
 class PQScriptAssetsDumper(BitcoinTestFramework):
@@ -102,6 +131,241 @@ class PQScriptAssetsDumper(BitcoinTestFramework):
             },
         }
 
+    def _make_static_tx(self, *, version, locktime, sequence):
+        tx = CTransaction()
+        tx.version = version
+        tx.vin = [CTxIn(COutPoint(1, 0), b"", sequence)]
+        tx.vout = [CTxOut(1000, CScript([OP_TRUE]))]
+        tx.nLockTime = locktime
+        return tx.serialize_without_witness().hex()
+
+    def _make_static_script_entry(
+        self,
+        *,
+        tx_hex,
+        script_pub_key,
+        flags,
+        comment,
+        success_script_sig,
+        failure_script_sig,
+    ):
+        prevout = CTxOut(nValue=1000, scriptPubKey=script_pub_key).serialize().hex()
+        return {
+            "tx": tx_hex,
+            "prevouts": [prevout],
+            "index": 0,
+            "flags": flags,
+            "comment": comment,
+            "success": {
+                "scriptSig": success_script_sig.hex(),
+                "witness": [],
+            },
+            "failure": {
+                "scriptSig": failure_script_sig.hex(),
+                "witness": [],
+            },
+        }
+
+    def _make_static_witness_entry(
+        self,
+        *,
+        tx_hex,
+        script_pub_key,
+        flags,
+        comment,
+        success_witness,
+        failure_witness,
+        success_script_sig=CScript([]),
+        failure_script_sig=CScript([]),
+    ):
+        prevout = CTxOut(nValue=1000, scriptPubKey=script_pub_key).serialize().hex()
+        return {
+            "tx": tx_hex,
+            "prevouts": [prevout],
+            "index": 0,
+            "flags": flags,
+            "comment": comment,
+            "success": {
+                "scriptSig": success_script_sig.hex(),
+                "witness": [item.hex() for item in success_witness],
+            },
+            "failure": {
+                "scriptSig": failure_script_sig.hex(),
+                "witness": [item.hex() for item in failure_witness],
+            },
+        }
+
+    def _merge_flags(self, *flag_groups):
+        enabled = set()
+        for group in flag_groups:
+            if not group:
+                continue
+            for flag in group.split(","):
+                flag = flag.strip()
+                if flag:
+                    enabled.add(flag)
+        return ",".join(flag for flag in FLAG_ORDER if flag in enabled)
+
+    def _p2sh_script(self, redeem_script):
+        return CScript([OP_HASH160, hash160(bytes(redeem_script)), OP_EQUAL])
+
+    def _p2wsh_script(self, witness_script):
+        return CScript([OP_0, sha256(bytes(witness_script))])
+
+    def _build_timelock_entries(self):
+        entries = []
+
+        cltv_script = CScript([OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_TRUE])
+        cltv_tx = self._make_static_tx(version=2, locktime=10, sequence=MAX_SEQUENCE_NONFINAL)
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=cltv_tx,
+                script_pub_key=cltv_script,
+                flags="CHECKLOCKTIMEVERIFY,PQ_STRICT",
+                comment="PQ static CLTV spend",
+                success_script_sig=CScript([5]),
+                failure_script_sig=CScript([11]),
+            )
+        )
+
+        cltv_time_tx = self._make_static_tx(
+            version=2,
+            locktime=LOCKTIME_THRESHOLD + 20,
+            sequence=MAX_SEQUENCE_NONFINAL,
+        )
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=cltv_time_tx,
+                script_pub_key=cltv_script,
+                flags="CHECKLOCKTIMEVERIFY,PQ_STRICT",
+                comment="PQ static CLTV time-lock spend",
+                success_script_sig=CScript([LOCKTIME_THRESHOLD + 5]),
+                failure_script_sig=CScript([LOCKTIME_THRESHOLD + 30]),
+            )
+        )
+
+        csv_script = CScript([OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_TRUE])
+        csv_tx = self._make_static_tx(version=2, locktime=0, sequence=5)
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=csv_tx,
+                script_pub_key=csv_script,
+                flags="CHECKSEQUENCEVERIFY,PQ_STRICT",
+                comment="PQ static CSV spend",
+                success_script_sig=CScript([5]),
+                failure_script_sig=CScript([6]),
+            )
+        )
+
+        csv_time_tx = self._make_static_tx(
+            version=2,
+            locktime=0,
+            sequence=SEQUENCE_LOCKTIME_TYPE_FLAG | 12,
+        )
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=csv_time_tx,
+                script_pub_key=csv_script,
+                flags="CHECKSEQUENCEVERIFY,PQ_STRICT",
+                comment="PQ static CSV time-lock spend",
+                success_script_sig=CScript([SEQUENCE_LOCKTIME_TYPE_FLAG | 7]),
+                failure_script_sig=CScript([11]),
+            )
+        )
+
+        cltv_csv_script = CScript([OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_TRUE])
+        cltv_csv_tx = self._make_static_tx(version=2, locktime=12, sequence=6)
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=cltv_csv_tx,
+                script_pub_key=cltv_csv_script,
+                flags="CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,PQ_STRICT",
+                comment="PQ static CLTV+CSV spend",
+                success_script_sig=CScript([6, 10]),
+                failure_script_sig=CScript([6, 13]),
+            )
+        )
+
+        p2sh_cltv_tx = self._make_static_tx(version=2, locktime=18, sequence=MAX_SEQUENCE_NONFINAL)
+        p2sh_cltv_redeem = CScript([OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_TRUE])
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=p2sh_cltv_tx,
+                script_pub_key=self._p2sh_script(p2sh_cltv_redeem),
+                flags="P2SH,CHECKLOCKTIMEVERIFY,PQ_STRICT",
+                comment="PQ static P2SH CLTV spend",
+                success_script_sig=CScript([12, bytes(p2sh_cltv_redeem)]),
+                failure_script_sig=CScript([21, bytes(p2sh_cltv_redeem)]),
+            )
+        )
+
+        p2sh_csv_tx = self._make_static_tx(version=2, locktime=0, sequence=9)
+        p2sh_csv_redeem = CScript([OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_TRUE])
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=p2sh_csv_tx,
+                script_pub_key=self._p2sh_script(p2sh_csv_redeem),
+                flags="P2SH,CHECKSEQUENCEVERIFY,PQ_STRICT",
+                comment="PQ static P2SH CSV spend",
+                success_script_sig=CScript([8, bytes(p2sh_csv_redeem)]),
+                failure_script_sig=CScript([10, bytes(p2sh_csv_redeem)]),
+            )
+        )
+
+        p2sh_cltv_csv_tx = self._make_static_tx(version=2, locktime=24, sequence=11)
+        p2sh_cltv_csv_redeem = CScript([OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_TRUE])
+        entries.append(
+            self._make_static_script_entry(
+                tx_hex=p2sh_cltv_csv_tx,
+                script_pub_key=self._p2sh_script(p2sh_cltv_csv_redeem),
+                flags="P2SH,CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,PQ_STRICT",
+                comment="PQ static P2SH CLTV+CSV spend",
+                success_script_sig=CScript([10, 20, bytes(p2sh_cltv_csv_redeem)]),
+                failure_script_sig=CScript([10, 25, bytes(p2sh_cltv_csv_redeem)]),
+            )
+        )
+
+        p2wsh_cltv_tx = self._make_static_tx(version=2, locktime=22, sequence=MAX_SEQUENCE_NONFINAL)
+        p2wsh_cltv_script = CScript([OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_TRUE])
+        entries.append(
+            self._make_static_witness_entry(
+                tx_hex=p2wsh_cltv_tx,
+                script_pub_key=self._p2wsh_script(p2wsh_cltv_script),
+                flags=self._merge_flags("P2SH,WITNESS,PQ_STRICT", "CHECKLOCKTIMEVERIFY"),
+                comment="PQ static P2WSH CLTV spend",
+                success_witness=[bn2vch(19), bytes(p2wsh_cltv_script)],
+                failure_witness=[bn2vch(23), bytes(p2wsh_cltv_script)],
+            )
+        )
+
+        p2wsh_csv_tx = self._make_static_tx(version=2, locktime=0, sequence=13)
+        p2wsh_csv_script = CScript([OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_TRUE])
+        entries.append(
+            self._make_static_witness_entry(
+                tx_hex=p2wsh_csv_tx,
+                script_pub_key=self._p2wsh_script(p2wsh_csv_script),
+                flags=self._merge_flags("P2SH,WITNESS,PQ_STRICT", "CHECKSEQUENCEVERIFY"),
+                comment="PQ static P2WSH CSV spend",
+                success_witness=[bn2vch(12), bytes(p2wsh_csv_script)],
+                failure_witness=[bn2vch(14), bytes(p2wsh_csv_script)],
+            )
+        )
+
+        p2wsh_cltv_csv_tx = self._make_static_tx(version=2, locktime=30, sequence=14)
+        p2wsh_cltv_csv_script = CScript([OP_CHECKLOCKTIMEVERIFY, OP_DROP, OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_TRUE])
+        entries.append(
+            self._make_static_witness_entry(
+                tx_hex=p2wsh_cltv_csv_tx,
+                script_pub_key=self._p2wsh_script(p2wsh_cltv_csv_script),
+                flags=self._merge_flags("P2SH,WITNESS,PQ_STRICT", "CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY"),
+                comment="PQ static P2WSH CLTV+CSV spend",
+                success_witness=[bn2vch(13), bn2vch(28), bytes(p2wsh_cltv_csv_script)],
+                failure_witness=[bn2vch(13), bn2vch(32), bytes(p2wsh_cltv_csv_script)],
+            )
+        )
+
+        return entries
+
     def _find_exact_utxo(self, node, *, address, txid):
         utxos = node.listunspent(1, 9999999, [address])
         for utxo in utxos:
@@ -144,6 +408,14 @@ class PQScriptAssetsDumper(BitcoinTestFramework):
             ("NONE|ANYONECANPAY", "SIGHASH_NONE|ANYONECANPAY"),
             ("SINGLE|ANYONECANPAY", "SIGHASH_SINGLE|ANYONECANPAY"),
         ]
+        flag_profiles = [
+            ("", "base"),
+            ("NULLDUMMY", "nulldummy"),
+            ("CHECKLOCKTIMEVERIFY", "cltv-flag"),
+            ("CHECKSEQUENCEVERIFY", "csv-flag"),
+            ("CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY", "cltv-csv-flags"),
+            ("NULLDUMMY,CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY", "nulldummy-cltv-csv-flags"),
+        ]
         funded = []
 
         for address_type, tag in templates:
@@ -171,14 +443,18 @@ class PQScriptAssetsDumper(BitcoinTestFramework):
                     destination=spend_addr,
                     sighashtype=rpc_mode,
                 )
-                entries.append(
-                    self._make_asset_entry(
-                        signed_hex=signed_hex,
-                        utxo=utxo,
-                        flags=base_flags,
-                        comment=f"PQ {tag} spend ({label})",
+                for profile_flags, profile_label in flag_profiles:
+                    flags = self._merge_flags(base_flags, profile_flags)
+                    entries.append(
+                        self._make_asset_entry(
+                            signed_hex=signed_hex,
+                            utxo=utxo,
+                            flags=flags,
+                            comment=f"PQ {tag} spend ({label}, {profile_label})",
+                        )
                     )
-                )
+
+        entries.extend(self._build_timelock_entries())
 
         return entries
 

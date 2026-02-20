@@ -20,7 +20,7 @@
 using util::SplitString;
 
 // This fuzz "test" can be used to minimize test cases for script_assets_test in
-// src/test/script_tests.cpp. While it written as a fuzz test, and can be used as such,
+// src/test/script_assets_tests.cpp. While it written as a fuzz test, and can be used as such,
 // fuzzing the inputs is unlikely to construct useful test cases.
 //
 // Instead, it is primarily intended to be run on a test set that was generated

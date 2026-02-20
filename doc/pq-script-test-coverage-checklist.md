@@ -19,7 +19,12 @@ Reference matrix:
 - [x] PR-05: Replace Minimal PQ Fallback in `transaction_tests`
 - [x] PR-06: Add PQ Functional Dumper for Script-Assets Corpus
 - [x] PR-07: Generate and Commit `script_assets_test.json`
-- [ ] PR-08: CI and Drift Gates
+- [x] PR-08: CI and Drift Gates
+- [x] PR-09: Bitcoin Interpreter-Surface Breadth Import (Non-ECDSA)
+- [x] PR-10: Tidecoin PQ-Only Surface Expansion
+- [x] PR-11: Residual Script Gap Closure (Closed with Deferred Residuals)
+- [x] PR-12: Script-Assets Corpus Scale-Up and Re-Minimization
+- [x] PR-13: Coverage Scorecard and Lock-In
 
 ## PR-01: Repository Policy and Tracking
 
@@ -262,6 +267,189 @@ Validation:
 Exit criteria:
 
 - PQ-only test model is continuously enforced.
+- Implementation completion (2026-02-20):
+  - Added `test/lint/lint-pq-script-coverage.py` for machine-checkable PQ drift gates.
+  - Wired lint into `test/lint/test_runner/src/main.rs` as `pq_script_coverage`.
+  - Enforced fixture/corpus scorecard checks and hard-cutover invariants in required lint path.
+
+## PR-09: Bitcoin Interpreter-Surface Breadth Import (Non-ECDSA)
+
+Goal:
+
+- Expand Tidecoin `script_tests_pq` breadth toward Bitcoin interpreter surface, excluding all ECDSA/secp/Taproot-only vectors.
+
+Files to edit:
+
+- `src/test/script_tests.cpp`
+- `src/test/data/script_tests_pq.json`
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Port/adapt non-crypto interpreter vectors from Bitcoin categories:
+- stack/altstack manipulation and invalid-stack paths
+- conditional flow / unbalanced conditionals
+- arithmetic/boolean/comparison edges
+- pushdata/minimal-encoding script engine paths
+- boundary behavior where consensus-applicable
+- Preserve hard-cutover policy (no legacy key/signature formats).
+- Regenerate `script_tests_pq.json` using:
+- `TIDE_SCRIPT_TESTS_GEN_OUTPUT=src/test/data/script_tests_pq.json build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=no`
+
+Validation:
+
+- `build/bin/test_tidecoin --run_test=script_tests/script_json_test --catch_system_errors=no --color_output=no`
+- `ctest --test-dir build -R script_tests --output-on-failure`
+- `python3 - <<'PY'\nimport json;print(len(json.load(open('src/test/data/script_tests_pq.json'))))\nPY`
+
+Exit criteria:
+
+- `script_tests_pq.json` surface is substantially wider than baseline with required interpreter categories covered.
+
+## PR-10: Tidecoin PQ-Only Surface Expansion
+
+Goal:
+
+- Add broad test coverage for Tidecoin-specific script semantics that Bitcoin does not cover.
+
+Files to edit:
+
+- `src/test/script_tests.cpp`
+- `src/test/data/script_tests_pq.json`
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Expand PQ-only vectors for:
+- `OP_SHA512` behavior matrix (flag interactions and boundary elements)
+- witness v1_512 policy/sighash edge behavior
+- PQ-specific signing/sighash edge patterns where consensus-relevant
+- Ensure each PQ-only category has positive and negative vectors.
+- Regenerate `script_tests_pq.json`.
+
+Validation:
+
+- `TIDE_SCRIPT_TESTS_GEN_OUTPUT=src/test/data/script_tests_pq.json build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=no`
+- `build/bin/test_tidecoin --run_test=script_tests/script_json_test --catch_system_errors=no --color_output=no`
+- `ctest --test-dir build -R script_tests --output-on-failure`
+- `ctest --test-dir build -R transaction_tests --output-on-failure`
+- `rg -n "OP_SHA512|v1_512|PQ " src/test/script_tests.cpp src/test/data/script_tests_pq.json`
+
+Exit criteria:
+
+- PQ-only categories are broad and explicit, not spot checks.
+- Completed 2026-02-20: 5 `OP_SHA512` vectors and 7 witness v1_512 vectors regenerated into `script_tests_pq.json`.
+
+## PR-11: Residual Script Gap Closure
+
+Goal:
+
+- Close residual script coverage gaps identified after PR-10.
+
+Files to edit:
+
+- `src/test/script_tests.cpp`
+- `src/test/data/script_tests_pq.json`
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Add missing/thin script vectors:
+- witness v1_512 sighash variants (`NONE`, `SINGLE`, `ALL|ANYONECANPAY`, `NONE|ANYONECANPAY`, `SINGLE|ANYONECANPAY`)
+- explicit `CONST_SCRIPTCODE` vectors
+- explicit `PQ_STRICT` differential vectors
+- CLTV/CSV success-path vectors in `script_build`
+- targeted interpreter depth additions (hash opcode family, stack-manip families, arithmetic completeness, multisig depth)
+- Regenerate `script_tests_pq.json`.
+
+Validation:
+
+- `TIDE_SCRIPT_TESTS_GEN_OUTPUT=src/test/data/script_tests_pq.json build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=no`
+- `build/bin/test_tidecoin --run_test=script_tests/script_json_test --catch_system_errors=no --color_output=no`
+- `ctest --test-dir build -R script_tests --output-on-failure`
+
+Exit criteria:
+
+- Residual script gaps from post-PR-10 triage are closed with explicit vectors.
+- Implementation pass completed on 2026-02-20:
+- Added v1_512 sighash matrix vectors, `CONST_SCRIPTCODE` vectors, interpreter depth vectors (hash/stack/arithmetic), and multisig depth vectors; regenerated fixture now has 141 entries.
+- Closure decision: PASS.
+- `PQ_STRICT` strict-fail/non-strict-pass differential is now explicitly covered in `script_build` and `script_tests_pq.json`.
+- CLTV/CSV direct-success schema/path enhancement beyond guarded-branch fixture success was addressed by expanded static bare/P2SH/P2WSH timelock corpus families.
+
+## PR-12: Script-Assets Corpus Scale-Up and Re-Minimization
+
+Goal:
+
+- Increase corpus breadth and regenerate canonical minimized script-assets corpus.
+
+Files to edit:
+
+- `test/functional/feature_pq_script_assets.py`
+- `src/test/fuzz/script_assets_test_minimizer.cpp` (if needed)
+- `src/test/data/script_assets_test.json`
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Expand dumper templates and flag combinations.
+- Generate larger raw corpus and run minimizer merge.
+- Replace committed corpus with new canonical minimized output.
+
+Validation:
+
+- `TEST_DUMP_DIR=/tmp/tide_script_dump python3 test/functional/feature_pq_script_assets.py --dumptests`
+- `ctest --test-dir build -R script_assets_tests --output-on-failure`
+- `python3 - <<'PY'\nimport json;print(len(json.load(open('src/test/data/script_assets_test.json'))))\nPY`
+
+Exit criteria:
+
+- Corpus breadth is materially expanded with required flag/script-family coverage.
+- Implementation completion (2026-02-20):
+- Expanded generator with flag-profile matrix across wallet spends plus static direct-success CLTV/CSV families in bare/P2SH/P2WSH forms.
+- Regenerated and minimized corpus from 20 dump runs (`2,380` raw entries) to `375` committed entries.
+- Flag profile breadth expanded from `5` to `15` distinct canonical flag sets.
+- Validation passed:
+- `ctest --test-dir build -R script_assets_tests --output-on-failure`
+- `ctest --test-dir build -R "script_tests|transaction_tests|script_assets_tests" --output-on-failure`
+
+## PR-13: Coverage Scorecard and Lock-In
+
+Goal:
+
+- Make breadth measurable and non-regressing.
+
+Files to edit:
+
+- `doc/pq-script-coverage-gap-matrix.md`
+- CI config files (`.github/workflows/*` and/or project CI scripts)
+- optional checker script under `test/lint/` or `contrib/devtools/`
+
+Edits:
+
+- Add category scorecard with required category list and required positive/negative coverage.
+- Add corpus profile scorecard with required flag sets and required script-family tags.
+- Keep vector/corpus counts as informational drift metadata only (not hard breadth pass/fail gates).
+- Add CI checks for category/tag presence and legacy-ban invariants.
+
+Validation:
+
+- CI green with expected fixtures.
+- Intentional required-category/tag/flag regressions fail deterministically.
+
+Exit criteria:
+
+- Coverage breadth is locked by deterministic CI gates.
+- Implementation completion (2026-02-20):
+- Added deterministic scorecard checker: `test/lint/lint-pq-script-coverage.py`.
+- Added lint runner integration: `pq_script_coverage` in `test/lint/test_runner/src/main.rs` (CI lint job executes this via test runner).
+- Scorecard gates now enforce:
+- required script category presence + required positive/negative polarity,
+- required script-assets flag-set presence and comment-family tags,
+- hard-cutover invariants (`script_tests.json` absence, script/tx legacy-term ban, no required-path script-assets skip marker).
+- Validation:
+- `python3 test/lint/lint-pq-script-coverage.py`
+- `(cd test/lint/test_runner && RUST_BACKTRACE=1 cargo run -- --lint=pq_script_coverage)`
 
 ## Cross-PR Acceptance Queries
 

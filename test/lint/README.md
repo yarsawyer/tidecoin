@@ -105,6 +105,21 @@ In CI lint runs, `RUN_PQ_VENDOR_DEEP` is auto-enabled when relevant PQ vendor
 paths (for example `src/pq/**`, manifest/patch metadata, or checker scripts)
 change in the commit range.
 
+#### PQ script coverage scorecard
+
+`test/lint/lint-pq-script-coverage.py` enforces Tidecoin's PQ script coverage
+lock-in:
+
+- required script category/polarity presence in `src/test/data/script_tests_pq.json`,
+- required script-assets flag/profile coverage in `src/test/data/script_assets_test.json`,
+- hard-cutover invariants (legacy fixture/reference and legacy-term bans in script/tx tests).
+
+Run locally:
+
+```sh
+python3 test/lint/lint-pq-script-coverage.py
+```
+
 check-doc.py
 ============
 Check for missing documentation of command line options.

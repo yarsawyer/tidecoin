@@ -65,7 +65,9 @@ static std::map<std::string, unsigned int> mapFlagNames = {
     {std::string("CHECKLOCKTIMEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY},
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
     {std::string("WITNESS"), (unsigned int)SCRIPT_VERIFY_WITNESS},
+    {std::string("SHA512"), (unsigned int)SCRIPT_VERIFY_SHA512},
     {std::string("DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM"), (unsigned int)SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM},
+    {std::string("WITNESS_V1_512"), (unsigned int)SCRIPT_VERIFY_WITNESS_V1_512},
     {std::string("CONST_SCRIPTCODE"), (unsigned int)SCRIPT_VERIFY_CONST_SCRIPTCODE},
     {std::string("PQ_STRICT"), (unsigned int)SCRIPT_VERIFY_PQ_STRICT},
 };

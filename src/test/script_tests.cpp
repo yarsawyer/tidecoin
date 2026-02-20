@@ -6,7 +6,11 @@
 
 #include <common/system.h>
 #include <core_io.h>
+#include <crypto/ripemd160.h>
+#include <crypto/sha1.h>
+#include <crypto/sha256.h>
 #include <crypto/sha512.h>
+#include <hash.h>
 #include <key.h>
 #include <policy/policy.h>
 #include <rpc/util.h>
@@ -135,6 +139,9 @@ void DoTest(const CScript& scriptPubKey, const CScript& scriptSig, const CScript
     for (int i = 0; i < 16; ++i) {
         uint32_t extra_flags(m_rng.randbits(16));
         uint32_t combined_flags{expect ? (flags & ~extra_flags) : (flags | extra_flags)};
+        // Activation-style flags can intentionally change script semantics.
+        // Keep them fixed in monotonicity fuzz checks.
+        if ((combined_flags ^ flags) & (SCRIPT_VERIFY_SHA512 | SCRIPT_VERIFY_WITNESS_V1_512)) continue;
         // Weed out some invalid flag combinations.
         if (combined_flags & SCRIPT_VERIFY_CLEANSTACK && ~combined_flags & (SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS)) continue;
         if (combined_flags & SCRIPT_VERIFY_WITNESS && ~combined_flags & SCRIPT_VERIFY_P2SH) continue;
@@ -147,6 +154,12 @@ void DoTest(const CScript& scriptPubKey, const CScript& scriptSig, const CScript
 
 namespace
 {
+static constexpr std::string_view SCRIPT_BUILD_KEY0_SECRET_HEX{
+    "0759ec40f9fc1f7efb92b7f82e821feefcef7ffd03c13f14313bff9e47fc1e80eff03d0c52800fcebf0be105ffffc0f00e4303dffb0ca1be044fb9fff043fc1fff0fef8600013cffffba177f44fbe00307efc103ff83041f04f41040042fbc03e042107f811c2fbefc2f080830fdf02e7a00007b001002080f83efcfbe143f41efc201fc1f42fc717b001f7a03ce3e0bd13df3f0baf8a141f442c8038f7bf3c049f3f0beffe080e44ffbf010bbfc4f42003002ebdffb07b13e045fbd04018613febb04cf7ffb9ec1080f850450010430012020bc044e87e41f84e85080fc6087040f81101e00ebdf06ffcec41c21440c2f040c6fbd0bf03bf82103141ffffbe0c1088f832840c6fc2f7d13d0c10c308417efc210117febf03ff7afc5ec3fc31c1f7f2401411020bc307f7dfc00bc104fc2f0103cfffec7180001086f3ff4507f03debe047f80140ebf07cefd0fd245f43081ec107d08113f105046047fc0f430be0071bbe3c0c1dbfefb1bdfb6f7d102f82fff0c21c1085e79f84000045f79f860bef43f44182f84f81f7ef0407b000ec1f3ff81f3ef7d045100003f03fbc186f40f3fdff0c4045082fc2fc017e1450c8f01eba0fb0be03c046fbc07f144f86f82f3ef7f079f3d20d146ffdf83ec0201143f3f1451bffc4f85141f4203f07b0861bf03cf78e80fff0bb082fc5f43208fc3e00183142efff45fb40bef4008017cf471c30bd04500203dfbefc70051bc03e0811411faf7cf81ffdec50fd0420c00fae01ffe0c5e82e4113f03b1bde01efd03efc0108f00002fbfffefc0f41ffff43fbdf81f04dc3f0110327f0c10010fe0c2f41dc1f80e80ec2f40ffbe7ce80088138fc6fc2e02ffe0c80bae81fbd03ce402ff009f49fc5e7f1fdfc2e42f7de02103f3d0010c01441c3f020c4004ef80befc117ff01f3d0c0ffe245ec2fba07be7bffbffefbe0fd0451bf04313c006fbef85f01f810c3079f7f0fb0440be0c0f83f01004143fbeefdffcfc1042efafbe13e002048043008ec213ef7d185044fc1f010ffe471c2fc2083fff0fd0801030bd17ff80082104175ffc000fc6ffe1061bbe7a250917030420e9cffadd0400f9e6daf51e31d8ecfede03f0fd0d05f609e80cfc01f4e61c1812fd0111f4f40501fdf8cdf8e126f625f9ee001408fbff1bfbff3b0d20e72de4df16fefc1130e91fd7d219eb0adcd6fccff716f00beef0f9ef1d10220ff51b1c23d6daf51be8d51cc1f8e803f72b03ede7dc28ed07f9f2f935db13030824ddd2f6e1e3fd010e3805e70ee10b14e1f3ee04e9f40355fcef03e500ede5140900f1fbfecd33dd3602e9f5f7e5d70ce303cdcdebf0f314d0d9f6060e0bceee07d01f08fe0205da0fe41a0fe31cd008e90106ffe0ea04ffe6fae5f107da1ff9d615eafd1fcbc30deec7f1f70afbf6110511e3fbd332ece1e2c2f302f0d80a01f3dfd80afe21e30b0c072d01f22df2ffe71813dfeff51814efe3e2f010fe37e8fbd3cd281aeefcebeef6c81a20f1ea3afe051acdea11ef1c240e1109d60ae8cff6c9f90701e8e8080917041a12f5f90f13090ddc3907022219c0f6e8ed4ef1fbec081b3af80700d4f5e8d5e9e00aef17f2ffed0434feff15f412e4eafdecf3f6041fefeffb130500ebdff5e926e4032b01d3dc031dd40b1e0713ddfd161a21492ee91eeadc1cfb13dff0e8f2eaf0ebf3e7e1ef06f118eef528f4ea18013becfff20afbf01c0e1e101707fefcc5fcbfcde90af3f5e9fe1b10040ed41bf2121207f4f7140f070af4e10700f4f5f01503fccc1d01041e020f20f9e2bef71eed"};
+
+static constexpr std::string_view LEGACY_ONLY_STRICT_DIFF_SIG_HEX{
+    "390d01e92ed24a254e9b7536a54b3567105edbcaa3b0de653bf5253a246631aa574d951b71021cbfcaf6e174231d8e2600d8413bf98606708d75b976a663d3073796fc6418c12d122c5b176c7cac5ad6133d505c50fc9c0520788e451176e6ace826fa084bde083505b6a72893628b3cb9b833654fb3f378516dcc2c70784828e19009146d5fc3221fa701d3f4ec1f83f3efd6a0f6cac5dd1d7a635236d742af54dd8bfb44555c3b3be3d410bb6ad7698139888358852084dda5d499f8aed9bdcddbd39b8df8e62ed72ac1639f5b1355f6bc485be393b88f4aa002650739f92c1ec3bcddd567678cdf885a59859b46f4cfbd6a6f0c23397a163243f8f94b36d7730f089cd2a9fe6d8cb73b1c2dd9a29fea84747a74554f5ccea21d4a8e124f9741e43f9a166fee8ce5c5fa69692e890e55157bd0da7e1d68a5ef97098b449b608eabfc581f062d5a1144f58b9629527ec11a4c921c41ddbb4036923e7efc7c58e18b81a3440d8976f5750dbdb2d9f4ce756719137731a428ec01864d5883306c350e4e617e2fa93388f3ca65e4c887aa274e58261cab68f2a278952a078a62b67e25bb3348631190c3542bc21cd8b273b3c1d543afb1dc32b8d20d5f2623b87a9ddae73a1ecfee73c99b3d2b605f57e65c5f6912b699a65059bfbf515f97a53bcb4c094f507cd2426535c830eaf310824ac93d47d10c28eefca68234d398ee3f6069640f543eedb6266a61a7e227738982e1fccc909a7e1aced453fd5e141ce74a3a0e22e143da3eb1c2adec836dd99cc354d8565a4a5bb741dd570eba9efba4c32680b3f6c58ef44d5f15949e47693a22488a8a84ec88903b34c2c47a574c2e79b16730893ad3e5c3a30fc30e3868e1b06b4c35af88a14949cd6b79188de3d6838c968c6a452044623b3ba62ebd19fec6311001"};
+
 enum class WitnessMode {
     NONE,
     PKH,
@@ -203,9 +216,15 @@ public:
             scriptPubKey = CScript() << witnessversion << ToByteVector(hash);
         } else if (wm == WitnessMode::SH) {
             witscript = scriptPubKey;
-            uint256 hash;
-            CSHA256().Write(witscript.data(), witscript.size()).Finalize(hash.begin());
-            scriptPubKey = CScript() << witnessversion << ToByteVector(hash);
+            if (witnessversion == 1) {
+                uint512 hash;
+                CSHA512().Write(witscript.data(), witscript.size()).Finalize(hash.begin());
+                scriptPubKey = CScript() << witnessversion << ToByteVector(hash);
+            } else {
+                uint256 hash;
+                CSHA256().Write(witscript.data(), witscript.size()).Finalize(hash.begin());
+                scriptPubKey = CScript() << witnessversion << ToByteVector(hash);
+            }
         }
         if (P2SH) {
             redeemscript = scriptPubKey;
@@ -247,13 +266,18 @@ public:
         return *this;
     }
 
-    TestBuilder& PushSig(const CKey& key, int nHashType = SIGHASH_ALL, unsigned int lenR = 32, unsigned int lenS = 32, SigVersion sigversion = SigVersion::BASE, CAmount amount = 0)
+    TestBuilder& PushSig(const CKey& key, int nHashType = SIGHASH_ALL, unsigned int lenR = 32, unsigned int lenS = 32, SigVersion sigversion = SigVersion::BASE, CAmount amount = 0, bool legacy_mode = false)
     {
-        uint256 hash = SignatureHash(script, spendTx, 0, nHashType, amount, sigversion);
         (void)lenR;
         (void)lenS;
         std::vector<unsigned char> vchSig;
-        key.Sign(hash, vchSig, false);
+        if (sigversion == SigVersion::WITNESS_V1_512) {
+            const uint512 hash = SignatureHash512(script, spendTx, 0, nHashType, amount, nullptr);
+            key.Sign512(hash, vchSig, legacy_mode);
+        } else {
+            const uint256 hash = SignatureHash(script, spendTx, 0, nHashType, amount, sigversion);
+            key.Sign(hash, vchSig, false, 0, legacy_mode);
+        }
         vchSig.push_back(static_cast<unsigned char>(nHashType));
         DoPush(vchSig);
         return *this;
@@ -396,7 +420,11 @@ BOOST_AUTO_TEST_CASE(script_build)
     const bool verify_json_membership{false};
 
     CKey key0, key1, key2;
-    key0.MakeNewKey(pq::SchemeId::FALCON_512);
+    {
+        const std::vector<unsigned char> key0_secret{ParseHex(std::string{SCRIPT_BUILD_KEY0_SECRET_HEX})};
+        key0.Set(key0_secret.begin(), key0_secret.end());
+        BOOST_REQUIRE_MESSAGE(key0.IsValid(), "SCRIPT_BUILD_KEY0_SECRET_HEX is invalid");
+    }
     key1.MakeNewKey(pq::SchemeId::FALCON_512);
     key2.MakeNewKey(pq::SchemeId::FALCON_512);
 
@@ -449,6 +477,12 @@ BOOST_AUTO_TEST_CASE(script_build)
                                 "PQ P2SH(2-of-3)", SCRIPT_VERIFY_P2SH, true).Num(0).PushSig(key1).PushSig(key2).PushRedeem());
     tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
                                 "PQ P2SH(2-of-3), 1 sig", SCRIPT_VERIFY_P2SH, true).Num(0).PushSig(key1).Num(0).PushRedeem().ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
+                                "PQ 1-of-2", 0).Num(0).PushSig(key1));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
+                                "PQ 1-of-2 wrong key", 0).Num(0).PushSig(key2).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ 2-of-3 wrong signature order", 0).Num(0).PushSig(key2).PushSig(key0).ScriptError(SCRIPT_ERR_EVAL_FALSE));
 
     // NULLDUMMY
     tests.push_back(TestBuilder(CScript() << OP_3 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
@@ -473,6 +507,356 @@ BOOST_AUTO_TEST_CASE(script_build)
                                 "PQ P2SH CLEANSTACK enforced", SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_P2SH, true).Num(11).PushSig(key0).PushRedeem().ScriptError(SCRIPT_ERR_CLEANSTACK));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
                                 "PQ P2SH CLEANSTACK success", SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_P2SH, true).PushSig(key0).PushRedeem());
+
+    // Additional SIGPUSHONLY/P2SH flag interactions.
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey2) << OP_CHECKSIG,
+                                "PQ P2SH(P2PK) non-push scriptSig without P2SH/SIGPUSHONLY", 0, true)
+                                   .PushSig(key2)
+                                   .Opcode(OP_NOP8)
+                                   .PushRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey2) << OP_CHECKSIG,
+                                "PQ P2PK non-push scriptSig under base rules", 0)
+                                   .PushSig(key2)
+                                   .Opcode(OP_NOP8));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey2) << OP_CHECKSIG,
+                                "PQ P2SH(P2PK) non-push scriptSig with P2SH", SCRIPT_VERIFY_P2SH, true)
+                                   .PushSig(key2)
+                                   .Opcode(OP_NOP8)
+                                   .PushRedeem()
+                                   .ScriptError(SCRIPT_ERR_SIG_PUSHONLY));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey2) << OP_CHECKSIG,
+                                "PQ P2SH(P2PK) non-push scriptSig with SIGPUSHONLY only", SCRIPT_VERIFY_SIGPUSHONLY, true)
+                                   .PushSig(key2)
+                                   .Opcode(OP_NOP8)
+                                   .PushRedeem()
+                                   .ScriptError(SCRIPT_ERR_SIG_PUSHONLY));
+
+    // Generic interpreter stack/altstack/flow/comparison coverage.
+    tests.push_back(TestBuilder(CScript() << OP_TOALTSTACK << OP_FROMALTSTACK << OP_7 << OP_EQUAL,
+                                "PQ interpreter altstack roundtrip", 0)
+                                   .Num(7));
+    tests.push_back(TestBuilder(CScript() << OP_FROMALTSTACK,
+                                "PQ interpreter altstack underflow", 0)
+                                   .ScriptError(SCRIPT_ERR_INVALID_ALTSTACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_DROP,
+                                "PQ interpreter stack underflow", 0)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_SWAP << OP_1 << OP_EQUALVERIFY << OP_2 << OP_EQUAL,
+                                "PQ interpreter swap ordering", 0)
+                                   .Num(1)
+                                   .Num(2));
+    tests.push_back(TestBuilder(CScript() << OP_2DROP << OP_1 << OP_EQUAL,
+                                "PQ interpreter 2DROP", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3));
+    tests.push_back(TestBuilder(CScript() << OP_2DUP << OP_2DROP << OP_8 << OP_EQUAL,
+                                "PQ interpreter 2DUP", 0)
+                                   .Num(7)
+                                   .Num(8));
+    tests.push_back(TestBuilder(CScript() << OP_2OVER << OP_2 << OP_EQUAL,
+                                "PQ interpreter 2OVER", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3)
+                                   .Num(4));
+    tests.push_back(TestBuilder(CScript() << OP_2ROT << OP_2 << OP_EQUAL,
+                                "PQ interpreter 2ROT", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3)
+                                   .Num(4)
+                                   .Num(5)
+                                   .Num(6));
+    tests.push_back(TestBuilder(CScript() << OP_2SWAP << OP_2 << OP_EQUAL,
+                                "PQ interpreter 2SWAP", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3)
+                                   .Num(4));
+    tests.push_back(TestBuilder(CScript() << OP_3DUP << OP_DROP << OP_DROP << OP_DROP << OP_3 << OP_EQUAL,
+                                "PQ interpreter 3DUP", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3));
+    tests.push_back(TestBuilder(CScript() << OP_2 << OP_PICK << OP_11 << OP_EQUAL,
+                                "PQ interpreter PICK", 0)
+                                   .Num(10)
+                                   .Num(11)
+                                   .Num(12)
+                                   .Num(13));
+    tests.push_back(TestBuilder(CScript() << OP_2 << OP_ROLL << OP_11 << OP_EQUAL,
+                                "PQ interpreter ROLL", 0)
+                                   .Num(10)
+                                   .Num(11)
+                                   .Num(12)
+                                   .Num(13));
+
+    tests.push_back(TestBuilder(CScript() << OP_IF << OP_1 << OP_ELSE << OP_2 << OP_ENDIF << OP_2 << OP_EQUAL,
+                                "PQ interpreter IF false branch", 0)
+                                   .Num(0));
+    tests.push_back(TestBuilder(CScript() << OP_NOTIF << OP_3 << OP_ELSE << OP_4 << OP_ENDIF << OP_3 << OP_EQUAL,
+                                "PQ interpreter NOTIF true branch", 0)
+                                   .Num(0));
+    tests.push_back(TestBuilder(CScript() << OP_IF << OP_1 << OP_ELSE << OP_2 << OP_ENDIF << OP_2 << OP_EQUAL,
+                                "PQ interpreter IF wrong branch result", 0)
+                                   .Num(1)
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_1 << OP_IF << OP_1,
+                                "PQ interpreter unbalanced conditional", 0)
+                                   .ScriptError(SCRIPT_ERR_UNBALANCED_CONDITIONAL));
+
+    tests.push_back(TestBuilder(CScript() << OP_ADD << OP_5 << OP_NUMEQUAL,
+                                "PQ interpreter arithmetic add", 0)
+                                   .Num(2)
+                                   .Num(3));
+    tests.push_back(TestBuilder(CScript() << OP_ADD << OP_6 << OP_NUMEQUAL,
+                                "PQ interpreter arithmetic add mismatch", 0)
+                                   .Num(2)
+                                   .Num(3)
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_SUB << OP_2 << OP_NUMEQUAL,
+                                "PQ interpreter arithmetic subtract", 0)
+                                   .Num(5)
+                                   .Num(3));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_BOOLAND,
+                                "PQ interpreter boolean and false", 0)
+                                   .Num(1)
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_5 << OP_LESSTHAN,
+                                "PQ interpreter less-than comparison", 0)
+                                   .Num(2));
+    tests.push_back(TestBuilder(CScript() << OP_2 << OP_7 << OP_WITHIN,
+                                "PQ interpreter within true", 0)
+                                   .Num(5));
+    tests.push_back(TestBuilder(CScript() << OP_2 << OP_7 << OP_WITHIN,
+                                "PQ interpreter within false", 0)
+                                   .Num(7)
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_MIN << OP_3 << OP_NUMEQUAL,
+                                "PQ interpreter min", 0)
+                                   .Num(3)
+                                   .Num(5));
+    tests.push_back(TestBuilder(CScript() << OP_MAX << OP_5 << OP_NUMEQUAL,
+                                "PQ interpreter max", 0)
+                                   .Num(3)
+                                   .Num(5));
+    tests.push_back(TestBuilder(CScript() << OP_GREATERTHAN,
+                                "PQ interpreter greater-than", 0)
+                                   .Num(5)
+                                   .Num(3));
+    tests.push_back(TestBuilder(CScript() << OP_ABS << OP_5 << OP_NUMEQUAL,
+                                "PQ interpreter abs", 0)
+                                   .Num(-5));
+    tests.push_back(TestBuilder(CScript() << OP_NEGATE << -5 << OP_NUMEQUAL,
+                                "PQ interpreter negate", 0)
+                                   .Num(5));
+    tests.push_back(TestBuilder(CScript() << OP_1ADD << OP_5 << OP_NUMEQUAL,
+                                "PQ interpreter 1ADD", 0)
+                                   .Num(4));
+    tests.push_back(TestBuilder(CScript() << OP_1SUB << OP_3 << OP_NUMEQUAL,
+                                "PQ interpreter 1SUB", 0)
+                                   .Num(4));
+    {
+        const std::vector<unsigned char> hash_input = ParseHex("01020304");
+
+        std::vector<unsigned char> hash256(32);
+        CHash256().Write(hash_input).Finalize(hash256);
+        tests.push_back(TestBuilder(CScript() << OP_HASH256 << hash256 << OP_EQUAL,
+                                    "PQ interpreter HASH256", 0)
+                                       .Push("01020304"));
+
+        std::vector<unsigned char> sha256(32);
+        CSHA256().Write(hash_input.data(), hash_input.size()).Finalize(sha256.data());
+        tests.push_back(TestBuilder(CScript() << OP_SHA256 << sha256 << OP_EQUAL,
+                                    "PQ interpreter SHA256", 0)
+                                       .Push("01020304"));
+
+        std::vector<unsigned char> sha1(20);
+        CSHA1().Write(hash_input.data(), hash_input.size()).Finalize(sha1.data());
+        tests.push_back(TestBuilder(CScript() << OP_SHA1 << sha1 << OP_EQUAL,
+                                    "PQ interpreter SHA1", 0)
+                                       .Push("01020304"));
+
+        std::vector<unsigned char> ripemd160(20);
+        CRIPEMD160().Write(hash_input.data(), hash_input.size()).Finalize(ripemd160.data());
+        tests.push_back(TestBuilder(CScript() << OP_RIPEMD160 << ripemd160 << OP_EQUAL,
+                                    "PQ interpreter RIPEMD160", 0)
+                                       .Push("01020304"));
+    }
+
+    // Interpreter size/count boundaries.
+    {
+        CScript opcount_limit_script;
+        for (int i = 0; i < 200; ++i) {
+            opcount_limit_script << OP_NOP;
+        }
+        opcount_limit_script << OP_TRUE;
+        tests.push_back(TestBuilder(opcount_limit_script,
+                                    "PQ interpreter opcount limit", 0));
+
+        CScript opcount_overflow_script;
+        for (int i = 0; i < 202; ++i) {
+            opcount_overflow_script << OP_NOP;
+        }
+        opcount_overflow_script << OP_TRUE;
+        tests.push_back(TestBuilder(opcount_overflow_script,
+                                    "PQ interpreter opcount overflow", 0)
+                                       .ScriptError(SCRIPT_ERR_OP_COUNT));
+    }
+    {
+        const std::vector<unsigned char> oversized_script_bytes(65537, static_cast<unsigned char>(OP_TRUE));
+        const CScript oversized_script{oversized_script_bytes.begin(), oversized_script_bytes.end()};
+        tests.push_back(TestBuilder(oversized_script,
+                                    "PQ interpreter script size overflow", 0)
+                                       .ScriptError(SCRIPT_ERR_SCRIPT_SIZE));
+    }
+
+    // MINIMALDATA behavior.
+    tests.push_back(TestBuilder(CScript() << OP_1 << OP_EQUAL,
+                                "PQ MINIMALDATA minimal push", SCRIPT_VERIFY_MINIMALDATA)
+                                   .Num(1));
+    tests.push_back(TestBuilder(CScript() << OP_1 << OP_EQUAL,
+                                "PQ MINIMALDATA non-minimal scriptSig push not enforced", 0)
+                                   .Opcode(OP_PUSHDATA1)
+                                   .Push("01"));
+    tests.push_back(TestBuilder(CScript() << OP_1 << OP_EQUAL,
+                                "PQ MINIMALDATA non-minimal scriptSig push enforced", SCRIPT_VERIFY_MINIMALDATA)
+                                   .Opcode(OP_PUSHDATA1)
+                                   .Push("01")
+                                   .ScriptError(SCRIPT_ERR_MINIMALDATA));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_EQUAL,
+                                "PQ MINIMALDATA non-minimal zero push not enforced", 0)
+                                   .Opcode(OP_PUSHDATA1)
+                                   .Push(""));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_EQUAL,
+                                "PQ MINIMALDATA non-minimal zero push enforced", SCRIPT_VERIFY_MINIMALDATA)
+                                   .Opcode(OP_PUSHDATA1)
+                                   .Push("")
+                                   .ScriptError(SCRIPT_ERR_MINIMALDATA));
+    {
+        const std::vector<unsigned char> non_minimal_spk_bytes{
+            static_cast<unsigned char>(OP_PUSHDATA1), 0x01, 0x01,
+            static_cast<unsigned char>(OP_1),
+            static_cast<unsigned char>(OP_EQUAL),
+        };
+        const CScript non_minimal_spk{non_minimal_spk_bytes.begin(), non_minimal_spk_bytes.end()};
+        tests.push_back(TestBuilder(non_minimal_spk,
+                                    "PQ MINIMALDATA non-minimal scriptPubKey push not enforced", 0));
+        tests.push_back(TestBuilder(non_minimal_spk,
+                                    "PQ MINIMALDATA non-minimal scriptPubKey push enforced", SCRIPT_VERIFY_MINIMALDATA)
+                                       .ScriptError(SCRIPT_ERR_MINIMALDATA));
+    }
+
+    // CHECKLOCKTIMEVERIFY and CHECKSEQUENCEVERIFY failure semantics within JSON-compatible fixture constraints.
+    tests.push_back(TestBuilder(CScript() << OP_CHECKLOCKTIMEVERIFY,
+                                "PQ CLTV empty stack", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_CHECKLOCKTIMEVERIFY,
+                                "PQ CLTV negative locktime", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY)
+                                   .Num(-1)
+                                   .ScriptError(SCRIPT_ERR_NEGATIVE_LOCKTIME));
+    tests.push_back(TestBuilder(CScript() << OP_CHECKLOCKTIMEVERIFY,
+                                "PQ CLTV unsatisfied locktime", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY)
+                                   .Num(1)
+                                   .ScriptError(SCRIPT_ERR_UNSATISFIED_LOCKTIME));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_IF << OP_CHECKLOCKTIMEVERIFY << OP_ENDIF << OP_TRUE,
+                                "PQ CLTV guarded branch success", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY));
+
+    tests.push_back(TestBuilder(CScript() << OP_CHECKSEQUENCEVERIFY,
+                                "PQ CSV empty stack", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_CHECKSEQUENCEVERIFY,
+                                "PQ CSV negative argument", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
+                                   .Num(-1)
+                                   .ScriptError(SCRIPT_ERR_NEGATIVE_LOCKTIME));
+    tests.push_back(TestBuilder(CScript() << OP_CHECKSEQUENCEVERIFY,
+                                "PQ CSV unsatisfied locktime", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
+                                   .Num(0)
+                                   .ScriptError(SCRIPT_ERR_UNSATISFIED_LOCKTIME));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_IF << OP_CHECKSEQUENCEVERIFY << OP_ENDIF << OP_TRUE,
+                                "PQ CSV guarded branch success", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY));
+
+    // MINIMALIF for witness script paths.
+    const uint32_t minimalif_flags = SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_MINIMALIF;
+    const CScript minimalif_script = CScript() << OP_IF << OP_TRUE << OP_ENDIF;
+    tests.push_back(TestBuilder(minimalif_script,
+                                "PQ MINIMALIF minimal true", minimalif_flags, false, WitnessMode::SH, 0, 1)
+                                   .Push("01")
+                                   .AsWit()
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(minimalif_script,
+                                "PQ MINIMALIF non-minimal true", minimalif_flags, false, WitnessMode::SH, 0, 1)
+                                   .Push("02")
+                                   .AsWit()
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_MINIMALIF));
+    tests.push_back(TestBuilder(minimalif_script,
+                                "PQ MINIMALIF non-minimal true in P2SH(P2WSH)", minimalif_flags, true, WitnessMode::SH, 0, 1)
+                                   .Push("02")
+                                   .AsWit()
+                                   .PushWitRedeem()
+                                   .PushRedeem()
+                                   .ScriptError(SCRIPT_ERR_MINIMALIF));
+
+    // NULLFAIL for failed non-null signatures.
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG << OP_NOT,
+                                "PQ NULLFAIL not enforced", 0)
+                                   .PushSig(key0)
+                                   .DamagePush(10));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG << OP_NOT,
+                                "PQ NULLFAIL enforced", SCRIPT_VERIFY_NULLFAIL)
+                                   .PushSig(key0)
+                                   .DamagePush(10)
+                                   .ScriptError(SCRIPT_ERR_SIG_NULLFAIL));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG << OP_NOT,
+                                "PQ NULLFAIL with empty signature", SCRIPT_VERIFY_NULLFAIL)
+                                   .Num(0));
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG << OP_NOT,
+                                "PQ NULLFAIL multisig not enforced", 0)
+                                   .Num(0)
+                                   .PushSig(key0)
+                                   .PushSig(key1)
+                                   .DamagePush(10));
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG << OP_NOT,
+                                "PQ NULLFAIL multisig enforced", SCRIPT_VERIFY_NULLFAIL)
+                                   .Num(0)
+                                   .PushSig(key0)
+                                   .PushSig(key1)
+                                   .DamagePush(10)
+                                   .ScriptError(SCRIPT_ERR_SIG_NULLFAIL));
+
+    // CONST_SCRIPTCODE behavior.
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_IF << OP_CODESEPARATOR << OP_ENDIF << OP_TRUE,
+                                "PQ CONST_SCRIPTCODE not enforced", 0));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_IF << OP_CODESEPARATOR << OP_ENDIF << OP_TRUE,
+                                "PQ CONST_SCRIPTCODE rejects OP_CODESEPARATOR", SCRIPT_VERIFY_CONST_SCRIPTCODE)
+                                   .ScriptError(SCRIPT_ERR_OP_CODESEPARATOR));
+    tests.push_back(TestBuilder(CScript() << ParseHex("51") << OP_DROP << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ CONST_SCRIPTCODE find-and-delete not enforced", 0)
+                                   .Push("51")
+                                   .Push(pubkey0)
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << ParseHex("51") << OP_DROP << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ CONST_SCRIPTCODE rejects find-and-delete", SCRIPT_VERIFY_CONST_SCRIPTCODE)
+                                   .Push("51")
+                                   .Push(pubkey0)
+                                   .ScriptError(SCRIPT_ERR_SIG_FINDANDDELETE));
+
+    // PQ_STRICT behavior.
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ strict modern signature", SCRIPT_VERIFY_PQ_STRICT)
+                                   .PushSig(key0));
+    {
+        const CScript strict_script = CScript() << ToByteVector(pubkey0) << OP_CHECKSIG;
+        tests.push_back(TestBuilder(strict_script,
+                                    "PQ strict rejects legacy-only falcon signature", SCRIPT_VERIFY_PQ_STRICT)
+                                       .Push(std::string{LEGACY_ONLY_STRICT_DIFF_SIG_HEX})
+                                       .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+        tests.push_back(TestBuilder(strict_script,
+                                    "PQ non-strict accepts legacy-only falcon signature", 0)
+                                       .Push(std::string{LEGACY_ONLY_STRICT_DIFF_SIG_HEX}));
+    }
 
     // Witness behavior.
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
@@ -562,6 +946,84 @@ BOOST_AUTO_TEST_CASE(script_build)
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
                                 "PQ P2PK unexpected witness", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH)
                                    .PushSig(key0).Push("0").AsWit().ScriptError(SCRIPT_ERR_WITNESS_UNEXPECTED));
+
+    // Tidecoin-specific OP_SHA512 behavior.
+    const CScript sha512_size_script = CScript() << OP_SHA512 << OP_SIZE << 64 << OP_EQUAL;
+    tests.push_back(TestBuilder(sha512_size_script,
+                                "PQ OP_SHA512 enabled", SCRIPT_VERIFY_SHA512)
+                                   .Push("01020304"));
+    tests.push_back(TestBuilder(sha512_size_script,
+                                "PQ OP_SHA512 disabled acts as NOP", SCRIPT_VERIFY_NONE)
+                                   .Push("01020304")
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(sha512_size_script,
+                                "PQ OP_SHA512 discouraged when disabled", SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
+                                   .Push("01020304")
+                                   .ScriptError(SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS));
+    tests.push_back(TestBuilder(sha512_size_script,
+                                "PQ OP_SHA512 enabled despite discourage", SCRIPT_VERIFY_SHA512 | SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
+                                   .Push("01020304"));
+    tests.push_back(TestBuilder(CScript() << OP_SHA512,
+                                "PQ OP_SHA512 empty stack", SCRIPT_VERIFY_SHA512)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+
+    // Tidecoin-specific witness v1_512 behavior.
+    const uint32_t witness_v1_512_flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS_V1_512};
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH sighash NONE", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_NONE, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH sighash SINGLE", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_SINGLE, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH sighash ALL|ANYONECANPAY", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL | SIGHASH_ANYONECANPAY, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH sighash NONE|ANYONECANPAY", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_NONE | SIGHASH_ANYONECANPAY, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH sighash SINGLE|ANYONECANPAY", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey1) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH wrong key", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 P2WSH wrong value", witness_v1_512_flags, false, WitnessMode::SH, 1, 0)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 discouraged without v1_512 flag", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH |
+                                SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0),
+                                "PQ v1_512 wrong program length", witness_v1_512_flags, false, WitnessMode::PKH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .Push(pubkey0).AsWit()
+                                   .ScriptError(SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ v1_512 zero sighash type rejected", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, 0, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ P2SH(v1_512 P2WSH)", witness_v1_512_flags, true, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem()
+                                   .PushRedeem());
 
     std::set<std::string> tests_set;
 
