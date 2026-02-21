@@ -109,9 +109,12 @@ change in the commit range.
 
 `test/lint/lint-pq-script-coverage.py` enforces Tidecoin's PQ script coverage
 lock-in:
+Path note: this documentation is in `test/lint/README.md` (not repository root `README.md`).
 
 - required script category/polarity presence in `src/test/data/script_tests_pq.json`,
 - required script-assets flag/profile coverage in `src/test/data/script_assets_test.json`,
+- required script cell IDs and family polarities from `test/lint/pq_script_required_cells.json`,
+- required script-assets cell IDs from `test/lint/pq_script_assets_required_cells.json`,
 - hard-cutover invariants (legacy fixture/reference and legacy-term bans in script/tx tests).
 
 Run locally:

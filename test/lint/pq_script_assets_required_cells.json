@@ -1,0 +1,35 @@
+{
+  "required_flag_sets": [
+    "PQ_STRICT",
+    "NULLDUMMY,PQ_STRICT",
+    "CHECKLOCKTIMEVERIFY,PQ_STRICT",
+    "CHECKSEQUENCEVERIFY,PQ_STRICT",
+    "CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,PQ_STRICT",
+    "NULLDUMMY,CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,PQ_STRICT",
+    "P2SH,WITNESS,PQ_STRICT",
+    "P2SH,NULLDUMMY,WITNESS,PQ_STRICT",
+    "P2SH,CHECKLOCKTIMEVERIFY,WITNESS,PQ_STRICT",
+    "P2SH,CHECKSEQUENCEVERIFY,WITNESS,PQ_STRICT",
+    "P2SH,CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,WITNESS,PQ_STRICT",
+    "P2SH,NULLDUMMY,CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,WITNESS,PQ_STRICT",
+    "P2SH,CHECKLOCKTIMEVERIFY,PQ_STRICT",
+    "P2SH,CHECKSEQUENCEVERIFY,PQ_STRICT",
+    "P2SH,CHECKLOCKTIMEVERIFY,CHECKSEQUENCEVERIFY,PQ_STRICT"
+  ],
+  "required_cells": [
+    {"id": "ASSET-LEGACY-SPEND", "comment_prefix": "PQ legacy spend", "min_count": 1},
+    {"id": "ASSET-WITNESS-SPEND", "comment_prefix": "PQ witness spend", "min_count": 1},
+    {"id": "ASSET-P2SH-WITNESS-SPEND", "comment_prefix": "PQ p2sh-witness spend", "min_count": 1},
+    {"id": "ASSET-STATIC-CLTV", "comment_prefix": "PQ static CLTV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-CLTV-TIMELOCK", "comment_prefix": "PQ static CLTV time-lock spend", "min_count": 1},
+    {"id": "ASSET-STATIC-CSV", "comment_prefix": "PQ static CSV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-CSV-TIMELOCK", "comment_prefix": "PQ static CSV time-lock spend", "min_count": 1},
+    {"id": "ASSET-STATIC-CLTVCSV", "comment_prefix": "PQ static CLTV+CSV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-P2SH-CLTV", "comment_prefix": "PQ static P2SH CLTV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-P2SH-CSV", "comment_prefix": "PQ static P2SH CSV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-P2SH-CLTVCSV", "comment_prefix": "PQ static P2SH CLTV+CSV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-P2WSH-CLTV", "comment_prefix": "PQ static P2WSH CLTV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-P2WSH-CSV", "comment_prefix": "PQ static P2WSH CSV spend", "min_count": 1},
+    {"id": "ASSET-STATIC-P2WSH-CLTVCSV", "comment_prefix": "PQ static P2WSH CLTV+CSV spend", "min_count": 1}
+  ]
+}

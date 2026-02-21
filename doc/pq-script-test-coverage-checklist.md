@@ -25,6 +25,10 @@ Reference matrix:
 - [x] PR-11: Residual Script Gap Closure (Closed with Deferred Residuals)
 - [x] PR-12: Script-Assets Corpus Scale-Up and Re-Minimization
 - [x] PR-13: Coverage Scorecard and Lock-In
+- [x] PR-14: Interpreter Negative-Surface Matrix Expansion
+- [x] PR-15: Multisig and Policy Cartesian Expansion
+- [x] PR-16: Timelock and Witness Matrix Expansion
+- [x] PR-17: Cell-Based Scorecard Gate v2
 
 ## PR-01: Repository Policy and Tracking
 
@@ -450,6 +454,185 @@ Exit criteria:
 - Validation:
 - `python3 test/lint/lint-pq-script-coverage.py`
 - `(cd test/lint/test_runner && RUST_BACKTRACE=1 cargo run -- --lint=pq_script_coverage)`
+
+## PR-14: Interpreter Negative-Surface Matrix Expansion
+
+Goal:
+
+- Increase interpreter negative-path depth with explicit matrix cells and deterministic IDs.
+
+Files to edit:
+
+- `src/test/script_tests.cpp`
+- `src/test/data/script_tests_pq.json`
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Add vectors with these required cell IDs in comments:
+- `INT-BADOP-BARE`, `INT-BADOP-P2SH`, `INT-BADOP-P2WSH`
+- `INT-DISABLED-BARE`, `INT-DISABLED-P2SH`, `INT-DISABLED-P2WSH`
+- `INT-VERIFY-FAIL-BARE`, `INT-VERIFY-FAIL-P2SH`, `INT-VERIFY-FAIL-P2WSH`
+- `INT-STACK-UFLOW-2DROP`, `INT-STACK-UFLOW-2DUP`, `INT-STACK-UFLOW-2OVER`, `INT-STACK-UFLOW-2ROT`, `INT-STACK-UFLOW-2SWAP`, `INT-STACK-UFLOW-3DUP`, `INT-STACK-UFLOW-PICK`, `INT-STACK-UFLOW-ROLL`, `INT-ALT-UFLOW-FROMALTSTACK`
+- `INT-COND-UNBAL-IF-NO-ENDIF`, `INT-COND-UNBAL-ELSE-WO-IF`, `INT-COND-UNBAL-ENDIF-WO-IF`
+- Regenerate fixture: `TIDE_SCRIPT_TESTS_GEN_OUTPUT=src/test/data/script_tests_pq.json build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=no`
+
+Validation:
+
+- `ctest --test-dir build -R script_tests --output-on-failure`
+- `rg -n "INT-BADOP-|INT-DISABLED-|INT-VERIFY-FAIL-|INT-STACK-UFLOW-|INT-ALT-UFLOW-FROMALTSTACK|INT-COND-UNBAL-" src/test/script_tests.cpp src/test/data/script_tests_pq.json`
+
+Exit criteria:
+
+- All required PR-14 cell IDs are present in both source and regenerated fixture.
+- Expected error reasons match cell intent (`BAD_OPCODE`, `DISABLED_OPCODE`, `VERIFY`, stack/conditional classes).
+- Implementation completion (2026-02-21):
+- Added 21 `INT-*` matrix-cell vectors in `src/test/script_tests.cpp`.
+- Regenerated `src/test/data/script_tests_pq.json` to 162 vectors.
+- Validation passed:
+- `build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=no`
+- `build/bin/test_tidecoin --run_test=script_tests/script_json_test --catch_system_errors=no --color_output=no`
+- `ctest --test-dir build -R script_tests --output-on-failure`
+
+## PR-15: Multisig and Policy Cartesian Expansion
+
+Goal:
+
+- Expand multisig depth and policy interactions across arity/order/wrapper/flag combinations.
+
+Files to edit:
+
+- `src/test/script_tests.cpp`
+- `src/test/data/script_tests_pq.json`
+- `src/test/data/script_assets_test.json` (if corpus expansion needed)
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Add required multisig cell IDs:
+- `MSIG-ARITY-1OF1-OK`, `MSIG-ARITY-1OF2-OK`, `MSIG-ARITY-1OF3-OK`, `MSIG-ARITY-2OF2-OK`, `MSIG-ARITY-2OF3-OK`, `MSIG-ARITY-3OF5-OK`
+- `MSIG-ORDER-WRONG`, `MSIG-MISSING-SIG`, `MSIG-WRONG-SIG`, `MSIG-WRONG-KEY`, `MSIG-EXTRA-SIG`
+- `MSIG-NULLDUMMY-ENFORCED`, `MSIG-NULLDUMMY-NOT-ENFORCED`
+- `MSIG-NULLFAIL-ENFORCED`, `MSIG-NULLFAIL-NOT-ENFORCED`
+- `MSIG-CLEANSTACK-ENFORCED`, `MSIG-CLEANSTACK-NOT-ENFORCED`
+- `MSIG-SIGPUSHONLY-ENFORCED`, `MSIG-SIGPUSHONLY-NOT-ENFORCED`
+- Ensure bare/P2SH/witness wrapper coverage where applicable.
+
+Validation:
+
+- `ctest --test-dir build -R script_tests --output-on-failure`
+- `rg -n "MSIG-ARITY-|MSIG-ORDER-|MSIG-MISSING-SIG|MSIG-WRONG-SIG|MSIG-WRONG-KEY|MSIG-EXTRA-SIG|MSIG-NULLDUMMY-|MSIG-NULLFAIL-|MSIG-CLEANSTACK-|MSIG-SIGPUSHONLY-" src/test/script_tests.cpp src/test/data/script_tests_pq.json`
+
+Exit criteria:
+
+- All PR-15 required cell IDs are present.
+- Multisig vectors cover arity, ordering, and policy-flag enforcement/non-enforcement paths.
+- Implementation completion (2026-02-21):
+- Added PR-15 matrix-cell vectors in `src/test/script_tests.cpp`:
+- `MSIG-ARITY-1OF1-OK`, `MSIG-ARITY-1OF2-OK`, `MSIG-ARITY-1OF3-OK`, `MSIG-ARITY-2OF2-OK`, `MSIG-ARITY-2OF3-OK`, `MSIG-ARITY-3OF5-OK`
+- `MSIG-ORDER-WRONG`, `MSIG-MISSING-SIG`, `MSIG-WRONG-SIG`, `MSIG-WRONG-KEY`, `MSIG-EXTRA-SIG`
+- `MSIG-NULLDUMMY-ENFORCED`, `MSIG-NULLDUMMY-NOT-ENFORCED`
+- `MSIG-NULLFAIL-ENFORCED`, `MSIG-NULLFAIL-NOT-ENFORCED`
+- `MSIG-CLEANSTACK-ENFORCED`, `MSIG-CLEANSTACK-NOT-ENFORCED`
+- `MSIG-SIGPUSHONLY-ENFORCED`, `MSIG-SIGPUSHONLY-NOT-ENFORCED`
+- Regenerated `src/test/data/script_tests_pq.json` after PR-15 updates.
+- Validation passed:
+- `build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=no`
+- `build/bin/test_tidecoin --run_test=script_tests/script_json_test --catch_system_errors=no --color_output=no`
+- `ctest --test-dir build -R script_tests --output-on-failure`
+
+## PR-16: Timelock and Witness Matrix Expansion
+
+Goal:
+
+- Deepen CLTV/CSV and witness matrix coverage with explicit cell IDs and wrapper parity.
+
+Files to edit:
+
+- `src/test/script_tests.cpp`
+- `src/test/data/script_tests_pq.json`
+- `test/functional/feature_pq_script_assets.py` (if additional corpus generation needed)
+- `src/test/data/script_assets_test.json` (if regenerated)
+- `doc/pq-script-coverage-gap-matrix.md`
+
+Edits:
+
+- Add required timelock cell IDs:
+- `TIME-CLTV-EMPTY-STACK`, `TIME-CLTV-NEGATIVE`, `TIME-CLTV-UNSAT`, `TIME-CLTV-SAT-BARE`, `TIME-CLTV-SAT-P2SH`, `TIME-CLTV-SAT-P2WSH`
+- `TIME-CSV-EMPTY-STACK`, `TIME-CSV-NEGATIVE`, `TIME-CSV-UNSAT`, `TIME-CSV-SAT-BARE`, `TIME-CSV-SAT-P2SH`, `TIME-CSV-SAT-P2WSH`
+- `TIME-CLTVCSV-COMBINED-SAT`, `TIME-CLTVCSV-COMBINED-UNSAT`
+- Add required witness cell IDs:
+- `WIT-V0-MISMATCH`, `WIT-V0-MALLEATED`, `WIT-V0-UNEXPECTED`, `WIT-V0-WRONG-VALUE`, `WIT-V0-WRONG-LEN`
+- `WIT-V1512-SIGHASH-ALL`, `WIT-V1512-SIGHASH-NONE`, `WIT-V1512-SIGHASH-SINGLE`, `WIT-V1512-SIGHASH-ALL-ACP`, `WIT-V1512-SIGHASH-NONE-ACP`, `WIT-V1512-SIGHASH-SINGLE-ACP`
+- `WIT-V1512-ZERO-SIGHASH-REJECT`, `WIT-V1512-WRONG-KEY`, `WIT-V1512-MISMATCH`, `WIT-V1512-MALLEATED`, `WIT-V1512-UNEXPECTED`, `WIT-V1512-WRONG-VALUE`, `WIT-V1512-WRONG-LEN`, `WIT-V1512-DISCOURAGED`
+- Add matching script-assets direct-success timelock entries where tx-field satisfaction requires corpus path.
+
+Validation:
+
+- `ctest --test-dir build -R "script_tests|script_assets_tests" --output-on-failure`
+- `rg -n "TIME-CLTV-|TIME-CSV-|TIME-CLTVCSV-|WIT-V0-|WIT-V1512-" src/test/script_tests.cpp src/test/data/script_tests_pq.json src/test/data/script_assets_test.json`
+
+Exit criteria:
+
+- All PR-16 required cell IDs are present.
+- CLTV/CSV and witness matrices include both satisfied and failure paths across intended wrappers and sighash modes.
+- Implementation completion (2026-02-21):
+- Added required PR-16 cell IDs in `src/test/script_tests.cpp` and regenerated `src/test/data/script_tests_pq.json`.
+- Timelock cells covered:
+- `TIME-CLTV-*`, `TIME-CSV-*`, `TIME-CLTVCSV-*` including SAT wrappers for bare/P2SH/P2WSH via guarded-path vectors.
+- Witness cells covered:
+- `WIT-V0-*` and full `WIT-V1512-*` set, including newly added `WIT-V1512-MISMATCH`, `WIT-V1512-MALLEATED`, `WIT-V1512-UNEXPECTED`.
+- Fixture size after regeneration: `177` vectors.
+- Validation passed:
+- `build/bin/test_tidecoin --run_test=script_tests/script_build --catch_system_errors=no --color_output=false`
+- `build/bin/test_tidecoin --run_test=script_tests/script_json_test --catch_system_errors=no --color_output=false`
+- `python3 test/lint/lint-pq-script-coverage.py`
+- `ctest --test-dir build -R "script_tests|script_assets_tests|transaction_tests|miniscript_tests|wallet_transaction_tests" --output-on-failure`
+
+## PR-17: Cell-Based Scorecard Gate v2
+
+Goal:
+
+- Convert coverage gate from category-presence to required-cell semantics.
+
+Files to edit:
+
+- `test/lint/lint-pq-script-coverage.py`
+- `test/lint/test_runner/src/main.rs`
+- `test/lint/pq_script_required_cells.json` (new)
+- `test/lint/pq_script_assets_required_cells.json` (new)
+- `doc/pq-script-coverage-gap-matrix.md`
+- `test/lint/README.md`
+
+Edits:
+
+- Add machine-readable required-cell manifests for script fixture and script-assets corpus.
+- Extend lint checker to enforce:
+- required cell ID presence,
+- required positive/negative polarity per family,
+- hard-cutover invariants (already present) without relaxing existing checks.
+- Wire checker into lint runner as required CI gate.
+
+Validation:
+
+- `python3 test/lint/lint-pq-script-coverage.py`
+- `(cd test/lint/test_runner && RUST_BACKTRACE=1 cargo run -- --lint=pq_script_coverage)`
+- Negative test: temporarily remove one required cell ID and verify lint fails deterministically.
+
+Exit criteria:
+
+- CI blocks on missing required cells even if aggregate vector counts stay high.
+- Coverage gate semantics are explicit and non-regressing across regeneration cycles.
+- Implementation completion (2026-02-21):
+- Added new manifests:
+- `test/lint/pq_script_required_cells.json`
+- `test/lint/pq_script_assets_required_cells.json`
+- Updated `test/lint/lint-pq-script-coverage.py` to enforce manifest-defined cell IDs and polarity/family requirements.
+- Updated `test/lint/README.md` with manifest-backed gate documentation (explicitly `test/lint/README.md`, not root `README.md`).
+- Validation passed:
+- `python3 test/lint/lint-pq-script-coverage.py`
+- `(cd test/lint/test_runner && RUST_BACKTRACE=1 cargo run -- --lint=pq_script_coverage)`
+- Negative test passed (deterministic failure): temporary injection of nonexistent required cell ID `INT-DOES-NOT-EXIST` produced lint failure as expected.
 
 ## Cross-PR Acceptance Queries
 

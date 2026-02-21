@@ -419,7 +419,7 @@ BOOST_AUTO_TEST_CASE(script_build)
     // exact JSON membership checks against static fixtures are not stable.
     const bool verify_json_membership{false};
 
-    CKey key0, key1, key2;
+    CKey key0, key1, key2, key3, key4;
     {
         const std::vector<unsigned char> key0_secret{ParseHex(std::string{SCRIPT_BUILD_KEY0_SECRET_HEX})};
         key0.Set(key0_secret.begin(), key0_secret.end());
@@ -427,10 +427,14 @@ BOOST_AUTO_TEST_CASE(script_build)
     }
     key1.MakeNewKey(pq::SchemeId::FALCON_512);
     key2.MakeNewKey(pq::SchemeId::FALCON_512);
+    key3.MakeNewKey(pq::SchemeId::FALCON_512);
+    key4.MakeNewKey(pq::SchemeId::FALCON_512);
 
     const CPubKey pubkey0 = key0.GetPubKey();
     const CPubKey pubkey1 = key1.GetPubKey();
     const CPubKey pubkey2 = key2.GetPubKey();
+    const CPubKey pubkey3 = key3.GetPubKey();
+    const CPubKey pubkey4 = key4.GetPubKey();
 
     std::vector<TestBuilder> tests;
 
@@ -468,33 +472,48 @@ BOOST_AUTO_TEST_CASE(script_build)
     tests.push_back(TestBuilder(CScript() << OP_DUP << OP_HASH160 << ToByteVector(pubkey1.GetID()) << OP_EQUALVERIFY << OP_CHECKSIG,
                                 "PQ P2SH(P2PKH), bad sig with P2SH", SCRIPT_VERIFY_P2SH, true).PushSig(key0).DamagePush(10).PushRedeem().ScriptError(SCRIPT_ERR_EQUALVERIFY));
 
-    // Multisig semantics.
-    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ 2-of-3", 0).Num(0).PushSig(key0).PushSig(key1));
-    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ 2-of-3, 1 sig", 0).Num(0).PushSig(key0).Num(0).ScriptError(SCRIPT_ERR_EVAL_FALSE));
-    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ P2SH(2-of-3)", SCRIPT_VERIFY_P2SH, true).Num(0).PushSig(key1).PushSig(key2).PushRedeem());
-    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ P2SH(2-of-3), 1 sig", SCRIPT_VERIFY_P2SH, true).Num(0).PushSig(key1).Num(0).PushRedeem().ScriptError(SCRIPT_ERR_EVAL_FALSE));
-    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
-                                "PQ 1-of-2", 0).Num(0).PushSig(key1));
-    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
-                                "PQ 1-of-2 wrong key", 0).Num(0).PushSig(key2).ScriptError(SCRIPT_ERR_EVAL_FALSE));
-    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ 2-of-3 wrong signature order", 0).Num(0).PushSig(key2).PushSig(key0).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    const uint32_t witness_flags = SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH;
 
-    // NULLDUMMY
-    tests.push_back(TestBuilder(CScript() << OP_3 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ NULLDUMMY not enforced", 0).Num(1).PushSig(key0).PushSig(key1).PushSig(key2));
-    tests.push_back(TestBuilder(CScript() << OP_3 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
-                                "PQ NULLDUMMY enforced", SCRIPT_VERIFY_NULLDUMMY).Num(1).PushSig(key0).PushSig(key1).PushSig(key2).ScriptError(SCRIPT_ERR_SIG_NULLDUMMY));
+    // PR-15: multisig/policy cartesian matrix cells.
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << OP_1 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ARITY-1OF1-OK", 0).Num(0).PushSig(key0));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ARITY-1OF2-OK", 0).Num(0).PushSig(key1));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ARITY-1OF3-OK", 0).Num(0).PushSig(key2));
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ARITY-2OF2-OK", witness_flags, false, WitnessMode::SH, 0, 1)
+                                   .Push("").AsWit().PushWitSig(key0).PushWitSig(key1).PushWitRedeem());
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ARITY-2OF3-OK", SCRIPT_VERIFY_P2SH, true).Num(0).PushSig(key1).PushSig(key2).PushRedeem());
+    tests.push_back(TestBuilder(CScript() << OP_3 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << ToByteVector(pubkey3) << ToByteVector(pubkey4) << OP_5 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ARITY-3OF5-OK", 0).Num(0).PushSig(key0).PushSig(key3).PushSig(key4));
 
-    // SIGPUSHONLY
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-ORDER-WRONG", 0).Num(0).PushSig(key2).PushSig(key0).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-MISSING-SIG", 0).Num(0).PushSig(key0).Num(0).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-WRONG-SIG", 0).Num(0).PushSig(key0).PushSig(key1).DamagePush(10).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
+                                "PQ MSIG-WRONG-KEY", 0).Num(0).PushSig(key2).ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << OP_1 << OP_CHECKMULTISIG,
+                                "PQ MSIG-EXTRA-SIG", 0).Num(42).Num(0).PushSig(key0));
+
+    tests.push_back(TestBuilder(CScript() << OP_3 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-NULLDUMMY-NOT-ENFORCED", 0).Num(1).PushSig(key0).PushSig(key1).PushSig(key2));
+    tests.push_back(TestBuilder(CScript() << OP_3 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << ToByteVector(pubkey2) << OP_3 << OP_CHECKMULTISIG,
+                                "PQ MSIG-NULLDUMMY-ENFORCED", SCRIPT_VERIFY_NULLDUMMY).Num(1).PushSig(key0).PushSig(key1).PushSig(key2).ScriptError(SCRIPT_ERR_SIG_NULLDUMMY));
+
     tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey1) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
-                                "PQ SIGPUSHONLY not enforced", 0).Num(0).PushSig(key1).Opcode(OP_DUP));
+                                "PQ MSIG-SIGPUSHONLY-NOT-ENFORCED", 0).Num(0).PushSig(key1).Opcode(OP_DUP));
     tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey1) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG,
-                                "PQ SIGPUSHONLY enforced", SCRIPT_VERIFY_SIGPUSHONLY).Num(0).PushSig(key1).Opcode(OP_DUP).ScriptError(SCRIPT_ERR_SIG_PUSHONLY));
+                                "PQ MSIG-SIGPUSHONLY-ENFORCED", SCRIPT_VERIFY_SIGPUSHONLY).Num(0).PushSig(key1).Opcode(OP_DUP).ScriptError(SCRIPT_ERR_SIG_PUSHONLY));
+
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << OP_1 << OP_CHECKMULTISIG,
+                                "PQ MSIG-CLEANSTACK-NOT-ENFORCED", SCRIPT_VERIFY_P2SH).Num(42).Num(0).PushSig(key0));
+    tests.push_back(TestBuilder(CScript() << OP_1 << ToByteVector(pubkey0) << OP_1 << OP_CHECKMULTISIG,
+                                "PQ MSIG-CLEANSTACK-ENFORCED", SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_P2SH).Num(42).Num(0).PushSig(key0).ScriptError(SCRIPT_ERR_CLEANSTACK));
 
     // CLEANSTACK
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
@@ -530,6 +549,98 @@ BOOST_AUTO_TEST_CASE(script_build)
                                    .Opcode(OP_NOP8)
                                    .PushRedeem()
                                    .ScriptError(SCRIPT_ERR_SIG_PUSHONLY));
+
+    // PR-14: interpreter negative-surface matrix cells.
+    tests.push_back(TestBuilder(CScript() << OP_VERIF,
+                                "PQ INT-BADOP-BARE", 0)
+                                   .ScriptError(SCRIPT_ERR_BAD_OPCODE));
+    tests.push_back(TestBuilder(CScript() << OP_VERIF,
+                                "PQ INT-BADOP-P2SH", SCRIPT_VERIFY_P2SH, true)
+                                   .PushRedeem()
+                                   .ScriptError(SCRIPT_ERR_BAD_OPCODE));
+    tests.push_back(TestBuilder(CScript() << OP_VERIF,
+                                "PQ INT-BADOP-P2WSH", witness_flags, false, WitnessMode::SH)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_BAD_OPCODE));
+
+    tests.push_back(TestBuilder(CScript() << OP_CAT,
+                                "PQ INT-DISABLED-BARE", 0)
+                                   .ScriptError(SCRIPT_ERR_DISABLED_OPCODE));
+    tests.push_back(TestBuilder(CScript() << OP_CAT,
+                                "PQ INT-DISABLED-P2SH", SCRIPT_VERIFY_P2SH, true)
+                                   .PushRedeem()
+                                   .ScriptError(SCRIPT_ERR_DISABLED_OPCODE));
+    tests.push_back(TestBuilder(CScript() << OP_CAT,
+                                "PQ INT-DISABLED-P2WSH", witness_flags, false, WitnessMode::SH)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_DISABLED_OPCODE));
+
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_VERIFY,
+                                "PQ INT-VERIFY-FAIL-BARE", 0)
+                                   .ScriptError(SCRIPT_ERR_VERIFY));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_VERIFY,
+                                "PQ INT-VERIFY-FAIL-P2SH", SCRIPT_VERIFY_P2SH, true)
+                                   .PushRedeem()
+                                   .ScriptError(SCRIPT_ERR_VERIFY));
+    tests.push_back(TestBuilder(CScript() << OP_0 << OP_VERIFY,
+                                "PQ INT-VERIFY-FAIL-P2WSH", witness_flags, false, WitnessMode::SH)
+                                   .PushWitRedeem()
+                                   .ScriptError(SCRIPT_ERR_VERIFY));
+
+    tests.push_back(TestBuilder(CScript() << OP_2DROP,
+                                "PQ INT-STACK-UFLOW-2DROP", 0)
+                                   .Num(1)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_2DUP,
+                                "PQ INT-STACK-UFLOW-2DUP", 0)
+                                   .Num(1)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_2OVER,
+                                "PQ INT-STACK-UFLOW-2OVER", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_2ROT,
+                                "PQ INT-STACK-UFLOW-2ROT", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3)
+                                   .Num(4)
+                                   .Num(5)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_2SWAP,
+                                "PQ INT-STACK-UFLOW-2SWAP", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .Num(3)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_3DUP,
+                                "PQ INT-STACK-UFLOW-3DUP", 0)
+                                   .Num(1)
+                                   .Num(2)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_2 << OP_PICK,
+                                "PQ INT-STACK-UFLOW-PICK", 0)
+                                   .Num(11)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_1 << OP_ROLL,
+                                "PQ INT-STACK-UFLOW-ROLL", 0)
+                                   .Num(11)
+                                   .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
+    tests.push_back(TestBuilder(CScript() << OP_FROMALTSTACK,
+                                "PQ INT-ALT-UFLOW-FROMALTSTACK", 0)
+                                   .ScriptError(SCRIPT_ERR_INVALID_ALTSTACK_OPERATION));
+
+    tests.push_back(TestBuilder(CScript() << OP_1 << OP_IF << OP_1,
+                                "PQ INT-COND-UNBAL-IF-NO-ENDIF", 0)
+                                   .ScriptError(SCRIPT_ERR_UNBALANCED_CONDITIONAL));
+    tests.push_back(TestBuilder(CScript() << OP_ELSE << OP_1,
+                                "PQ INT-COND-UNBAL-ELSE-WO-IF", 0)
+                                   .ScriptError(SCRIPT_ERR_UNBALANCED_CONDITIONAL));
+    tests.push_back(TestBuilder(CScript() << OP_ENDIF,
+                                "PQ INT-COND-UNBAL-ENDIF-WO-IF", 0)
+                                   .ScriptError(SCRIPT_ERR_UNBALANCED_CONDITIONAL));
 
     // Generic interpreter stack/altstack/flow/comparison coverage.
     tests.push_back(TestBuilder(CScript() << OP_TOALTSTACK << OP_FROMALTSTACK << OP_7 << OP_EQUAL,
@@ -748,34 +859,68 @@ BOOST_AUTO_TEST_CASE(script_build)
                                        .ScriptError(SCRIPT_ERR_MINIMALDATA));
     }
 
-    // CHECKLOCKTIMEVERIFY and CHECKSEQUENCEVERIFY failure semantics within JSON-compatible fixture constraints.
+    // PR-16: timelock matrix (TIME-*). SAT cells use guarded branches so they
+    // remain stable under the fixed JSON tx schema used by script_json_test.
+    const uint32_t cltv_flags{SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY};
+    const uint32_t csv_flags{SCRIPT_VERIFY_CHECKSEQUENCEVERIFY};
+    const uint32_t cltv_witness_flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY};
+    const uint32_t csv_witness_flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY};
+    const uint32_t cltv_csv_flags{SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY};
+
     tests.push_back(TestBuilder(CScript() << OP_CHECKLOCKTIMEVERIFY,
-                                "PQ CLTV empty stack", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY)
+                                "PQ TIME-CLTV-EMPTY-STACK", cltv_flags)
                                    .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
     tests.push_back(TestBuilder(CScript() << OP_CHECKLOCKTIMEVERIFY,
-                                "PQ CLTV negative locktime", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY)
+                                "PQ TIME-CLTV-NEGATIVE", cltv_flags)
                                    .Num(-1)
                                    .ScriptError(SCRIPT_ERR_NEGATIVE_LOCKTIME));
     tests.push_back(TestBuilder(CScript() << OP_CHECKLOCKTIMEVERIFY,
-                                "PQ CLTV unsatisfied locktime", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY)
+                                "PQ TIME-CLTV-UNSAT", cltv_flags)
                                    .Num(1)
                                    .ScriptError(SCRIPT_ERR_UNSATISFIED_LOCKTIME));
-    tests.push_back(TestBuilder(CScript() << OP_0 << OP_IF << OP_CHECKLOCKTIMEVERIFY << OP_ENDIF << OP_TRUE,
-                                "PQ CLTV guarded branch success", SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY));
+    {
+        const CScript cltv_sat_script = CScript() << OP_0 << OP_IF << OP_CHECKLOCKTIMEVERIFY << OP_ENDIF << OP_TRUE;
+        tests.push_back(TestBuilder(cltv_sat_script,
+                                    "PQ TIME-CLTV-SAT-BARE", cltv_flags));
+        tests.push_back(TestBuilder(cltv_sat_script,
+                                    "PQ TIME-CLTV-SAT-P2SH", cltv_flags, true)
+                                       .PushRedeem());
+        tests.push_back(TestBuilder(cltv_sat_script,
+                                    "PQ TIME-CLTV-SAT-P2WSH", cltv_witness_flags, false, WitnessMode::SH, 0, 1)
+                                       .PushWitRedeem());
+    }
 
     tests.push_back(TestBuilder(CScript() << OP_CHECKSEQUENCEVERIFY,
-                                "PQ CSV empty stack", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
+                                "PQ TIME-CSV-EMPTY-STACK", csv_flags)
                                    .ScriptError(SCRIPT_ERR_INVALID_STACK_OPERATION));
     tests.push_back(TestBuilder(CScript() << OP_CHECKSEQUENCEVERIFY,
-                                "PQ CSV negative argument", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
+                                "PQ TIME-CSV-NEGATIVE", csv_flags)
                                    .Num(-1)
                                    .ScriptError(SCRIPT_ERR_NEGATIVE_LOCKTIME));
     tests.push_back(TestBuilder(CScript() << OP_CHECKSEQUENCEVERIFY,
-                                "PQ CSV unsatisfied locktime", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
-                                   .Num(0)
+                                "PQ TIME-CSV-UNSAT", csv_flags)
+                                   .Num(1)
                                    .ScriptError(SCRIPT_ERR_UNSATISFIED_LOCKTIME));
-    tests.push_back(TestBuilder(CScript() << OP_0 << OP_IF << OP_CHECKSEQUENCEVERIFY << OP_ENDIF << OP_TRUE,
-                                "PQ CSV guarded branch success", SCRIPT_VERIFY_CHECKSEQUENCEVERIFY));
+    {
+        const CScript csv_sat_script = CScript() << OP_0 << OP_IF << OP_CHECKSEQUENCEVERIFY << OP_ENDIF << OP_TRUE;
+        tests.push_back(TestBuilder(csv_sat_script,
+                                    "PQ TIME-CSV-SAT-BARE", csv_flags));
+        tests.push_back(TestBuilder(csv_sat_script,
+                                    "PQ TIME-CSV-SAT-P2SH", csv_flags, true)
+                                       .PushRedeem());
+        tests.push_back(TestBuilder(csv_sat_script,
+                                    "PQ TIME-CSV-SAT-P2WSH", csv_witness_flags, false, WitnessMode::SH, 0, 1)
+                                       .PushWitRedeem());
+    }
+    {
+        const CScript cltv_csv_sat_script = CScript() << OP_0 << OP_IF << OP_CHECKLOCKTIMEVERIFY << OP_CHECKSEQUENCEVERIFY << OP_ENDIF << OP_TRUE;
+        tests.push_back(TestBuilder(cltv_csv_sat_script,
+                                    "PQ TIME-CLTVCSV-COMBINED-SAT", cltv_csv_flags));
+        const CScript cltv_csv_unsat_script = CScript() << 1 << OP_CHECKLOCKTIMEVERIFY << OP_DROP << 1 << OP_CHECKSEQUENCEVERIFY;
+        tests.push_back(TestBuilder(cltv_csv_unsat_script,
+                                    "PQ TIME-CLTVCSV-COMBINED-UNSAT", cltv_csv_flags)
+                                       .ScriptError(SCRIPT_ERR_UNSATISFIED_LOCKTIME));
+    }
 
     // MINIMALIF for witness script paths.
     const uint32_t minimalif_flags = SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_MINIMALIF;
@@ -813,13 +958,13 @@ BOOST_AUTO_TEST_CASE(script_build)
                                 "PQ NULLFAIL with empty signature", SCRIPT_VERIFY_NULLFAIL)
                                    .Num(0));
     tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG << OP_NOT,
-                                "PQ NULLFAIL multisig not enforced", 0)
+                                "PQ MSIG-NULLFAIL-NOT-ENFORCED", 0)
                                    .Num(0)
                                    .PushSig(key0)
                                    .PushSig(key1)
                                    .DamagePush(10));
     tests.push_back(TestBuilder(CScript() << OP_2 << ToByteVector(pubkey0) << ToByteVector(pubkey1) << OP_2 << OP_CHECKMULTISIG << OP_NOT,
-                                "PQ NULLFAIL multisig enforced", SCRIPT_VERIFY_NULLFAIL)
+                                "PQ MSIG-NULLFAIL-ENFORCED", SCRIPT_VERIFY_NULLFAIL)
                                    .Num(0)
                                    .PushSig(key0)
                                    .PushSig(key1)
@@ -899,7 +1044,7 @@ BOOST_AUTO_TEST_CASE(script_build)
                                    .PushWitSig(key0).Push(pubkey1).AsWit().PushRedeem());
 
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ P2WSH wrong value", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::SH,
+                                "PQ WIT-V0-WRONG-VALUE", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::SH,
                                 0, 0).PushWitSig(key0, 1).PushWitRedeem().ScriptError(SCRIPT_ERR_EVAL_FALSE));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0),
                                 "PQ P2WPKH wrong value", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::PKH,
@@ -922,7 +1067,7 @@ BOOST_AUTO_TEST_CASE(script_build)
         std::vector<unsigned char> hash_bytes = ToByteVector(hash);
         hash_bytes.pop_back();
         tests.push_back(TestBuilder(CScript() << OP_0 << hash_bytes,
-                                    "PQ witness wrong program length", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false)
+                                    "PQ WIT-V0-WRONG-LEN", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false)
                                        .PushWitSig(key0).Push(pubkey0).AsWit().ScriptError(SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH));
     }
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
@@ -931,20 +1076,20 @@ BOOST_AUTO_TEST_CASE(script_build)
     {
         CScript witscript = CScript() << ToByteVector(pubkey0) << OP_CHECKSIG;
         tests.push_back(TestBuilder(witscript,
-                                    "PQ P2WSH witness mismatch", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::SH)
+                                    "PQ WIT-V0-MISMATCH", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::SH)
                                        .PushWitSig(key0).Push(witscript).DamagePush(0).AsWit().ScriptError(SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH));
     }
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0),
                                 "PQ P2WPKH witness mismatch", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::PKH)
                                    .PushWitSig(key0).Push(pubkey0).AsWit().Push("0").AsWit().ScriptError(SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0),
-                                "PQ P2WPKH non-empty scriptSig", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::PKH)
+                                "PQ WIT-V0-MALLEATED", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, false, WitnessMode::PKH)
                                    .PushWitSig(key0).Push(pubkey0).AsWit().Num(11).ScriptError(SCRIPT_ERR_WITNESS_MALLEATED));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey1),
                                 "PQ P2SH(P2WPKH) superfluous scriptSig push", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH, true, WitnessMode::PKH)
                                    .PushWitSig(key0).Push(pubkey1).AsWit().Num(11).PushRedeem().ScriptError(SCRIPT_ERR_WITNESS_MALLEATED_P2SH));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ P2PK unexpected witness", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH)
+                                "PQ WIT-V0-UNEXPECTED", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH)
                                    .PushSig(key0).Push("0").AsWit().ScriptError(SCRIPT_ERR_WITNESS_UNEXPECTED));
 
     // Tidecoin-specific OP_SHA512 behavior.
@@ -970,55 +1115,74 @@ BOOST_AUTO_TEST_CASE(script_build)
     // Tidecoin-specific witness v1_512 behavior.
     const uint32_t witness_v1_512_flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS_V1_512};
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-SIGHASH-ALL v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem());
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH sighash NONE", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-SIGHASH-NONE v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_NONE, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem());
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH sighash SINGLE", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-SIGHASH-SINGLE v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_SINGLE, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem());
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH sighash ALL|ANYONECANPAY", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-SIGHASH-ALL-ACP v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_ALL | SIGHASH_ANYONECANPAY, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem());
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH sighash NONE|ANYONECANPAY", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-SIGHASH-NONE-ACP v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_NONE | SIGHASH_ANYONECANPAY, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem());
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH sighash SINGLE|ANYONECANPAY", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-SIGHASH-SINGLE-ACP v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem());
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey1) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH wrong key", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-WRONG-KEY v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem()
                                    .ScriptError(SCRIPT_ERR_EVAL_FALSE));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 P2WSH wrong value", witness_v1_512_flags, false, WitnessMode::SH, 1, 0)
+                                "PQ WIT-V1512-WRONG-VALUE v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 0)
                                    .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem()
                                    .ScriptError(SCRIPT_ERR_EVAL_FALSE));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 discouraged without v1_512 flag", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH |
+                                "PQ WIT-V1512-DISCOURAGED v1_512", SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH |
                                 SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem()
                                    .ScriptError(SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0),
-                                "PQ v1_512 wrong program length", witness_v1_512_flags, false, WitnessMode::PKH, 1, 1)
+                                "PQ WIT-V1512-WRONG-LEN v1_512", witness_v1_512_flags, false, WitnessMode::PKH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
                                    .Push(pubkey0).AsWit()
                                    .ScriptError(SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
-                                "PQ v1_512 zero sighash type rejected", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                "PQ WIT-V1512-ZERO-SIGHASH-REJECT v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, 0, 32, 32, SigVersion::WITNESS_V1_512)
                                    .PushWitRedeem()
                                    .ScriptError(SCRIPT_ERR_EVAL_FALSE));
+    {
+        const CScript witscript = CScript() << ToByteVector(pubkey0) << OP_CHECKSIG;
+        tests.push_back(TestBuilder(witscript,
+                                    "PQ WIT-V1512-MISMATCH v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                       .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                       .Push(witscript).DamagePush(0).AsWit()
+                                       .ScriptError(SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH));
+    }
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ WIT-V1512-MALLEATED v1_512", witness_v1_512_flags, false, WitnessMode::SH, 1, 1)
+                                   .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
+                                   .PushWitRedeem()
+                                   .Num(11)
+                                   .ScriptError(SCRIPT_ERR_WITNESS_MALLEATED));
+    tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
+                                "PQ WIT-V1512-UNEXPECTED v1_512", witness_v1_512_flags)
+                                   .PushSig(key0)
+                                   .Push("0").AsWit()
+                                   .ScriptError(SCRIPT_ERR_WITNESS_UNEXPECTED));
     tests.push_back(TestBuilder(CScript() << ToByteVector(pubkey0) << OP_CHECKSIG,
                                 "PQ P2SH(v1_512 P2WSH)", witness_v1_512_flags, true, WitnessMode::SH, 1, 1)
                                    .PushWitSig(key0, 1, SIGHASH_ALL, 32, 32, SigVersion::WITNESS_V1_512)
