@@ -13,7 +13,7 @@ can be found in the contrib/init folder.
 Service User
 ---------------------------------
 
-All three Linux startup configurations assume the existence of a "bitcoin" user
+All three Linux startup configurations assume the existence of a "tidecoin" user
 and group.  They must be created before attempting to use these scripts.
 The macOS configuration assumes tidecoind will be set up for the current user.
 
@@ -46,7 +46,7 @@ This allows for running tidecoind without having to do any manual configuration.
 relative to the data directory. `wallet` *only* supports relative paths.
 
 To generate an example configuration file that describes the configuration settings,
-see [contrib/devtools/README.md](../contrib/devtools/README.md#gen-bitcoin-confsh).
+see [contrib/devtools/README.md](../contrib/devtools/README.md#gen-tidecoin-confsh).
 
 Paths
 ---------------------------------
@@ -63,16 +63,16 @@ All three configurations assume several paths that might need to be adjusted.
     Lock file:           /var/lock/subsys/tidecoind (CentOS)
 
 The PID directory (if applicable) and data directory should both be owned by the
-bitcoin user and group. It is advised for security reasons to make the
-configuration file and data directory only readable by the bitcoin user and
+tidecoin user and group. It is advised for security reasons to make the
+configuration file and data directory only readable by the tidecoin user and
 group. Access to tidecoin-cli and other tidecoind rpc clients can then be
 controlled by group membership.
 
 NOTE: When using the systemd .service file, the creation of the aforementioned
 directories and the setting of their permissions is automatically handled by
-systemd. Directories are given a permission of 710, giving the bitcoin group
+systemd. Directories are given a permission of 710, giving the tidecoin group
 access to files under it _if_ the files themselves give permission to the
-bitcoin group to do so. This does not allow
+tidecoin group to do so. This does not allow
 for the listing of files under the directory.
 
 NOTE: It is not currently possible to override `datadir` in
@@ -88,7 +88,7 @@ OpenRC).
 
     Binary:              /usr/local/bin/tidecoind
     Configuration file:  ~/Library/Application Support/Tidecoin/tidecoin.conf
-    Data directory:      ~/Library/Application Support/Bitcoin
+    Data directory:      ~/Library/Application Support/Tidecoin
     Lock file:           ~/Library/Application Support/Tidecoin/.lock
 
 Installing Service Configuration
@@ -139,7 +139,7 @@ This Launch Agent will cause tidecoind to start whenever the user logs in.
 
 NOTE: This approach is intended for those wanting to run tidecoind as the current user.
 You will need to modify org.tidecoin.tidecoind.plist if you intend to use it as a
-Launch Daemon with a dedicated bitcoin user.
+Launch Daemon with a dedicated tidecoin user.
 
 Auto-respawn
 -----------------------------------

@@ -263,14 +263,39 @@ jobs:
         run: |
           cmake --build . -j $NUMBER_OF_PROCESSORS --config Release
 
-      - name: Get bitcoind manifest
+      - name: Get tidecoind manifest
         if: matrix.job-type == 'standard'
         working-directory: build
         run: |
-          mt.exe -nologo -inputresource:bin/Release/bitcoind.exe -out:bitcoind.manifest
-          cat bitcoind.manifest
+          mt.exe -nologo -inputresource:bin/Release/tidecoind.exe -out:tidecoind.manifest
+          cat tidecoind.manifest
           echo
-          mt.exe -nologo -inputresource:bin/Release/bitcoind.exe -validate_manifest
+          mt.exe -nologo -inputresource:bin/Release/tidecoind.exe -validate_manifest
+
+      - name: Verify expected binary names
+        working-directory: build
+        run: |
+          if [[ "${{ matrix.job-type }}" == "standard" ]]; then
+            expected=(
+              tidecoin.exe
+              tidecoind.exe
+              tidecoin-cli.exe
+              tidecoin-tx.exe
+              tidecoin-util.exe
+              tidecoin-wallet.exe
+              test_tidecoin.exe
+              bench_tidecoin.exe
+            )
+          else
+            expected=(fuzz.exe)
+          fi
+
+          for binary in "${expected[@]}"; do
+            if [[ ! -f "bin/Release/${binary}" ]]; then
+              echo "::error::Missing expected binary: bin/Release/${binary}"
+              exit 1
+            fi
+          done
 
       - name: Run test suite
         if: matrix.job-type == 'standard'
@@ -284,12 +309,12 @@ jobs:
         if: matrix.job-type == 'standard'
         working-directory: build
         env:
-          BITCOIN_BIN: '${{ github.workspace }}\build\bin\Release\bitcoin.exe'
-          BITCOIND: '${{ github.workspace }}\build\bin\Release\bitcoind.exe'
-          BITCOINCLI: '${{ github.workspace }}\build\bin\Release\bitcoin-cli.exe'
-          BITCOINTX: '${{ github.workspace }}\build\bin\Release\bitcoin-tx.exe'
-          BITCOINUTIL: '${{ github.workspace }}\build\bin\Release\bitcoin-util.exe'
-          BITCOINWALLET: '${{ github.workspace }}\build\bin\Release\bitcoin-wallet.exe'
+          BITCOIN_BIN: '${{ github.workspace }}\build\bin\Release\tidecoin.exe'
+          BITCOIND: '${{ github.workspace }}\build\bin\Release\tidecoind.exe'
+          BITCOINCLI: '${{ github.workspace }}\build\bin\Release\tidecoin-cli.exe'
+          BITCOINTX: '${{ github.workspace }}\build\bin\Release\tidecoin-tx.exe'
+          BITCOINUTIL: '${{ github.workspace }}\build\bin\Release\tidecoin-util.exe'
+          BITCOINWALLET: '${{ github.workspace }}\build\bin\Release\tidecoin-wallet.exe'
           TEST_RUNNER_EXTRA: ${{ github.event_name != 'pull_request' && '--extended' || '' }}
         run: py -3 test/functional/test_runner.py --jobs $NUMBER_OF_PROCESSORS --ci --quiet --tmpdirprefix="${RUNNER_TEMP}" --combinedlogslen=99999999 --timeout-factor=${TEST_RUNNER_TIMEOUT_FACTOR} ${TEST_RUNNER_EXTRA}
 
@@ -366,8 +391,28 @@ jobs:
         with:
           name: x86_64-w64-mingw32-executables-${{ github.run_id }}
 
-      - name: Run bitcoind.exe
-        run: ./bin/bitcoind.exe -version
+      - name: Verify expected cross-built binary names
+        run: |
+          expected=(
+            tidecoin.exe
+            tidecoind.exe
+            tidecoin-cli.exe
+            tidecoin-tx.exe
+            tidecoin-util.exe
+            tidecoin-wallet.exe
+            test_tidecoin.exe
+            bench_tidecoin.exe
+          )
+
+          for binary in "${expected[@]}"; do
+            if [[ ! -f "bin/${binary}" ]]; then
+              echo "::error::Missing expected binary: bin/${binary}"
+              exit 1
+            fi
+          done
+
+      - name: Run tidecoind.exe
+        run: ./bin/tidecoind.exe -version
 
       - name: Find mt.exe tool
         shell: pwsh
@@ -376,22 +421,22 @@ jobs:
           $sdk_latest = (Get-ChildItem "$sdk_dir\bin" -Directory | Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } | Sort-Object Name -Descending | Select-Object -First 1).Name
           "MT_EXE=${sdk_dir}bin\${sdk_latest}\x64\mt.exe" >> $env:GITHUB_ENV
 
-      - name: Get bitcoind manifest
+      - name: Get tidecoind manifest
         shell: pwsh
         run: |
-          & $env:MT_EXE -nologo -inputresource:bin\bitcoind.exe -out:bitcoind.manifest
-          Get-Content bitcoind.manifest
-          & $env:MT_EXE -nologo -inputresource:bin\bitcoind.exe -validate_manifest
+          & $env:MT_EXE -nologo -inputresource:bin\tidecoind.exe -out:tidecoind.manifest
+          Get-Content tidecoind.manifest
+          & $env:MT_EXE -nologo -inputresource:bin\tidecoind.exe -validate_manifest
 
       - name: Run unit tests
         # Can't use ctest here like other jobs as we don't have a CMake build tree.
         run: |
-          ./bin/test_bitcoin.exe -l test_suite  # Intentionally run sequentially here, to catch test case failures caused by dirty global state from prior test cases.
+          ./bin/test_tidecoin.exe -l test_suite  # Intentionally run sequentially here, to catch test case failures caused by dirty global state from prior test cases.
           ./src/univalue/object.exe
           ./src/univalue/unitester.exe
 
       - name: Run benchmarks
-        run: ./bin/bench_bitcoin.exe -sanity-check
+        run: ./bin/bench_tidecoin.exe -sanity-check
 
       - name: Adjust paths in test/config.ini
         shell: pwsh
@@ -409,9 +454,7 @@ jobs:
 
       - name: Run functional tests
         env:
-          # TODO: Fix the excluded test and re-enable it.
-          # feature_unsupported_utxo_db.py fails on windows because of emojis in the test data directory
-          EXCLUDE: '--exclude wallet_multiwallet.py,feature_unsupported_utxo_db.py'
+          EXCLUDE: '--exclude wallet_multiwallet.py'
           TEST_RUNNER_EXTRA: ${{ github.event_name != 'pull_request' && '--extended' || '' }}
         run: py -3 test/functional/test_runner.py --jobs $NUMBER_OF_PROCESSORS --ci --quiet --tmpdirprefix="$RUNNER_TEMP" --combinedlogslen=99999999 --timeout-factor=$TEST_RUNNER_TIMEOUT_FACTOR $EXCLUDE $TEST_RUNNER_EXTRA
 

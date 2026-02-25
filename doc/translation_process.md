@@ -1,25 +1,42 @@
 Translations
 ============
 
-The Bitcoin-Core project has been designed to support multiple localisations. This makes adding new phrases, and completely new languages easily achievable. For managing all application translations, Bitcoin-Core makes use of the Transifex online translation management tool.
+Tidecoin supports multiple localizations. For managing application translations,
+the project uses the Transifex online translation management tool.
 
 ### Helping to translate (using Transifex)
-Transifex is setup to monitor the GitHub repo for updates, and when code containing new translations is found, Transifex will process any changes. It may take several hours after a pull-request has been merged, to appear in the Transifex web interface.
+Transifex is set up to monitor the GitHub repository for source-string updates.
+After a pull request is merged, it may take several hours for new strings to
+appear in Transifex.
 
-Multiple language support is critical in assisting Bitcoin’s global adoption, and growth. One of Bitcoin’s greatest strengths is cross-border money transfers, any help making that easier is greatly appreciated.
+Multiple language support is important for Tidecoin accessibility and global
+use.
 
-See the [Transifex Bitcoin project](https://explore.transifex.com/bitcoin/bitcoin/) to assist in translations. You should also join the translation mailing list for announcements - see details below.
+The Transifex mapping used by this repository is defined in [`.tx/config`](/.tx/config):
+
+```ini
+[o:tidecoin:p:tidecoin:r:qt-translation]
+```
 
 ### Writing code with translations
-We use automated scripts to help extract translations in both Qt, and non-Qt source files. It is rarely necessary to manually edit the files in `src/qt/locale/`. The translation source files must adhere to the following format:
+We use automated scripts to extract translations in both Qt and non-Qt source
+files. It is rarely necessary to manually edit files in `src/qt/locale/`.
+
+Locale filenames in this repository currently use the upstream-compatible
+`bitcoin_*` namespace, for example:
 `bitcoin_xx_YY.ts or bitcoin_xx.ts`
 
-`src/qt/locale/bitcoin_en.ts` is treated in a special way. It is used as the source for all other translations. Whenever a string in the source code is changed, this file must be updated to reflect those changes. A custom script is used to extract strings from the non-Qt parts. This script makes use of `gettext`, so make sure that utility is installed (ie, `apt-get install gettext` on Ubuntu/Debian). Once this has been updated, `lupdate` (included in the Qt SDK) is used to update `bitcoin_en.ts`.
+`src/qt/locale/bitcoin_en.ts` is treated specially as the source language file.
+When source strings change, this file must be refreshed. The `translate` build
+target uses `gettext`, `lupdate`, and `lconvert` to regenerate:
+- `src/qt/bitcoinstrings.cpp`
+- `src/qt/locale/bitcoin_en.ts`
+- `src/qt/locale/bitcoin_en.xlf`
 
 To automatically regenerate the `bitcoin_en.ts` file, run the following commands:
 ```sh
-cmake --preset dev-mode -DWITH_USDT=OFF -DENABLE_IPC=OFF
-cmake --build build_dev_mode --target translate
+cmake -B build
+cmake --build build --target translate
 ```
 
 **Example Qt translation**
@@ -28,36 +45,48 @@ QToolBar *toolbar = addToolBar(tr("Tabs toolbar"));
 ```
 
 ### Creating a pull-request
-For general PRs, you shouldn’t include any updates to the translation source files. They will be updated periodically, primarily around pre-releases, allowing time for any new phrases to be translated before public releases. This is also important in avoiding translation related merge conflicts.
+For general PRs, do not include broad translation refreshes unless your PR is
+specifically about translation updates. This helps avoid translation merge
+conflicts.
 
-When an updated source file is merged into the GitHub repo, Transifex will automatically detect it (although it can take several hours). Once processed, the new strings will show up as "Remaining" in the Transifex web interface and are ready for translators.
+When updated source strings are merged, Transifex detects and queues them.
+After processing, the strings appear as untranslated in the Transifex web UI.
 
-To create the pull-request, use the following commands:
+For translation refresh PRs, stage the actual changed files, for example:
 ```
-git add src/qt/bitcoinstrings.cpp src/qt/locale/bitcoin_en.ts
+git add src/qt/bitcoinstrings.cpp src/qt/locale/*.ts src/qt/locale/bitcoin_en.xlf
 git commit
 ```
 
 ### Creating a Transifex account
-Visit the [Transifex Signup](https://app.transifex.com/signup/open-source/) page to create an account. Take note of your username and password, as they will be required to configure the command-line tool.
-
-You can find the Bitcoin translation project at [https://explore.transifex.com/bitcoin/bitcoin/](https://explore.transifex.com/bitcoin/bitcoin/).
+Visit the [Transifex Signup](https://app.transifex.com/signup/open-source/)
+page to create an account.
 
 ### Installing the Transifex client command-line tool
-The client is used to fetch updated translations. Please check installation instructions and any other details at https://developers.transifex.com/docs/cli.
+The client is used to fetch updated translations. Installation instructions:
+<https://developers.transifex.com/docs/cli>.
 
-The Transifex Bitcoin project config file is included as part of the repo. It can be found at `.tx/config`, however you shouldn’t need to change anything.
+The Tidecoin Transifex project config is included in this repository at
+`.tx/config`. In normal operation, you should not need to modify it.
 
 ### Synchronising translations
 
-To assist in updating translations, a helper script is available in the [maintainer-tools repo](https://github.com/bitcoin-core/bitcoin-maintainer-tools). To use it and commit the result, simply do:
+To synchronize translations for a release/update cycle:
 
+1. Pull translations from the configured Tidecoin Transifex resource.
 ```
-python3 ../bitcoin-maintainer-tools/update-translations.py
-git commit -a
+tx pull -f --translations --minimum-perc=1
 ```
 
-**Do not directly download translations** one by one from the Transifex website, as we do a few post-processing steps before committing the translations.
+2. Regenerate source-language artifacts.
+```sh
+cmake --build build --target translate
+```
+
+3. Review and commit the resulting locale changes.
+
+**Do not download and commit translations one-by-one from the web UI.** Always
+use the configured CLI workflow so changes are reproducible and reviewable.
 
 ### Handling Plurals (in source files)
 When new plurals are added to the source file, it's important to do the following steps:
@@ -84,4 +113,5 @@ To create a new language template, you will need to edit the languages manifest 
 
 ### Questions and general assistance
 
-If you are a translator, you should also subscribe to the mailing list, https://groups.google.com/forum/#!forum/bitcoin-translators. Announcements will be posted during application pre-releases to notify translators to check for updates.
+For translator or process questions, open a GitHub issue in
+<https://github.com/tidecoin/tidecoin>.

@@ -431,8 +431,16 @@ def main():
     logging_level = logging.INFO if args.quiet else logging.DEBUG
     logging.basicConfig(format='%(message)s', level=logging_level)
 
-    # Create base test directory
-    tmpdir = "%s/test_runner_₿_🏃_%s" % (args.tmpdirprefix, datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+    # Create base test directory.
+    #
+    # Keep a unicode marker on non-Windows systems, but use an ASCII-only path
+    # on Windows so very old previous-release binaries can start reliably.
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if platform.system() == "Windows":
+        tmpdir_name = f"test_runner_btc_run_{timestamp}"
+    else:
+        tmpdir_name = f"test_runner_₿_🏃_{timestamp}"
+    tmpdir = os.path.join(args.tmpdirprefix, tmpdir_name)
 
     os.makedirs(tmpdir)
 

@@ -218,7 +218,7 @@ tail -f $HOME/Library/Application\ Support/Tidecoin/debug.log
 ## Other commands:
 
 ```shell
-./build/bin/tidecoind -daemon      # Starts the bitcoin daemon.
+./build/bin/tidecoind -daemon      # Starts the tidecoin daemon.
 ./build/bin/tidecoin-cli --help    # Outputs a list of command-line options.
 ./build/bin/tidecoin-cli help      # Outputs a list of RPC commands when the daemon is running.
 ./build/bin/tidecoin-qt -server # Starts the tidecoin-qt server mode, allows tidecoin-cli control

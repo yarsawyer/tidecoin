@@ -4,7 +4,7 @@
 
 ### 1.1 Creating the Wallet
 
-Since version 0.21, Bitcoin Core no longer has a default wallet.
+Tidecoin does not create a default wallet automatically.
 Wallets can be created with the `createwallet` RPC or with the `Create wallet` GUI menu item.
 
 In the GUI, the `Create a new wallet` button is displayed on the main screen when there is no wallet loaded. Alternatively, there is the option `File` ->`Create wallet`.
@@ -15,15 +15,18 @@ The following command, for example, creates a descriptor wallet. More informatio
 $ tidecoin-cli createwallet "wallet-01"
 ```
 
-`bitcoin rpc` can also be substituted for `tidecoin-cli`.
+`tidecoin rpc` can also be used as a newer alternative for named RPC calls.
 
 By default, wallets are created in the `wallets` folder of the data directory, which varies by operating system, as shown below. The user can change the default by using the `-datadir` or `-walletdir` initialization parameters.
 
 | Operating System | Default wallet directory                                    |
 | -----------------|:------------------------------------------------------------|
 | Linux            | `/home/<user>/.tidecoin/wallets`                             |
-| Windows          | `C:\Users\<user>\AppData\Local\Bitcoin\wallets`             |
+| Windows          | `C:\Users\<user>\AppData\Local\Tidecoin\wallets`             |
 | macOS            | `/Users/<user>/Library/Application Support/Tidecoin/wallets` |
+
+On Windows, Tidecoin also supports a legacy data directory at
+`C:\Users\<user>\AppData\Roaming\Tidecoin` and will keep using it if it already exists.
 
 ### 1.2 Encrypting the Wallet
 
@@ -33,7 +36,7 @@ Wallet encryption may prevent unauthorized access. However, this significantly i
 
 Wallet encryption may also not protect against more sophisticated attacks. An attacker can, for example, obtain the password by installing a keylogger on the user's machine.
 
-After encrypting the wallet or changing the passphrase, a new backup needs to be created immediately. The reason is that the keypool is flushed and a new HD seed is generated after encryption. Any bitcoins received by the new seed cannot be recovered from the previous backups.
+After encrypting the wallet or changing the passphrase, a new backup needs to be created immediately. The reason is that the keypool is flushed and a new HD seed is generated after encryption. Any coins received by the new seed cannot be recovered from previous backups.
 
 The wallet's private key may be encrypted with the following command:
 
@@ -61,10 +64,10 @@ Note that if the passphrase is lost, all the coins in the wallet will also be lo
 
 ### 1.3 Unlocking the Wallet
 
-If the wallet is encrypted and the user tries any operation related to private keys, such as sending bitcoins, an error message will be displayed.
+If the wallet is encrypted and the user tries any operation related to private keys, such as sending coins, an error message will be displayed.
 
 ```
-$ tidecoin-cli -rpcwallet="wallet-01" sendtoaddress "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx" 0.01
+$ tidecoin-cli -rpcwallet="wallet-01" sendtoaddress "<recipient_address>" 0.01
 error code: -13
 error message:
 Error: Please enter the wallet passphrase with walletpassphrase first.
@@ -78,7 +81,7 @@ This command takes the passphrase and an argument called `timeout`, which specif
 $ tidecoin-cli -rpcwallet="wallet-01" walletpassphrase "passphrase" 120
 ```
 
-In the GUI, there is no specific menu item to unlock the wallet. When the user sends bitcoins, the passphrase will be prompted automatically.
+In the GUI, there is no specific menu item to unlock the wallet. When the user sends coins, the passphrase will be prompted automatically.
 
 ### 1.4 Backing Up the Wallet
 
@@ -96,13 +99,13 @@ This backup file can be stored on one or multiple offline devices, which must be
 
 If the computer has malware, it can compromise the wallet when recovering the backup file. One way to minimize this is to not connect the backup to an online device.
 
-If both the wallet and all backups are lost for any reason, the bitcoins related to this wallet will become permanently inaccessible.
+If both the wallet and all backups are lost for any reason, the coins related to this wallet will become permanently inaccessible.
 
 ### 1.5 Backup Frequency
 
-The original Bitcoin Core wallet was a collection of unrelated private keys. If a non-HD wallet had received funds to an address and then was restored from a backup made before the address was generated, then any funds sent to that address would have been lost because there was no deterministic mechanism to derive the address again.
+Historically, non-HD wallets were collections of unrelated private keys. If such a wallet received funds to a newly generated address and was later restored from an older backup, funds sent to that newer address could be lost because there was no deterministic derivation path to recreate it.
 
-Bitcoin Core [version 0.13](https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.13.0.md) introduced HD wallets with deterministic key derivation. With HD wallets, users no longer lose funds when restoring old backups because all addresses are derived from the HD wallet seed.
+Modern Tidecoin wallets use deterministic key derivation, so addresses come from wallet seed material and can be re-derived on restore.
 
 This means that a single backup is enough to recover the coins at any time. It is still recommended to make regular backups (once a week) or after a significant number of new transactions to maintain the metadata, such as labels. Metadata cannot be retrieved from a blockchain rescan, so if the backup is too old, the metadata will be lost forever.
 
@@ -126,7 +129,7 @@ The restored wallet can also be loaded in the GUI via `File` ->`Open wallet`.
 
 ## Wallet Passphrase
 
-Understanding wallet security is crucial for safely storing your Bitcoin. A key aspect is the wallet passphrase, used for encryption. Let's explore its nuances, role, encryption process, and limitations.
+Understanding wallet security is crucial for safely storing your Tidecoin. A key aspect is the wallet passphrase, used for encryption. Let's explore its nuances, role, encryption process, and limitations.
 
 - **Not the Seed:**
 The wallet passphrase and the seed are two separate components in wallet security. The seed, or HD seed, functions as a master key for deriving private and public keys in a hierarchical deterministic (HD) wallet. In contrast, the passphrase serves as an additional layer of security specifically designed to secure the private keys within the wallet. The passphrase serves as a safeguard, demanding an additional layer of authentication to access funds in the wallet.

@@ -47,7 +47,6 @@ Development and Process
 
 - [Productivity Notes](productivity.md)
 - [Release Process](release-process.md)
-- [BIPs Implemented](bips.md)
 - [Translation Process](translation_process.md)
 - [Translation Strings Policy](translation_strings_policy.md)
 - [Internal Design Docs](design/)

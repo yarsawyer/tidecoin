@@ -11,17 +11,16 @@ Release Process
 
 ### Before every major and minor release
 
-* Update [bips.md](bips.md) to account for changes since the last release.
 * Update version in `CMakeLists.txt` (don't forget to set `CLIENT_VERSION_RC` to `0`).
 * Update manpages (see previous section)
-* Write release notes (see "Write the release notes" below) in doc/release-notes.md. If necessary,
-  archive the previous release notes as doc/release-notes/release-notes-${VERSION}.md.
+* Write release notes (see "Write the release notes" below) in
+  `doc/release-notes.md`.
 
 ### Before every major release
 
 * On both the master branch and the new release branch:
   - update `CLIENT_VERSION_MAJOR` in [`CMakeLists.txt`](../CMakeLists.txt)
-* On the new release branch in [`CMakeLists.txt`](../CMakeLists.txt)(see [this commit](https://github.com/bitcoin/bitcoin/commit/742f7dd)):
+* On the new release branch in [`CMakeLists.txt`](../CMakeLists.txt):
   - set `CLIENT_VERSION_MINOR` to `0`
   - set `CLIENT_VERSION_BUILD` to `0`
   - set `CLIENT_VERSION_IS_RELEASE` to `true`
@@ -29,15 +28,14 @@ Release Process
 #### Before branch-off
 
 * Update translations see [translation_process.md](/doc/translation_process.md#synchronising-translations).
-* Update hardcoded [seeds](/contrib/seeds/README.md), see [this pull request](https://github.com/bitcoin/bitcoin/pull/27488) for an example.
+* Update hardcoded [seeds](/contrib/seeds/README.md).
 * Update the following variables in [`src/kernel/chainparams.cpp`](/src/kernel/chainparams.cpp) for mainnet and testnet:
   - `m_assumed_blockchain_size` and `m_assumed_chain_state_size` with the current size plus some overhead (see
     [this](#how-to-calculate-assumed-blockchain-and-chain-state-size) for information on how to calculate them).
   - The following updates should be reviewed with `reindex-chainstate` and `assumevalid=0` to catch any defect
     that causes rejection of blocks in the past history.
   - `chainTxData` with statistics about the transaction count and rate. Use the output of the `getchaintxstats` RPC with an
-    `nBlocks` of 4096 (28 days) and a `bestblockhash` of RPC `getbestblockhash`; see
-    [this pull request](https://github.com/bitcoin/bitcoin/pull/28591) for an example. Reviewers can verify the results by running
+    `nBlocks` of 4096 (28 days) and a `bestblockhash` of RPC `getbestblockhash`. Reviewers can verify the results by running
     `getchaintxstats <window_block_count> <window_final_block_hash>` with the `window_block_count` and `window_final_block_hash` from your output.
   - `defaultAssumeValid` with the output of RPC `getblockhash` using the `height` of `window_final_block_height` above
     (and update the block height comment with that height), taking into account the following:
@@ -54,40 +52,43 @@ Release Process
     - Check that the other variables still look reasonable.
   - Run the script. It works fine in CPython, but PyPy is much faster (seconds instead of minutes): `pypy3 contrib/devtools/headerssync-params.py`.
   - Paste the output defining `HEADER_COMMITMENT_PERIOD` and `REDOWNLOAD_BUFFER_SIZE` into the top of [`src/headerssync.cpp`](/src/headerssync.cpp).
-- Clear the release notes and move them to the wiki (see "Write the release notes" below).
 - Translations on Transifex:
-    - Pull translations from Transifex into the master branch.
-    - Create [a new resource](https://app.transifex.com/bitcoin/bitcoin/content/) named after the major version with the slug `qt-translation-<RRR>x`, where `RRR` is the major branch number padded with zeros. Use `src/qt/locale/bitcoin_en.xlf` to create it.
-    - In the project workflow settings, ensure that [Translation Memory Fill-up](https://help.transifex.com/en/articles/6224817-setting-up-translation-memory-fill-up) is enabled and that [Translation Memory Context Matching](https://help.transifex.com/en/articles/6224753-translation-memory-with-context) is disabled.
-    - Update the Transifex slug in [`.tx/config`](/.tx/config) to the slug of the resource created in the first step. This identifies which resource the translations will be synchronized from.
-    - Make an announcement that translators can start translating for the new version. You can use one of the [previous announcements](https://app.transifex.com/bitcoin/communication/) as a template.
-    - Change the auto-update URL for the resource to `master`, e.g. `https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/qt/locale/bitcoin_en.xlf`. (Do this only after the previous steps, to prevent an auto-update from interfering.)
+    - Pull latest translations and commit them on the branch.
+    - Tidecoin currently uses a stable resource configured in [`.tx/config`](/.tx/config):
+      `o:tidecoin:p:tidecoin:r:qt-translation`.
+    - Do not rotate the resource slug per release unless there is a deliberate Transifex migration.
+    - Ensure the source file in Transifex matches `src/qt/locale/bitcoin_en.xlf`.
 
 #### After branch-off (on the major release branch)
 
 - Update the versions.
-- Create the draft, named "*version* Release Notes Draft", as a [collaborative wiki](https://github.com/bitcoin-core/bitcoin-devwiki/wiki/_new).
-- Clear the release notes: `cp doc/release-notes-empty-template.md doc/release-notes.md`
-- Create a pinned meta-issue for testing the release candidate (see [this issue](https://github.com/bitcoin/bitcoin/issues/27621) for an example) and provide a link to it in the release announcements where useful.
+- Keep `doc/release-notes.md` as the canonical draft on the release branch.
+- Create a pinned meta-issue for testing the release candidate in
+  `tidecoin/tidecoin`, and include links to candidate binaries and
+  `doc/release-notes.md`.
 - Translations on Transifex
-    - Change the auto-update URL for the new major version's resource away from `master` and to the branch, e.g. `https://raw.githubusercontent.com/bitcoin/bitcoin/<branch>/src/qt/locale/bitcoin_en.xlf`. Do not forget this or it will keep tracking the translations on master instead, drifting away from the specific major release.
-- Prune inputs from the qa-assets repo (See [pruning
-  inputs](https://github.com/bitcoin-core/qa-assets#pruning-inputs)).
+    - If you run branch-specific translation sync, point the Transifex source URL to the release branch:
+      `https://raw.githubusercontent.com/tidecoin/tidecoin/<branch>/src/qt/locale/bitcoin_en.xlf`.
 
 #### Before final release
 
-- Merge the release notes from [the wiki](https://github.com/bitcoin-core/bitcoin-devwiki/wiki/) into the branch.
-- Ensure the "Needs release note" label is removed from all relevant pull
-  requests and issues:
-  https://github.com/bitcoin/bitcoin/issues?q=label%3A%22Needs+release+note%22
+- Finalize `doc/release-notes.md` on the release branch.
+- Ensure the release-candidate meta-issue has no unresolved release blockers.
+- Ensure release-note labeling/tracking is complete for all included PRs/issues.
 
 #### Tagging a release (candidate)
 
-To tag the version (or release candidate) in git, use the `make-tag.py` script from [bitcoin-maintainer-tools](https://github.com/bitcoin-core/bitcoin-maintainer-tools). From the root of the repository run:
+Tag directly with git from the repository root:
 
-    ../bitcoin-maintainer-tools/make-tag.py v(new version, e.g. 25.0)
+```sh
+VERSION='30.0.1' # example
+git fetch origin --tags
+git tag -s "v${VERSION}" -m "Tidecoin ${VERSION}"
+git push origin "v${VERSION}"
+```
 
-This will perform a few last-minute consistency checks in the build system files, and if they pass, create a signed tag.
+Before tagging, verify `CMakeLists.txt`, `doc/release-notes.md`, manpages, and
+`share/examples/tidecoin.conf` are in their final state.
 
 ## Building
 
@@ -105,9 +106,9 @@ Check out the source code in the following directory hierarchy.
 
 ### Write the release notes
 
-Open a draft of the release notes for collaborative editing at https://github.com/bitcoin-core/bitcoin-devwiki/wiki.
-
-For the period during which the notes are being edited on the wiki, the version on the branch should be wiped and replaced with a link to the wiki which should be used for all announcements until `-final`.
+Keep `doc/release-notes.md` in the release branch as the single source of
+truth while drafting and reviewing notes. For collaboration, use pull requests
+and/or an issue thread in `tidecoin/tidecoin`.
 
 Generate list of authors:
 
@@ -206,7 +207,9 @@ popd
 
 ### Non-codesigners: wait for Windows and macOS detached signatures
 
-- Once the Windows and macOS builds each have 3 matching signatures, they will be signed with their respective release keys.
+- Once the Windows and macOS builds each have at least 2 matching signatures,
+  they can be signed with their respective release keys. For major releases,
+  3+ matching signatures are recommended.
 - Detached signatures are then committed to your detached-signatures repository, which can be combined with the unsigned apps to create signed binaries.
 
 ### Create the codesigned build outputs
@@ -228,9 +231,10 @@ popd
 
 Then open a Pull Request to your `guix.sigs` repository.
 
-## After 6 or more people have guix-built and their results match
+## After at least 2 independent Guix builds match (small-team baseline)
 
-After verifying signatures, combine the `all.SHA256SUMS.asc` file from all signers into `SHA256SUMS.asc`:
+After verifying signatures, combine the `all.SHA256SUMS.asc` file from all
+signers into `SHA256SUMS.asc`:
 
 ```bash
 cat "$VERSION"/*/all.SHA256SUMS.asc > SHA256SUMS.asc
@@ -267,8 +271,9 @@ cat "$VERSION"/*/all.SHA256SUMS.asc > SHA256SUMS.asc
   people without access to your primary release host to download the binary distribution.
   Also publish it in your release metadata.
 
-- Archive the release notes for the new version to `doc/release-notes/release-notes-${VERSION}.md`
-  (branch `master` and branch of the release).
+- Keep final notes in `doc/release-notes.md` on the release branch and link to
+  them from the GitHub release page. If your branch maintains a
+  `doc/release-notes/` archive directory, you may also copy notes there.
 
 - Update your project website/release portal
 
@@ -293,7 +298,8 @@ cat "$VERSION"/*/all.SHA256SUMS.asc > SHA256SUMS.asc
 
       - Push/update Snap packaging
 
-  - Create a new GitHub release with a link to the archived release notes
+  - Create a new GitHub release with a link to `doc/release-notes.md` in the
+    tagged release branch
 
 - Announce the release using your project's official channels.
 
