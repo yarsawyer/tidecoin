@@ -1,91 +1,98 @@
-This folder contains lint scripts.
+This folder contains lint scripts and the Rust-based lint test runner used by
+CI.
 
 Running locally
 ===============
 
-To run linters locally with the same versions as the CI environment, use the included
-Dockerfile:
+To run linters locally with the same versions as CI, use the lint container:
 
 ```sh
-DOCKER_BUILDKIT=1 docker build -t bitcoin-linter --file "./ci/lint_imagefile" ./ && docker run --rm -v $(pwd):/bitcoin -it bitcoin-linter
+LINT_IMAGE=bitcoin-linter # current CI image name
+DOCKER_BUILDKIT=1 docker build -t "$LINT_IMAGE" --file "./ci/lint_imagefile" .
+docker run --rm -v "$(pwd)":/bitcoin -it "$LINT_IMAGE"
 ```
 
-Building the container can be done every time, because it is fast when the
-result is cached and it prevents issues when the image changes.
+Notes:
+- The container mount path is `/bitcoin` because current CI scripts and
+  entrypoint expect that path.
+- Rebuilding the image regularly is recommended to pick up dependency updates in
+  `ci/lint/01_install.sh`.
 
 test runner
 ===========
 
-To run all the lint checks in the test runner outside the docker you first need
-to install the rust toolchain using your package manager of choice or
-[rustup](https://www.rust-lang.org/tools/install).
-
-Then you can use:
+The main lint orchestration is `test/lint/test_runner` (Rust). Install Rust
+with your package manager or [rustup](https://www.rust-lang.org/tools/install),
+then run:
 
 ```sh
-( cd ./test/lint/test_runner/ && cargo fmt && cargo clippy && RUST_BACKTRACE=1 cargo run )
+RUST_BACKTRACE=1 cargo run --manifest-path "./test/lint/test_runner/Cargo.toml"
 ```
 
-If you wish to run individual lint checks, run the test_runner with
-`--lint=TEST_TO_RUN` arguments. If running with `cargo run`, arguments after
-`--` are passed to the binary you are running e.g.:
+Run selected checks:
 
 ```sh
-( cd ./test/lint/test_runner/ && RUST_BACKTRACE=1 cargo run -- --lint=doc --lint=trailing_whitespace )
+RUST_BACKTRACE=1 cargo run --manifest-path "./test/lint/test_runner/Cargo.toml" -- --lint=doc --lint=trailing_whitespace
 ```
 
-To see a list of all individual lint checks available in test_runner, use `-h`
-or `--help`:
+List available checks:
 
 ```sh
-( cd ./test/lint/test_runner/ && RUST_BACKTRACE=1 cargo run -- --help )
+cargo run --manifest-path "./test/lint/test_runner/Cargo.toml" -- --help
 ```
 
-#### Dependencies
+Useful environment variables:
+- `COMMIT_RANGE=<from>..<to>`: limit checks that inspect commit diffs.
+- `RUN_PQ_VENDOR_DEEP=1`: enable deep PQ vendor diff check (`pq_vendor_deep`).
+
+Dependencies
+============
 
 | Lint test | Dependency |
 |-----------|:----------:|
-| [`lint-python.py`](/test/lint/lint-python.py) | [lief](https://github.com/lief-project/LIEF)
-| [`lint-python.py`](/test/lint/lint-python.py) | [mypy](https://github.com/python/mypy)
-| [`lint-python.py`](/test/lint/lint-python.py) | [pyzmq](https://github.com/zeromq/pyzmq)
-| [`lint-python-dead-code.py`](/test/lint/lint-python-dead-code.py) | [vulture](https://github.com/jendrikseipp/vulture)
-| [`lint-shell.py`](/test/lint/lint-shell.py) | [ShellCheck](https://github.com/koalaman/shellcheck)
-| [`lint-spelling.py`](/test/lint/lint-spelling.py) | [codespell](https://github.com/codespell-project/codespell)
-| `py_lint` | [ruff](https://github.com/astral-sh/ruff)
-| markdown link check | [mlc](https://github.com/becheran/mlc)
+| [`lint-python.py`](/test/lint/lint-python.py) | [lief](https://github.com/lief-project/LIEF) |
+| [`lint-python.py`](/test/lint/lint-python.py) | [mypy](https://github.com/python/mypy) |
+| [`lint-python.py`](/test/lint/lint-python.py) | [pyzmq](https://github.com/zeromq/pyzmq) |
+| [`lint-python-dead-code.py`](/test/lint/lint-python-dead-code.py) | [vulture](https://github.com/jendrikseipp/vulture) |
+| [`lint-shell.py`](/test/lint/lint-shell.py) | [ShellCheck](https://github.com/koalaman/shellcheck) |
+| [`lint-spelling.py`](/test/lint/lint-spelling.py) | [codespell](https://github.com/codespell-project/codespell) |
+| `py_lint` (test runner) | [ruff](https://github.com/astral-sh/ruff) |
+| markdown link check (`markdown`) | [mlc](https://github.com/becheran/mlc) |
 
-In use versions and install instructions are available in the [CI setup](../../ci/lint/01_install.sh).
+Pinned versions and install steps used by CI are in
+[ci/lint/01_install.sh](../../ci/lint/01_install.sh).
 
-Please be aware that on Linux distributions all dependencies are usually available as packages, but could be outdated.
+Running individual scripts
+==========================
 
-#### Running the tests
+Individual checks can be run directly, for example:
 
-Individual tests can be run by directly calling the test script, e.g.:
-
-```
+```sh
 test/lint/lint-files.py
 ```
 
-#### Tidecoin naming policy
+Tidecoin naming policy
+======================
 
-Active user/operator surfaces must use Tidecoin naming. In particular:
-
+Active user/operator surfaces must use Tidecoin naming:
 - `tidecoin.conf` (not `bitcoin.conf`)
 - `tidecoind` (not `bitcoind`)
 - `tidecoin-*` executables for CLI/tooling references
-- Tidecoin datadir and service identifier names in docs and templates
+- Tidecoin datadir and service identifiers in docs/templates
 
-This policy is enforced by [`lint-tidecoin-naming.py`](/test/lint/lint-tidecoin-naming.py).
-Historical release notes under `doc/release-notes/**` are intentionally excluded.
+This is enforced by
+[`lint-tidecoin-naming.py`](/test/lint/lint-tidecoin-naming.py). Historical
+release notes under `doc/release-notes/**` are intentionally excluded.
 
-#### PQ vendor provenance policy
+PQ vendor provenance policy
+===========================
 
 Vendored post-quantum components under `src/pq/` are tracked by
 `src/pq/VERSIONS.toml`.
 
 - `test/lint/lint-pq-vendor.py` validates manifest schema and required metadata.
 - `contrib/devtools/check_pq_vendor.py` performs deep diffs against pinned
-  upstream PQClean commits and verifies that local divergence is declared.
+  upstream PQClean commits and verifies declared divergence.
 
 Run locally:
 
@@ -94,28 +101,26 @@ test/lint/lint-pq-vendor.py
 python3 contrib/devtools/check_pq_vendor.py
 ```
 
-Deep vendor check is exposed in the Rust lint runner as `pq_vendor_deep` and is
-gated behind `RUN_PQ_VENDOR_DEEP=1`:
+Deep vendor check in test runner (`pq_vendor_deep`):
 
 ```sh
-( cd ./test/lint/test_runner/ && RUN_PQ_VENDOR_DEEP=1 cargo run -- --lint=pq_vendor_deep )
+RUN_PQ_VENDOR_DEEP=1 cargo run --manifest-path "./test/lint/test_runner/Cargo.toml" -- --lint=pq_vendor_deep
 ```
 
-In CI lint runs, `RUN_PQ_VENDOR_DEEP` is auto-enabled when relevant PQ vendor
-paths (for example `src/pq/**`, manifest/patch metadata, or checker scripts)
-change in the commit range.
+In CI, `RUN_PQ_VENDOR_DEEP` is auto-enabled when relevant PQ vendor paths
+change in `COMMIT_RANGE`.
 
-#### PQ script coverage scorecard
+PQ script coverage scorecard
+============================
 
 `test/lint/lint-pq-script-coverage.py` enforces Tidecoin's PQ script coverage
 lock-in:
-Path note: this documentation is in `test/lint/README.md` (not repository root `README.md`).
 
-- required script category/polarity presence in `src/test/data/script_tests_pq.json`,
-- required script-assets flag/profile coverage in `src/test/data/script_assets_test.json`,
-- required script cell IDs and family polarities from `test/lint/pq_script_required_cells.json`,
-- required script-assets cell IDs from `test/lint/pq_script_assets_required_cells.json`,
-- hard-cutover invariants (legacy fixture/reference and legacy-term bans in script/tx tests).
+- required script category/polarity presence in `src/test/data/script_tests_pq.json`
+- required script-assets flag/profile coverage in `src/test/data/script_assets_test.json`
+- required script cell IDs/family polarities from `test/lint/pq_script_required_cells.json`
+- required script-assets cell IDs from `test/lint/pq_script_assets_required_cells.json`
+- hard-cutover invariants (legacy fixture/reference and legacy-term bans in script/tx tests)
 
 Run locally:
 
@@ -125,44 +130,48 @@ python3 test/lint/lint-pq-script-coverage.py
 
 check-doc.py
 ============
+
 Check for missing documentation of command line options.
 
 commit-script-check.sh
 ======================
+
 Verification of [scripted diffs](/doc/developer-notes.md#scripted-diffs).
-Scripted diffs are only assumed to run on the latest LTS release of Ubuntu. Running them on other operating systems
-might require installing GNU tools, such as GNU sed.
+Scripted diffs are only assumed to run on the latest Ubuntu LTS release.
+On other systems, GNU tool variants may be required.
 
 git-subtree-check.sh
 ====================
-Run this script from the root of the repository to verify that a subtree matches the contents of
-the commit it claims to have been updated to.
 
-```
+Run this script from the repository root to verify that a subtree matches the
+commit it claims to have been updated to.
+
+```text
 Usage: test/lint/git-subtree-check.sh [-r] DIR [COMMIT]
        test/lint/git-subtree-check.sh -?
 ```
 
-- `DIR` is the prefix within the repository to check.
-- `COMMIT` is the commit to check, if it is not provided, HEAD will be used.
-- `-r` checks that subtree commit is present in repository.
+- `DIR` is the subtree prefix within the repository.
+- `COMMIT` is the commit to check (defaults to `HEAD` if omitted).
+- `-r` checks that the subtree commit exists in the upstream repository.
 
-To do a full check with `-r`, make sure that you have fetched the upstream repository branch in which the subtree is
-maintained:
-* for `src/crc32c`: https://github.com/bitcoin-core/crc32c-subtree.git (branch bitcoin-fork)
-* for `src/crypto/ctaes`: https://github.com/bitcoin-core/ctaes.git (branch master)
-* for `src/ipc/libmultiprocess`: https://github.com/bitcoin-core/libmultiprocess (branch master)
-* for `src/leveldb`: https://github.com/bitcoin-core/leveldb-subtree.git (branch bitcoin-fork)
-* for `src/minisketch`: https://github.com/bitcoin-core/minisketch.git (branch master)
+For a full `-r` check, fetch the corresponding upstream subtree remotes:
+- `src/crc32c`: https://github.com/bitcoin-core/crc32c-subtree.git (branch `bitcoin-fork`)
+- `src/crypto/ctaes`: https://github.com/bitcoin-core/ctaes.git (branch `master`)
+- `src/ipc/libmultiprocess`: https://github.com/bitcoin-core/libmultiprocess (branch `master`)
+- `src/leveldb`: https://github.com/bitcoin-core/leveldb-subtree.git (branch `bitcoin-fork`)
+- `src/minisketch`: https://github.com/bitcoin-core/minisketch.git (branch `master`)
 
-Keep this list in sync with `fn get_subtrees()` in the lint runner.
+Keep this list in sync with `fn get_subtrees()` in
+`test/lint/test_runner/src/main.rs`.
 
-To do so, add the upstream repository as remote:
+Example remote:
 
-```
+```sh
 git remote add --fetch minisketch https://github.com/bitcoin-core/minisketch.git
 ```
 
 lint_ignore_dirs.py
 ===================
-Add list of common directories to ignore when running tests
+
+Contains a shared list of directories to ignore for lint checks.
