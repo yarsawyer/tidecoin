@@ -91,6 +91,18 @@ hardware implementations will typically implement multiple roles simultaneously.
   possible, computes the fee of the resulting transaction and estimates the
   final weight and feerate.
 
+### Tidecoin-specific PSBT behavior
+
+- Tidecoin wallet PSBT RPCs do not expose a `bip32derivs` toggle.
+- `walletprocesspsbt` supports `include_pqhd_origins` (default `true`) to
+  control emission of Tidecoin proprietary PQHD origin records.
+- When enabled, wallet-owned single-key inputs/outputs may include
+  `tidecoin/PQHD_ORIGIN` metadata in PSBT proprietary keyspaces; disabling this
+  flag suppresses metadata emission without changing signing/finalization behavior.
+- Wallet signing fallback for descriptor/miniscript paths includes:
+  - pubkey discovery from pushed script elements in redeem/witness scripts,
+  - key lookup fallback by `CKeyID` when pubkey-index mapping is absent.
+
 
 ### Workflows
 

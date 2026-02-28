@@ -294,6 +294,25 @@ MacOS: `brew install doxygen graphviz`
 
 ## Development tips and tricks
 
+### Tidecoin naming invariants
+
+Active code, tools, and operator docs must use Tidecoin naming:
+
+- config file: `tidecoin.conf`
+- daemon: `tidecoind`
+- CLI/tools: `tidecoin-*`
+- default datadir family: Tidecoin paths (`~/.tidecoin`, `.../Tidecoin/...`)
+
+Historical upstream references are acceptable in historical contexts (for
+example old release notes), but should not be reintroduced in active
+runtime/operator surfaces.
+
+Check naming consistency with:
+
+```shell
+test/lint/lint-tidecoin-naming.py
+```
+
 ### Compiling for debugging
 
 When using the default build configuration by running `cmake -B build`, the
@@ -516,6 +535,49 @@ llvm-cov show \
 > This warning occurs due to profdata mismatch created during the merge process for shared libraries.
 
 The generated coverage report can be accessed at `build/coverage_report/index.html`.
+
+#### PQ Script Fixture and Corpus Maintenance
+
+Tidecoin keeps PQ script coverage maintenance in test fixtures, generators, and
+lint manifests, not in long-lived plan/checklist/gap-tracking docs.
+
+Primary artifacts:
+
+- `src/test/data/script_tests_pq.json` (script fixture replayed by `script_json_test`)
+- `src/test/data/script_assets_test.json` (corpus replayed by `script_assets_test`)
+- `test/lint/lint-pq-script-coverage.py` and
+  `test/lint/pq_script*_required_cells.json` (required-cell and policy gates)
+
+Regenerate `script_tests_pq.json` from `script_build`:
+
+```shell
+TIDE_SCRIPT_TESTS_GEN_OUTPUT=src/test/data/script_tests_pq.json \
+  build/bin/test_tidecoin \
+  --run_test=script_tests/script_build \
+  --catch_system_errors=no \
+  --color_output=no
+```
+
+Regenerate `script_assets_test.json` from the functional dumper and minimizer:
+
+```shell
+mkdir -p /tmp/tide-script-assets-raw /tmp/tide-script-assets-min
+for n in $(seq 1 10); do
+  TEST_DUMP_DIR=/tmp/tide-script-assets-raw \
+    test/functional/feature_pq_script_assets.py --dumptests
+done
+FUZZ=script_assets_test_minimizer \
+  build/bin/fuzz -merge=1 -use_value_profile=1 \
+  /tmp/tide-script-assets-min/ /tmp/tide-script-assets-raw/
+(echo -en '[\n'; cat /tmp/tide-script-assets-min/* | head -c -2; echo -en '\n]') \
+  > src/test/data/script_assets_test.json
+```
+
+Validate invariants and required coverage cells:
+
+```shell
+test/lint/lint-pq-script-coverage.py
+```
 
 #### Compiling for Fuzz Coverage
 

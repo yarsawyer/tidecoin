@@ -17,13 +17,29 @@ tests and lint scripts can be run as explained in the sections below.
 
 # Running tests locally
 
-Before tests can be run locally, Bitcoin Core must be built.  See the [building instructions](/doc#building) for help.
+Before tests can be run locally, Tidecoin Core must be built. See the
+[building instructions](/doc#building) for help.
 
 The following examples assume that the build directory is named `build`.
 
 ## Fuzz tests
 
 See [/doc/fuzzing.md](/doc/fuzzing.md)
+
+## Unit test controls
+
+Wallet-heavy unit test suites are disabled by default because PQ key generation
+can dominate runtime and make `test_tidecoin` unsuitable as a quick smoke test.
+
+Enable wallet suites explicitly:
+
+```bash
+TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=wallet_tests
+TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=coinselector_tests
+TIDECOIN_RUN_WALLET_TESTS=1 ./build/bin/test_tidecoin --run_test=psbt_wallet_tests
+```
+
+Suites behind `TIDECOIN_RUN_WALLET_TESTS` are gated in `src/test/main.cpp`.
 
 ### Functional tests
 

@@ -16,6 +16,35 @@ called by the tests and prints a report of uncovered RPCs in the summary. This
 can be used (along with the `--extended` argument) to find out which RPCs we
 don't have test cases for.
 
+#### Tidecoin-specific constraints
+
+- Tidecoin functional tests must be PQ-only. Do not rely on secp256k1/ECDSA/DER behavior.
+- Descriptor, key encoding, and wallet metadata behavior intentionally diverges from Bitcoin where legacy key assumptions do not apply.
+- Tidecoin regtest uses a short halving interval and a cached chain tip around height 199; tests must not assume Bitcoin-like subsidy amounts.
+- Use explicit supported sighash values (`ALL`, `NONE`, `SINGLE`, and `ANYONECANPAY` variants) in wallet/PSBT tests.
+
+#### AuxPoW functional tests
+
+AuxPoW/merge-mining functional coverage is in:
+
+- `test/functional/auxpow_mining.py`
+- `test/functional/auxpow_invalidpow.py`
+- `test/functional/auxpow_zerohash.py`
+
+Run individual tests from the repository root:
+
+```bash
+python3 test/functional/auxpow_mining.py --configfile=build/test/config.ini
+python3 test/functional/auxpow_invalidpow.py --configfile=build/test/config.ini
+python3 test/functional/auxpow_zerohash.py --configfile=build/test/config.ini
+```
+
+Run all AuxPoW tests via the runner:
+
+```bash
+python3 test/functional/test_runner.py auxpow_mining.py auxpow_invalidpow.py auxpow_zerohash.py --configfile=build/test/config.ini
+```
+
 #### Style guidelines
 
 - Where possible, try to adhere to [PEP-8 guidelines](https://www.python.org/dev/peps/pep-0008/)

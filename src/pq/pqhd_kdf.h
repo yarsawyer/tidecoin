@@ -18,7 +18,7 @@
  * These are deterministic derivation helpers used to build PQHD (hardened-only)
  * wallets. This module intentionally does not depend on wallet storage or RPC
  * code. It only implements cryptographic derivation primitives and testable
- * vectors described in `ai-docs/pqhd.md`.
+ * vectors described in `doc/design/pqhd.md`.
  */
 namespace pqhd {
 

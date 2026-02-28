@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE(v1_vectors_master_seed_0_all_schemes_hashes)
         BOOST_CHECK_EQUAL(Sha256Hex(sk), expected_sk_sha256);
     };
 
-    // purpose' and coin_type' are centralized in `src/pq/pqhd_params.h` (see `ai-docs/pqhd.md`).
+    // purpose' and coin_type' are centralized in `src/pq/pqhd_params.h` (see `doc/design/pqhd.md`).
     run(pq::SchemeId::FALCON_512,
         {HARDENED | pqhd::PURPOSE, HARDENED | pqhd::COIN_TYPE, HARDENED | 7U, HARDENED | 0U, HARDENED | 0U, HARDENED | 0U},
         "cb72ac890ce605a32850b885abcd4e83a3e30bcc68f08eaacc342bfdd30ebba5",

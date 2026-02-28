@@ -10,6 +10,8 @@ Start here for Tidecoin-specific behavior and architecture:
 - [Whitepaper](whitepaper.md)
 - [Post-Quantum RPC Commands](pq-rpc.md)
 - [Developer Notes](developer-notes.md)
+- [PQHD Design Notes](design/pqhd.md)
+- [Falcon-512 Verification Report](design/falcon-verification.md)
 - [Dependencies and Review Policy](dependencies.md)
 - [Security Policy](/SECURITY.md)
 
