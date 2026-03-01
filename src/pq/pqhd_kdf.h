@@ -8,6 +8,7 @@
 #include <span>
 
 #include <pq/pq_scheme.h>
+#include <uint256.h>
 
 // Used for cleansing secret key material in small RAII wrappers.
 #include <support/cleanse.h>
@@ -115,6 +116,15 @@ struct Node {
 
 /** Compute SeedID32 = SHA256("Tidecoin PQHD seedid v1" || master_seed). */
 SeedID32 ComputeSeedID32(std::span<const uint8_t, 32> master_seed);
+
+/** Convert canonical SeedID32 bytes (big-endian digest order) into uint256 storage form. */
+uint256 SeedID32ToUint256(std::span<const uint8_t, 32> seedid_be);
+
+/** Convert uint256 seed-id storage form into canonical SeedID32 bytes. */
+SeedID32 SeedID32FromUint256(const uint256& seed_id);
+
+/** Convenience: ComputeSeedID32(master_seed) and convert to uint256 storage form. */
+uint256 ComputeSeedID32AsUint256(std::span<const uint8_t, 32> master_seed);
 
 /** Compute PQHD master node (NodeSecret/ChainCode) from master seed. */
 Node MakeMasterNode(std::span<const uint8_t, 32> master_seed);

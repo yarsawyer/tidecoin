@@ -540,7 +540,8 @@ bool WalletModel::bumpFee(Txid hash, Txid& new_hash)
         // "Create Unsigned" clicked
         PartiallySignedTransaction psbtx(mtx);
         bool complete = false;
-        const auto err{wallet().fillPSBT(std::nullopt, /*sign=*/false, nullptr, psbtx, complete)};
+        const auto err{wallet().fillPSBT(std::nullopt, /*sign=*/false, nullptr, psbtx,
+                                         complete, /*include_pqhd_origins=*/false)};
         if (err || complete) {
             QMessageBox::critical(nullptr, tr("Fee bump error"), tr("Can't draft transaction."));
             return false;

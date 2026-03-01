@@ -220,6 +220,8 @@ public:
     virtual std::optional<uint8_t> GetSchemePrefix() const { return std::nullopt; }
     /** Return PQHD key path info if this PubkeyProvider represents a single PQHD key path. */
     virtual std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const { return std::nullopt; }
+    /** Collect PQHD seed ids referenced by this PubkeyProvider. */
+    virtual void GetPQHDSeedIDs(std::set<uint256>& seed_ids) const {}
     /** Make a deep copy of this PubkeyProvider */
     virtual std::unique_ptr<PubkeyProvider> Clone() const = 0;
 
@@ -372,7 +374,7 @@ public:
         prefixed[0] = m_scheme_prefix;
         std::copy(pk_raw.begin(), pk_raw.end(), prefixed.begin() + 1);
 
-        const CPubKey pubkey{std::span<const uint8_t>{prefixed}};
+        CPubKey pubkey{std::span<const uint8_t>{prefixed}};
         if (!pubkey.IsFullyValid()) return std::nullopt;
 
         out.pubkeys.emplace(pubkey.GetID(), pubkey);
@@ -457,6 +459,10 @@ public:
     std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const override
     {
         return PQHDKeyPathInfo{m_seed_id, m_path, m_derive == DeriveType::HARDENED};
+    }
+    void GetPQHDSeedIDs(std::set<uint256>& seed_ids) const override
+    {
+        seed_ids.insert(m_seed_id);
     }
     std::unique_ptr<PubkeyProvider> Clone() const override
     {
@@ -687,6 +693,7 @@ public:
         return prefix;
     }
 
+    // NOLINTNEXTLINE(misc-no-recursion)
     std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const override
     {
         std::optional<PQHDKeyPathInfo> info;
@@ -710,6 +717,20 @@ public:
             if (!merge(arg->GetPQHDKeyPathInfo())) return std::nullopt;
         }
         return info;
+    }
+
+    // NOLINTNEXTLINE(misc-no-recursion)
+    std::set<uint256> GetPQHDSeedIDs() const override
+    {
+        std::set<uint256> seed_ids;
+        for (const auto& p : m_pubkey_args) {
+            p->GetPQHDSeedIDs(seed_ids);
+        }
+        for (const auto& arg : m_subdescriptor_args) {
+            const auto child_seed_ids = arg->GetPQHDSeedIDs();
+            seed_ids.insert(child_seed_ids.begin(), child_seed_ids.end());
+        }
+        return seed_ids;
     }
 
     virtual std::unique_ptr<DescriptorImpl> Clone() const = 0;

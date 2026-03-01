@@ -5,10 +5,34 @@
 """Verify PQHD seed import/list/select/remove lifecycle behavior."""
 
 from decimal import Decimal
+import re
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.wallet_util import WalletUnlock
+
+
+def active_bech32_pqhd_descriptors(wallet):
+    active = {}
+    pattern = re.compile(r"wpkh\(pqhd\(([0-9a-f]{64})\)/(\d+)h/(\d+)h/(\d+)h/0h/([01])h/\*h\)")
+    for entry in wallet.listdescriptors()["descriptors"]:
+        if not entry.get("active", False):
+            continue
+        if "internal" not in entry:
+            continue
+        match = pattern.search(entry["desc"])
+        if not match:
+            continue
+        internal = entry["internal"]
+        chain_index = int(match.group(5))
+        assert_equal(chain_index, 1 if internal else 0)
+        active[internal] = {
+            "seed_id": match.group(1),
+            "scheme": int(match.group(4)),
+        }
+    assert False in active
+    assert True in active
+    return active
 
 
 class WalletPQHDSeedLifecycleTest(BitcoinTestFramework):
@@ -56,6 +80,19 @@ class WalletPQHDSeedLifecycleTest(BitcoinTestFramework):
         defaults = {entry["seed_id"]: (entry["default_receive"], entry["default_change"]) for entry in listed}
         assert_equal(defaults[imported_a["seed_id"]], (True, True))
         assert_equal(defaults[initial_seed_id], (False, False))
+        active = active_bech32_pqhd_descriptors(wallet)
+        assert_equal(active[False]["seed_id"], imported_a["seed_id"])
+        assert_equal(active[True]["seed_id"], imported_a["seed_id"])
+        assert_equal(active[False]["scheme"], 0x07)
+        assert_equal(active[True]["scheme"], 0x07)
+
+        self.log.info("Default getnewaddress/getrawchangeaddress must use selected default seed")
+        receive_default_addr = wallet.getnewaddress("", "bech32")
+        receive_default_info = wallet.getaddressinfo(receive_default_addr)
+        assert_equal(receive_default_info["pqhd_seedid"], imported_a["seed_id"])
+        change_default_addr = wallet.getrawchangeaddress("bech32")
+        change_default_info = wallet.getaddressinfo(change_default_addr)
+        assert_equal(change_default_info["pqhd_seedid"], imported_a["seed_id"])
 
         self.log.info("Scheme-override derivation uses current default seed id")
         addr = wallet.getnewaddress("", "bech32", "falcon512")
@@ -70,14 +107,60 @@ class WalletPQHDSeedLifecycleTest(BitcoinTestFramework):
         outpoint = self.create_outpoints(wallet, outputs=[{wallet.getnewaddress(): 1}])[0]
         self.generate(self.nodes[0], 1)
         psbt = wallet.createpsbt([outpoint], {wallet.getnewaddress(): 0.999})
+        default_no_origin = wallet.walletprocesspsbt(psbt, False, "ALL", False)
         with_origin = wallet.walletprocesspsbt(psbt, False, "ALL", False, True)
         without_origin = wallet.walletprocesspsbt(psbt, False, "ALL", False, False)
+        decoded_default = self.nodes[0].decodepsbt(default_no_origin["psbt"])
         decoded_with_origin = self.nodes[0].decodepsbt(with_origin["psbt"])
         decoded_without_origin = self.nodes[0].decodepsbt(without_origin["psbt"])
+        assert "pqhd_origins" not in decoded_default["inputs"][0]
+        assert "pqhd_origins" not in decoded_default["outputs"][0]
         assert "pqhd_origins" in decoded_with_origin["inputs"][0]
         assert "pqhd_origins" in decoded_with_origin["outputs"][0]
         assert "pqhd_origins" not in decoded_without_origin["inputs"][0]
         assert "pqhd_origins" not in decoded_without_origin["outputs"][0]
+
+        def has_any_pqhd_origins(decoded_psbt):
+            for psbt_in in decoded_psbt["inputs"]:
+                if "pqhd_origins" in psbt_in:
+                    return True
+            for psbt_out in decoded_psbt["outputs"]:
+                if "pqhd_origins" in psbt_out:
+                    return True
+            return False
+
+        self.log.info("walletcreatefundedpsbt defaults to no PQHD origins and supports explicit opt-in")
+        funded_default = wallet.walletcreatefundedpsbt([], [{wallet.getnewaddress(): Decimal("0.2")}])["psbt"]
+        funded_with_origin = wallet.walletcreatefundedpsbt(
+            [],
+            [{wallet.getnewaddress(): Decimal("0.2")}],
+            0,
+            {"include_pqhd_origins": True},
+        )["psbt"]
+        assert not has_any_pqhd_origins(self.nodes[0].decodepsbt(funded_default))
+        assert has_any_pqhd_origins(self.nodes[0].decodepsbt(funded_with_origin))
+
+        self.log.info("send(..., options.psbt=true) defaults to no PQHD origins and supports explicit opt-in")
+        send_default = wallet.send(
+            outputs=[{wallet.getnewaddress(): Decimal("0.15")}],
+            options={"psbt": True},
+        )["psbt"]
+        send_with_origin = wallet.send(
+            outputs=[{wallet.getnewaddress(): Decimal("0.15")}],
+            options={"psbt": True, "include_pqhd_origins": True},
+        )["psbt"]
+        assert not has_any_pqhd_origins(self.nodes[0].decodepsbt(send_default))
+        assert has_any_pqhd_origins(self.nodes[0].decodepsbt(send_with_origin))
+
+        self.log.info("psbtbumpfee defaults to no PQHD origins and supports explicit opt-in")
+        rbf_txid = wallet.send(
+            outputs=[{wallet.getnewaddress(): Decimal("0.05")}],
+            options={"replaceable": True},
+        )["txid"]
+        bumped_default = wallet.psbtbumpfee(rbf_txid)["psbt"]
+        bumped_with_origin = wallet.psbtbumpfee(rbf_txid, {"include_pqhd_origins": True})["psbt"]
+        assert not has_any_pqhd_origins(self.nodes[0].decodepsbt(bumped_default))
+        assert has_any_pqhd_origins(self.nodes[0].decodepsbt(bumped_with_origin))
 
         self.log.info("Spending a witness v1 (bech32pq) UTXO succeeds post-activation")
         pq_addr = wallet.getnewaddress("", "bech32pq")
@@ -119,6 +202,10 @@ class WalletPQHDSeedLifecycleTest(BitcoinTestFramework):
         locked_wallet_name = "pqhdseedlocked"
         self.nodes[0].createwallet(wallet_name=locked_wallet_name, passphrase="pass")
         locked_wallet = self.nodes[0].get_wallet_rpc(locked_wallet_name)
+        locked_initial_seeds = locked_wallet.listpqhdseeds()
+        locked_default_receive_seed = next(entry["seed_id"] for entry in locked_initial_seeds if entry["default_receive"])
+        locked_default_change_seed = next(entry["seed_id"] for entry in locked_initial_seeds if entry["default_change"])
+        locked_active_before = active_bech32_pqhd_descriptors(locked_wallet)
         assert_raises_rpc_error(
             -4,
             "Cannot import PQHD seed while wallet is locked",
@@ -128,6 +215,32 @@ class WalletPQHDSeedLifecycleTest(BitcoinTestFramework):
         with WalletUnlock(locked_wallet, "pass"):
             imported_locked = locked_wallet.importpqhdseed("33" * 32)
             assert imported_locked["inserted"]
+        imported_locked_seed = imported_locked["seed_id"]
+
+        self.log.info("Locked-wallet policy updates must fail atomically when descriptor sync cannot create missing descriptors")
+        assert_raises_rpc_error(
+            -4,
+            "Missing PQHD descriptor",
+            locked_wallet.setpqhdseed,
+            imported_locked_seed,
+            imported_locked_seed,
+        )
+        locked_after_setseed = locked_wallet.listpqhdseeds()
+        assert_equal(next(entry["seed_id"] for entry in locked_after_setseed if entry["default_receive"]), locked_default_receive_seed)
+        assert_equal(next(entry["seed_id"] for entry in locked_after_setseed if entry["default_change"]), locked_default_change_seed)
+        assert_equal(active_bech32_pqhd_descriptors(locked_wallet), locked_active_before)
+
+        assert_raises_rpc_error(
+            -4,
+            "Missing PQHD descriptor",
+            locked_wallet.setpqhdpolicy,
+            "mldsa44",
+            "mldsa65",
+        )
+        locked_after_setpolicy = locked_wallet.listpqhdseeds()
+        assert_equal(next(entry["seed_id"] for entry in locked_after_setpolicy if entry["default_receive"]), locked_default_receive_seed)
+        assert_equal(next(entry["seed_id"] for entry in locked_after_setpolicy if entry["default_change"]), locked_default_change_seed)
+        assert_equal(active_bech32_pqhd_descriptors(locked_wallet), locked_active_before)
 
 
 if __name__ == "__main__":

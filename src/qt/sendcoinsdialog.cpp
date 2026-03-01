@@ -507,7 +507,9 @@ void SendCoinsDialog::presentPSBT(PartiallySignedTransaction& psbtx)
 bool SendCoinsDialog::signWithExternalSigner(PartiallySignedTransaction& psbtx, CMutableTransaction& mtx, bool& complete) {
     std::optional<PSBTError> err;
     try {
-        err = model->wallet().fillPSBT(std::nullopt, /*sign=*/true, /*n_signed=*/nullptr, psbtx, complete);
+        err = model->wallet().fillPSBT(std::nullopt, /*sign=*/true,
+                                       /*n_signed=*/nullptr, psbtx, complete,
+                                       /*include_pqhd_origins=*/false);
     } catch (const std::runtime_error& e) {
         QMessageBox::critical(nullptr, tr("Sign failed"), e.what());
         return false;
@@ -565,7 +567,9 @@ void SendCoinsDialog::sendButtonClicked([[maybe_unused]] bool checked)
         PartiallySignedTransaction psbtx(mtx);
         bool complete = false;
         // Fill without signing
-        const auto err{model->wallet().fillPSBT(std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, psbtx, complete)};
+        const auto err{model->wallet().fillPSBT(std::nullopt, /*sign=*/false,
+                                                /*n_signed=*/nullptr, psbtx, complete,
+                                                /*include_pqhd_origins=*/false)};
         assert(!complete);
         assert(!err);
 
@@ -581,7 +585,9 @@ void SendCoinsDialog::sendButtonClicked([[maybe_unused]] bool checked)
             bool complete = false;
             // Always fill without signing first. This prevents an external signer
             // from being called prematurely and is not expensive.
-            const auto err{model->wallet().fillPSBT(std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, psbtx, complete)};
+            const auto err{model->wallet().fillPSBT(std::nullopt, /*sign=*/false,
+                                                    /*n_signed=*/nullptr, psbtx, complete,
+                                                    /*include_pqhd_origins=*/false)};
             assert(!complete);
             assert(!err);
             send_failure = !signWithExternalSigner(psbtx, mtx, complete);

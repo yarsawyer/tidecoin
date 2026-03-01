@@ -9,6 +9,7 @@
 #include <node/types.h>
 #include <outputtype.h>
 #include <policy/policy.h>
+#include <pq/pqhd_kdf.h>
 #include <pq/pq_scheme.h>
 #include <script/descriptor.h>
 #include <script/script.h>
@@ -57,7 +58,8 @@ void MaybeAddPQHDOriginRecord(const DescriptorScriptPubKeyMan& spk_man,
     if (!ExtractDestination(script, dest)) return;
 
     std::unique_ptr<CKeyMetadata> metadata = spk_man.GetMetadata(dest);
-    if (!metadata || !metadata->has_pqhd_origin || metadata->pqhd_path.size() < 3) return;
+    if (!metadata || !metadata->has_pqhd_origin) return;
+    if (!pqhd::ValidateV1LeafPath(metadata->pqhd_path)) return;
 
     const CPubKey& pubkey = provider.pubkeys.begin()->second;
     if (!pubkey.IsValidNonHybrid()) return;
@@ -979,13 +981,25 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
         m_storage.WalletCreationProgressStep();
     }
     m_wallet_descriptor.range_end = new_range_end;
-    batch.WriteDescriptor(GetID(), m_wallet_descriptor);
+    if (!batch.WriteDescriptor(GetID(), m_wallet_descriptor)) {
+        throw std::runtime_error(std::string(__func__) + ": writing descriptor failed");
+    }
 
     // By this point, the cache size should be the size of the entire range
     assert(m_wallet_descriptor.range_end - 1 == m_max_cached_index);
 
-    m_storage.TopUpCallback(new_spks, this);
-    NotifyCanGetAddressesChanged();
+    if (batch.HasActiveTxn()) {
+        batch.RegisterTxnListener({
+            .on_commit = [this, new_spks = std::move(new_spks)]() {
+                m_storage.TopUpCallback(new_spks, this);
+                NotifyCanGetAddressesChanged();
+            },
+            .on_abort = {},
+        });
+    } else {
+        m_storage.TopUpCallback(new_spks, this);
+        NotifyCanGetAddressesChanged();
+    }
     return true;
 }
 

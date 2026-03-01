@@ -7,11 +7,11 @@
 #include <common/types.h>
 #include <node/types.h>
 #include <policy/policy.h>
+#include <pq/pqhd_kdf.h>
+#include <pq/pqhd_params.h>
 #include <script/signingprovider.h>
 #include <util/check.h>
 #include <util/strencodings.h>
-
-#include <limits>
 
 using common::PSBTError;
 
@@ -81,21 +81,23 @@ std::optional<PQHDOrigin> DecodePQHDOrigin(const PSBTProprietary& entry)
         uint256 seed_id;
         v >> seed_id;
         const uint64_t path_len = ReadCompactSize(v);
-        if (path_len < 3 || path_len > 256) return std::nullopt;
+        constexpr uint64_t V1_PATH_LEN = 6;
+        constexpr uint32_t HARDENED = 0x80000000U;
+        if (path_len != V1_PATH_LEN) return std::nullopt;
         std::vector<uint32_t> path;
         path.reserve(path_len);
         for (uint64_t i = 0; i < path_len; ++i) {
             uint32_t elem;
             v >> elem;
-            if ((elem & 0x80000000U) == 0) return std::nullopt; // hardened-only
+            if ((elem & HARDENED) == 0) return std::nullopt; // hardened-only
             path.push_back(elem);
         }
         if (!v.empty()) return std::nullopt;
 
+        if (!pqhd::ValidateV1LeafPath(path)) return std::nullopt;
+
         const uint32_t scheme_u32 = path[2] & 0x7FFFFFFFU;
-        if (scheme_u32 > std::numeric_limits<uint8_t>::max()) return std::nullopt;
         const auto scheme_u8 = static_cast<uint8_t>(scheme_u32);
-        if (::pq::SchemeFromPrefix(scheme_u8) == nullptr) return std::nullopt;
         if (pubkey.size() == 0 || pubkey[0] != scheme_u8) return std::nullopt;
 
         return PQHDOrigin{std::move(pubkey), seed_id, std::move(path)};
@@ -147,6 +149,7 @@ bool PartiallySignedTransaction::Merge(const PartiallySignedTransaction& psbt)
     for (unsigned int i = 0; i < outputs.size(); ++i) {
         outputs[i].Merge(psbt.outputs[i]);
     }
+    m_proprietary.insert(psbt.m_proprietary.begin(), psbt.m_proprietary.end());
     unknown.insert(psbt.unknown.begin(), psbt.unknown.end());
 
     return true;
@@ -269,6 +272,7 @@ void PSBTInput::Merge(const PSBTInput& input)
     sha256_preimages.insert(input.sha256_preimages.begin(), input.sha256_preimages.end());
     hash160_preimages.insert(input.hash160_preimages.begin(), input.hash160_preimages.end());
     hash256_preimages.insert(input.hash256_preimages.begin(), input.hash256_preimages.end());
+    m_proprietary.insert(input.m_proprietary.begin(), input.m_proprietary.end());
     unknown.insert(input.unknown.begin(), input.unknown.end());
 
     if (redeem_script.empty() && !input.redeem_script.empty()) redeem_script = input.redeem_script;
@@ -304,6 +308,7 @@ bool PSBTOutput::IsNull() const
 
 void PSBTOutput::Merge(const PSBTOutput& output)
 {
+    m_proprietary.insert(output.m_proprietary.begin(), output.m_proprietary.end());
     unknown.insert(output.unknown.begin(), output.unknown.end());
 
     if (redeem_script.empty() && !output.redeem_script.empty()) redeem_script = output.redeem_script;

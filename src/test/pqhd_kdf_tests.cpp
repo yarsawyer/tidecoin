@@ -43,6 +43,22 @@ BOOST_AUTO_TEST_CASE(vectors_master_seed_0)
                       "7238ac4acb263a6caa7728529d899aebd8fdafdd9f232664bb6894cb79b143b8");
 }
 
+BOOST_AUTO_TEST_CASE(seedid_uint256_conversion_is_canonical_and_roundtrips)
+{
+    const auto master_seed = ParseHexArray<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+    const auto seedid_be = pqhd::ComputeSeedID32(std::span<const uint8_t, 32>(master_seed));
+    const auto seed_id_u256 = pqhd::SeedID32ToUint256(seedid_be);
+
+    // Canonical SeedID32 hex and uint256 text representation must match exactly.
+    BOOST_CHECK_EQUAL(seed_id_u256.ToString(), HexStr(std::span<const uint8_t, 32>(seedid_be)));
+
+    const auto roundtrip_seedid_be = pqhd::SeedID32FromUint256(seed_id_u256);
+    BOOST_CHECK(seedid_be == roundtrip_seedid_be);
+
+    const auto computed_u256 = pqhd::ComputeSeedID32AsUint256(std::span<const uint8_t, 32>(master_seed));
+    BOOST_CHECK(seed_id_u256 == computed_u256);
+}
+
 BOOST_AUTO_TEST_CASE(vectors_leaf_falcon512_receive_0)
 {
     const auto master_seed = ParseHexArray<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
@@ -181,6 +197,10 @@ BOOST_AUTO_TEST_CASE(validate_v1_leaf_path_rejects_wrong_shape)
     auto bad_coin = good;
     bad_coin[1] = HARDENED | (pqhd::COIN_TYPE + 1U);
     BOOST_CHECK(!pqhd::ValidateV1LeafPath(bad_coin));
+
+    auto bad_change = good;
+    bad_change[4] = HARDENED | 2U;
+    BOOST_CHECK(!pqhd::ValidateV1LeafPath(bad_change));
 }
 
 BOOST_AUTO_TEST_CASE(rejects_scheme_element_out_of_range)
@@ -218,6 +238,26 @@ BOOST_AUTO_TEST_CASE(rejects_unknown_scheme)
         HARDENED | 0U,
         HARDENED | 0U,
         HARDENED | 0U,
+    };
+    const auto leaf = pqhd::DerivePath(master, path);
+    BOOST_REQUIRE(leaf);
+    BOOST_CHECK(!pqhd::DeriveKeygenStreamKey(std::span<const uint8_t, 32>(leaf->node_secret),
+                                             std::span<const uint32_t>(path)));
+}
+
+BOOST_AUTO_TEST_CASE(rejects_change_domain_outside_receive_or_change)
+{
+    const auto master_seed = ParseHexArray<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+    const auto master = pqhd::MakeMasterNode(std::span<const uint8_t, 32>(master_seed));
+
+    constexpr uint32_t HARDENED = 0x80000000U;
+    const std::array<uint32_t, 6> path{
+        HARDENED | pqhd::PURPOSE, // purpose'
+        HARDENED | pqhd::COIN_TYPE,  // coin_type'
+        HARDENED | 7U,     // scheme' (Falcon-512)
+        HARDENED | 0U,     // account'
+        HARDENED | 2U,     // invalid change'
+        HARDENED | 0U,     // index'
     };
     const auto leaf = pqhd::DerivePath(master, path);
     BOOST_REQUIRE(leaf);

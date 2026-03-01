@@ -215,7 +215,8 @@ public:
         bool sign,
         size_t* n_signed,
         PartiallySignedTransaction& psbtx,
-        bool& complete) = 0;
+        bool& complete,
+        bool include_pqhd_origins = false) = 0;
 
     //! Get balances.
     virtual WalletBalances getBalances() = 0;

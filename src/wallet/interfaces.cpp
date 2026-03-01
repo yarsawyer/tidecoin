@@ -387,9 +387,11 @@ public:
         bool sign,
         size_t* n_signed,
         PartiallySignedTransaction& psbtx,
-        bool& complete) override
+        bool& complete,
+        bool include_pqhd_origins) override
     {
-        return m_wallet->FillPSBT(psbtx, complete, sighash_type, sign, n_signed);
+        return m_wallet->FillPSBT(psbtx, complete, sighash_type, sign, n_signed,
+                                  /*finalize=*/true, include_pqhd_origins);
     }
     WalletBalances getBalances() override
     {

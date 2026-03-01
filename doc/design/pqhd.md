@@ -65,9 +65,11 @@ PQHD v1 leaf paths MUST satisfy:
 - element 0 = `10007h`
 - element 1 = `6868h`
 - element 2 = known scheme prefix as hardened integer
-- element 4 (`change`) is constrained by descriptor parser to `0h` or `1h`
+- element 4 (`change`) MUST be `0h` or `1h`
 
 Validation function: `pqhd::ValidateV1LeafPath()`.
+This validation is enforced by KDF leaf derivation and reused by PSBT origin
+decode; descriptor parsing applies the same path semantics.
 
 ## 5. Seed and Node Derivation (PQHD v1)
 
@@ -81,8 +83,34 @@ PQHD master seed is exactly 32 bytes.
 
 Implementation function: `pqhd::ComputeSeedID32()`.
 
-Wallet storage uses `uint256` representation for seed ids. The wallet helper
-normalizes byte order so `seed_id.ToString()` matches canonical SeedID32 hex.
+#### 5.2.1 Representation and byte order
+
+Canonical `SeedID32` is a 32-byte digest in big-endian hex form.
+
+Wallet storage uses `uint256`, whose byte-array constructor expects little-endian
+byte order. Therefore PQHD defines explicit conversion helpers:
+
+- `seedid_be = ComputeSeedID32(master_seed32)` (canonical bytes)
+- `seed_id_uint256 = SeedID32ToUint256(seedid_be)`
+- `seed_id_uint256.ToString()` yields canonical `SeedID32` hex
+
+Reverse conversion is `SeedID32FromUint256(seed_id_uint256)`.
+
+Implementation reference: `src/pq/pqhd_kdf.{h,cpp}`.
+
+For the master-seed test vector
+`000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`,
+`ComputeSeedID32()` returns:
+
+- `13f45473287a2920f659a303dfc449ab5bf97cba2e23024c61439348ae0eb602`
+
+The same canonical hex is what wallet/RPC surfaces for seed ids.
+
+Tooling guidance:
+
+- treat `seed_id` / `pqhd_seedid` strings as canonical `SeedID32` hex
+- do not reinterpret them as raw internal `uint256` little-endian bytes
+- if comparing against raw `uint256` byte arrays, apply the same reversal rule
 
 ### 5.3 Master node
 
@@ -173,6 +201,11 @@ Parser constraints in `src/script/descriptor.cpp`:
 - `purpose` and `coin_type` must match constants.
 - `scheme` must be recognized and fit in `uint8`.
 - `change` must be 0 or 1.
+
+KDF/derivation constraints in `src/pq/pqhd_kdf.cpp`:
+
+- `DeriveLeafMaterialV1()` requires `ValidateV1LeafPath(path)` to pass.
+- Therefore `change` outside `{0,1}` is rejected by derivation as well.
 
 Both `h` and apostrophe input are accepted by parser; canonical descriptor
 printing uses `h`.
@@ -299,7 +332,7 @@ Scheme parsing (`ParsePQSchemePrefix`) accepts:
 Related options:
 
 - `getaddressinfo(..., {"include_pqhd_origin": bool})`
-- `walletprocesspsbt(..., include_pqhd_origins=true)`
+- `walletprocesspsbt(..., include_pqhd_origins=false)` (default; privacy-preserving)
 
 ## 13. PSBT Proprietary PQHD Origin
 
@@ -311,7 +344,7 @@ Namespace (`src/psbt.h`):
 Data model (`psbt::tidecoin::PQHDOrigin`):
 
 - `pubkey`: prefixed TidePubKey (`CPubKey`)
-- `seed_id`: `uint256`
+- `seed_id`: `uint256` carrying canonical `SeedID32` value
 - `path_hardened`: vector of hardened `uint32`
 
 Value encoding (`MakePQHDOriginValue`):
@@ -320,12 +353,18 @@ Value encoding (`MakePQHDOriginValue`):
 - compactsize `path_len`
 - `path_len` serialized `uint32` elements
 
+`seed_id` textual rendering (RPC/decode output) uses `uint256::ToString()` and is
+the same canonical `SeedID32` hex defined in section 5.2.1.
+
 Decode checks (`DecodePQHDOrigin`):
 
 - identifier and subtype must match
 - pubkey must be valid non-hybrid CPubKey
-- path length must be in `[3, 256]`
+- path length must be exactly `6` (PQHD v1 leaf path shape)
 - every path element must be hardened
+- path[0] must be `10007h` (`PURPOSE`)
+- path[1] must be `6868h` (`COIN_TYPE`)
+- path[4] (`change`) must be `0h` or `1h`
 - scheme from `path[2]` must be recognized
 - pubkey prefix must equal scheme in `path[2]`
 - trailing bytes are rejected
@@ -376,4 +415,3 @@ Current test files covering PQHD behavior include:
 - `src/wallet/test/wallet_tests.cpp`
 - `test/functional/wallet_pqhd_seed_lifecycle.py`
 - `test/functional/wallet_pqhd_lock_semantics.py`
-

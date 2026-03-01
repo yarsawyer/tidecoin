@@ -9,6 +9,7 @@
 
 #include <common/system.h>
 #include <key_io.h>
+#include <pq/pqhd_kdf.h>
 #include <primitives/transaction_identifier.h>
 #include <protocol.h>
 #include <script/script.h>
@@ -994,11 +995,28 @@ static DBErrors LoadPQHDWalletRecords(CWallet* pwallet, DatabaseBatch& batch) EX
         [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
             uint256 seed_id;
             key >> seed_id;
+            if (pwallet->IsCrypted()) {
+                err = strprintf("Error reading wallet database: plaintext PQHD seed present in encrypted wallet for seed_id=%s",
+                                seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
             PQHDSeed seed;
             value >> seed;
             if (seed.seed.size() != 32) {
                 err = strprintf("Error reading wallet database: invalid PQHD seed length=%u for seed_id=%s",
                                 seed.seed.size(), seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
+            pqhd::SecureSeed32 master_seed;
+            if (!master_seed.Set(std::span<const uint8_t>(seed.seed.data(), seed.seed.size()))) {
+                err = strprintf("Error reading wallet database: invalid PQHD seed size for seed_id=%s",
+                                seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
+            const uint256 expected_seed_id = pqhd::ComputeSeedID32AsUint256(master_seed.Span());
+            if (expected_seed_id != seed_id) {
+                err = strprintf("Error reading wallet database: PQHD seed_id mismatch, expected=%s got=%s",
+                                expected_seed_id.ToString(), seed_id.ToString());
                 return DBErrors::CORRUPT;
             }
             if (!pwallet->LoadPQHDSeed(seed_id, std::move(seed))) {
@@ -1014,6 +1032,11 @@ static DBErrors LoadPQHDWalletRecords(CWallet* pwallet, DatabaseBatch& batch) EX
         [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
             uint256 seed_id;
             key >> seed_id;
+            if (!pwallet->IsCrypted()) {
+                err = strprintf("Error reading wallet database: encrypted PQHD seed present in unencrypted wallet for seed_id=%s",
+                                seed_id.ToString());
+                return DBErrors::CORRUPT;
+            }
             PQHDCryptedSeed seed;
             value >> seed;
             if (seed.crypted_seed.empty()) {
@@ -1145,15 +1168,26 @@ static bool RunWithinTxn(WalletBatch& batch, std::string_view process_desc, cons
         return false;
     }
 
+    const auto abort_active_txn = [&batch, process_desc](std::string_view reason) {
+        LogDebug(BCLog::WALLETDB, "Error: %s for %s\n", reason, process_desc);
+        if (batch.HasActiveTxn() && !batch.TxnAbort()) {
+            LogDebug(BCLog::WALLETDB, "Error: cannot abort db txn for %s\n", process_desc);
+        }
+    };
+
     // Run procedure
-    if (!func(batch)) {
-        LogDebug(BCLog::WALLETDB, "Error: %s failed\n", process_desc);
-        batch.TxnAbort();
-        return false;
+    try {
+        if (!func(batch)) {
+            abort_active_txn("process failed");
+            return false;
+        }
+    } catch (...) {
+        abort_active_txn("process threw");
+        throw;
     }
 
     if (!batch.TxnCommit()) {
-        LogDebug(BCLog::WALLETDB, "Error: cannot commit db txn for %s\n", process_desc);
+        abort_active_txn("cannot commit db txn");
         return false;
     }
 
@@ -1212,7 +1246,7 @@ bool WalletBatch::TxnCommit()
     bool res = m_batch->TxnCommit();
     if (res) {
         for (const auto& listener : m_txn_listeners) {
-            listener.on_commit();
+            if (listener.on_commit) listener.on_commit();
         }
         // txn finished, clear listeners
         m_txn_listeners.clear();
@@ -1225,7 +1259,7 @@ bool WalletBatch::TxnAbort()
     bool res = m_batch->TxnAbort();
     if (res) {
         for (const auto& listener : m_txn_listeners) {
-            listener.on_abort();
+            if (listener.on_abort) listener.on_abort();
         }
         // txn finished, clear listeners
         m_txn_listeners.clear();

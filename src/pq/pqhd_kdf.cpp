@@ -45,6 +45,25 @@ SeedID32 ComputeSeedID32(std::span<const uint8_t, 32> master_seed)
     return out;
 }
 
+uint256 SeedID32ToUint256(std::span<const uint8_t, 32> seedid_be)
+{
+    std::array<unsigned char, 32> seedid_le{};
+    std::reverse_copy(seedid_be.begin(), seedid_be.end(), seedid_le.begin());
+    return uint256{std::span<const unsigned char>(seedid_le)};
+}
+
+SeedID32 SeedID32FromUint256(const uint256& seed_id)
+{
+    SeedID32 seedid_be{};
+    std::reverse_copy(seed_id.begin(), seed_id.end(), seedid_be.begin());
+    return seedid_be;
+}
+
+uint256 ComputeSeedID32AsUint256(std::span<const uint8_t, 32> master_seed)
+{
+    return SeedID32ToUint256(ComputeSeedID32(master_seed));
+}
+
 Node MakeMasterNode(std::span<const uint8_t, 32> master_seed)
 {
     const std::span<const uint8_t> key{reinterpret_cast<const uint8_t*>(PQHD_MASTER_KEY),
@@ -111,6 +130,10 @@ bool ValidateV1LeafPath(std::span<const uint32_t> path_hardened)
     const uint32_t scheme_u32 = path_hardened[2] & ~HARDENED;
     if (scheme_u32 > 0xFFU) return false;
     if (pq::SchemeFromId(static_cast<pq::SchemeId>(scheme_u32)) == nullptr) return false;
+
+    const uint32_t change_u32 = path_hardened[4] & ~HARDENED;
+    if (change_u32 > 1U) return false;
+
     return true;
 }
 

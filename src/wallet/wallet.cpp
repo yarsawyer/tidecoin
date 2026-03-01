@@ -1785,9 +1785,28 @@ void CWallet::SetWalletFlag(uint64_t flags)
 void CWallet::SetWalletFlagWithDB(WalletBatch& batch, uint64_t flags)
 {
     LOCK(cs_wallet);
-    m_wallet_flags |= flags;
-    if (!batch.WriteWalletFlags(m_wallet_flags))
+    const uint64_t updated_flags = m_wallet_flags | flags;
+    if (!batch.WriteWalletFlags(updated_flags))
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+    if (batch.HasActiveTxn()) {
+        WalletBatch* const batch_ptr = &batch;
+        if (!m_wallet_flags_txn_snapshot.contains(batch_ptr)) {
+            m_wallet_flags_txn_snapshot.emplace(batch_ptr, m_wallet_flags);
+            batch.RegisterTxnListener({
+                .on_commit = [this, batch_ptr]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                    m_wallet_flags_txn_snapshot.erase(batch_ptr);
+                },
+                .on_abort = [this, batch_ptr]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                    const auto it = m_wallet_flags_txn_snapshot.find(batch_ptr);
+                    if (it != m_wallet_flags_txn_snapshot.end()) {
+                        m_wallet_flags = it->second;
+                        m_wallet_flags_txn_snapshot.erase(it);
+                    }
+                },
+            });
+        }
+    }
+    m_wallet_flags = updated_flags;
 }
 
 void CWallet::UnsetWalletFlag(uint64_t flag)
@@ -1799,9 +1818,28 @@ void CWallet::UnsetWalletFlag(uint64_t flag)
 void CWallet::UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
 {
     LOCK(cs_wallet);
-    m_wallet_flags &= ~flag;
-    if (!batch.WriteWalletFlags(m_wallet_flags))
+    const uint64_t updated_flags = m_wallet_flags & ~flag;
+    if (!batch.WriteWalletFlags(updated_flags))
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+    if (batch.HasActiveTxn()) {
+        WalletBatch* const batch_ptr = &batch;
+        if (!m_wallet_flags_txn_snapshot.contains(batch_ptr)) {
+            m_wallet_flags_txn_snapshot.emplace(batch_ptr, m_wallet_flags);
+            batch.RegisterTxnListener({
+                .on_commit = [this, batch_ptr]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                    m_wallet_flags_txn_snapshot.erase(batch_ptr);
+                },
+                .on_abort = [this, batch_ptr]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                    const auto it = m_wallet_flags_txn_snapshot.find(batch_ptr);
+                    if (it != m_wallet_flags_txn_snapshot.end()) {
+                        m_wallet_flags = it->second;
+                        m_wallet_flags_txn_snapshot.erase(it);
+                    }
+                },
+            });
+        }
+    }
+    m_wallet_flags = updated_flags;
 }
 
 void CWallet::UnsetBlankWalletFlag(WalletBatch& batch)
@@ -1946,20 +1984,42 @@ util::Result<void> CWallet::SetPQHDPolicy(std::optional<uint8_t> receive_scheme,
         policy.default_change_seed_id = policy.default_seed_id;
     }
 
-    WalletBatch batch(GetDatabase());
-    if (!batch.WritePQHDPolicy(policy)) {
-        return util::Error{Untranslated("Failed to write PQHD policy")};
-    }
-    LoadPQHDPolicy(PQHDPolicy(policy));
-    return util::Result<void>();
-}
+    const std::optional<PQHDPolicy> previous_policy = m_pqhd_policy;
+    const uint64_t previous_wallet_flags = m_wallet_flags;
+    m_pqhd_policy = policy;
+    const auto restore_previous_policy = [&] {
+        m_pqhd_policy = previous_policy;
+        m_wallet_flags = previous_wallet_flags;
+    };
 
-static uint256 ComputePQHDSeedID(std::span<const uint8_t, 32> master_seed)
-{
-    const pqhd::SeedID32 seedid_be = pqhd::ComputeSeedID32(master_seed);
-    std::array<unsigned char, 32> seedid_le{};
-    std::reverse_copy(seedid_be.begin(), seedid_be.end(), seedid_le.begin());
-    return uint256{std::span<const unsigned char>(seedid_le)};
+    WalletBatch batch(GetDatabase());
+    if (!batch.TxnBegin()) {
+        restore_previous_policy();
+        return util::Error{Untranslated("Failed to start PQHD policy update transaction")};
+    }
+    const auto rollback = [&](const bilingual_str& err) -> util::Result<void> {
+        restore_previous_policy();
+        (void)batch.TxnAbort();
+        return util::Error{err};
+    };
+
+    if (!batch.WritePQHDPolicy(policy)) {
+        return rollback(Untranslated("Failed to write PQHD policy"));
+    }
+
+    try {
+        auto sync_result = SyncActiveScriptPubKeyMansWithPQHDPolicy(batch, /*create_missing_descriptors=*/true);
+        if (!sync_result) return rollback(util::ErrorString(sync_result));
+    } catch (const std::exception& e) {
+        return rollback(Untranslated(e.what()));
+    }
+
+    if (!batch.TxnCommit()) {
+        restore_previous_policy();
+        (void)batch.TxnAbort();
+        return util::Error{Untranslated("Failed to commit PQHD policy update transaction")};
+    }
+    return util::Result<void>();
 }
 
 std::vector<CWallet::PQHDSeedInfo> CWallet::ListPQHDSeeds() const
@@ -1984,14 +2044,15 @@ util::Result<CWallet::ImportPQHDSeedResult> CWallet::ImportPQHDSeed(const std::a
         return util::Error{Untranslated("PQHD seed import requires descriptor wallet")};
     }
 
-    const uint256 seed_id = ComputePQHDSeedID(std::span<const uint8_t, 32>(
+    const uint256 seed_id = pqhd::ComputeSeedID32AsUint256(std::span<const uint8_t, 32>(
         reinterpret_cast<const uint8_t*>(master_seed.data()), master_seed.size()));
     if (m_pqhd_seeds.contains(seed_id)) {
         return ImportPQHDSeedResult{seed_id, /*inserted=*/false};
     }
 
-    WalletBatch batch(GetDatabase());
     const int64_t now{GetTime()};
+    std::optional<PQHDSeed> seed_record;
+    std::optional<PQHDCryptedSeed> crypted_seed_record;
     if (IsCrypted()) {
         if (IsLocked()) {
             return util::Error{Untranslated("Cannot import PQHD seed while wallet is locked")};
@@ -2004,37 +2065,65 @@ util::Result<CWallet::ImportPQHDSeedResult> CWallet::ImportPQHDSeed(const std::a
         }
         CleanseAndClearVector(plaintext_seed);
 
-        PQHDCryptedSeed seed_record;
-        seed_record.nCreateTime = now;
-        seed_record.crypted_seed = std::move(crypted_seed);
-        if (!batch.WriteCryptedPQHDSeed(seed_id, seed_record)) {
-            return util::Error{Untranslated("Failed to write encrypted PQHD seed")};
-        }
-        if (!LoadPQHDCryptedSeed(seed_id, PQHDCryptedSeed(seed_record))) {
-            return util::Error{Untranslated("Failed to load encrypted PQHD seed into wallet state")};
-        }
+        crypted_seed_record.emplace();
+        crypted_seed_record->nCreateTime = now;
+        crypted_seed_record->crypted_seed = std::move(crypted_seed);
     } else {
-        PQHDSeed seed_record;
-        seed_record.nCreateTime = now;
-        seed_record.seed.assign(master_seed.begin(), master_seed.end());
-        if (!batch.WritePQHDSeed(seed_id, seed_record)) {
-            return util::Error{Untranslated("Failed to write PQHD seed")};
-        }
-        if (!LoadPQHDSeed(seed_id, PQHDSeed(seed_record))) {
-            return util::Error{Untranslated("Failed to load PQHD seed into wallet state")};
-        }
+        seed_record.emplace();
+        seed_record->nCreateTime = now;
+        seed_record->seed.assign(master_seed.begin(), master_seed.end());
     }
 
+    std::optional<PQHDPolicy> new_policy;
     if (!m_pqhd_policy) {
         PQHDPolicy policy;
         policy.default_receive_scheme = static_cast<uint8_t>(pq::SchemeId::FALCON_512);
         policy.default_change_scheme = policy.default_receive_scheme;
         policy.default_seed_id = seed_id;
         policy.default_change_seed_id = seed_id;
-        if (!batch.WritePQHDPolicy(policy)) {
-            return util::Error{Untranslated("Failed to write default PQHD policy")};
+        new_policy = policy;
+    }
+
+    WalletBatch batch(GetDatabase());
+    if (!batch.TxnBegin()) {
+        return util::Error{Untranslated("Failed to start PQHD seed import transaction")};
+    }
+    const auto fail_and_abort = [&](const bilingual_str& err) -> util::Result<ImportPQHDSeedResult> {
+        (void)batch.TxnAbort();
+        return util::Error{err};
+    };
+
+    if (crypted_seed_record) {
+        if (!batch.WriteCryptedPQHDSeed(seed_id, *crypted_seed_record)) {
+            return fail_and_abort(Untranslated("Failed to write encrypted PQHD seed"));
         }
-        LoadPQHDPolicy(PQHDPolicy(policy));
+    } else if (seed_record) {
+        if (!batch.WritePQHDSeed(seed_id, *seed_record)) {
+            return fail_and_abort(Untranslated("Failed to write PQHD seed"));
+        }
+    } else {
+        return fail_and_abort(Untranslated("Internal error: missing PQHD seed record"));
+    }
+
+    if (new_policy && !batch.WritePQHDPolicy(*new_policy)) {
+        return fail_and_abort(Untranslated("Failed to write default PQHD policy"));
+    }
+
+    if (!batch.TxnCommit()) {
+        (void)batch.TxnAbort();
+        return util::Error{Untranslated("Failed to commit PQHD seed import transaction")};
+    }
+
+    if (crypted_seed_record) {
+        if (!LoadPQHDCryptedSeed(seed_id, PQHDCryptedSeed(*crypted_seed_record))) {
+            return util::Error{Untranslated("Failed to load encrypted PQHD seed into wallet state")};
+        }
+    } else if (!LoadPQHDSeed(seed_id, PQHDSeed(*seed_record))) {
+        return util::Error{Untranslated("Failed to load PQHD seed into wallet state")};
+    }
+
+    if (new_policy) {
+        LoadPQHDPolicy(PQHDPolicy(*new_policy));
     }
 
     return ImportPQHDSeedResult{seed_id, /*inserted=*/true};
@@ -2060,11 +2149,41 @@ util::Result<void> CWallet::SetPQHDSeedDefaults(const uint256& receive_seed_id, 
     policy.default_seed_id = receive_seed_id;
     policy.default_change_seed_id = change_seed_id;
 
+    const std::optional<PQHDPolicy> previous_policy = m_pqhd_policy;
+    const uint64_t previous_wallet_flags = m_wallet_flags;
+    m_pqhd_policy = policy;
+    const auto restore_previous_policy = [&] {
+        m_pqhd_policy = previous_policy;
+        m_wallet_flags = previous_wallet_flags;
+    };
+
     WalletBatch batch(GetDatabase());
-    if (!batch.WritePQHDPolicy(policy)) {
-        return util::Error{Untranslated("Failed to write PQHD policy")};
+    if (!batch.TxnBegin()) {
+        restore_previous_policy();
+        return util::Error{Untranslated("Failed to start PQHD seed defaults update transaction")};
     }
-    LoadPQHDPolicy(PQHDPolicy(policy));
+    const auto rollback = [&](const bilingual_str& err) -> util::Result<void> {
+        restore_previous_policy();
+        (void)batch.TxnAbort();
+        return util::Error{err};
+    };
+
+    if (!batch.WritePQHDPolicy(policy)) {
+        return rollback(Untranslated("Failed to write PQHD policy"));
+    }
+
+    try {
+        auto sync_result = SyncActiveScriptPubKeyMansWithPQHDPolicy(batch, /*create_missing_descriptors=*/true);
+        if (!sync_result) return rollback(util::ErrorString(sync_result));
+    } catch (const std::exception& e) {
+        return rollback(Untranslated(e.what()));
+    }
+
+    if (!batch.TxnCommit()) {
+        restore_previous_policy();
+        (void)batch.TxnAbort();
+        return util::Error{Untranslated("Failed to commit PQHD seed defaults update transaction")};
+    }
     return util::Result<void>();
 }
 
@@ -2091,8 +2210,8 @@ util::Result<void> CWallet::RemovePQHDSeed(const uint256& seed_id)
         if (!desc_spk_man) continue;
         const auto& wallet_desc = desc_spk_man->GetWalletDescriptor();
         if (!wallet_desc.descriptor) continue;
-        const auto key_path_info = wallet_desc.descriptor->GetPQHDKeyPathInfo();
-        if (key_path_info && key_path_info->seed_id == seed_id) {
+        const auto seed_ids = wallet_desc.descriptor->GetPQHDSeedIDs();
+        if (seed_ids.contains(seed_id)) {
             return util::Error{Untranslated("Cannot remove PQHD seed referenced by wallet descriptors")};
         }
     }
@@ -2717,6 +2836,29 @@ DBErrors CWallet::LoadWallet()
     if (m_spk_managers.empty()) {
         assert(m_external_spk_managers.empty());
         assert(m_internal_spk_managers.empty());
+    }
+
+    if (nLoadWalletRet == DBErrors::LOAD_OK && IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS) && m_pqhd_policy) {
+        WalletBatch batch(GetDatabase());
+        if (!batch.TxnBegin()) {
+            WalletLogPrintf("Error: failed to start db txn for PQHD policy reconciliation on load\n");
+            return DBErrors::CORRUPT;
+        }
+        const uint64_t wallet_flags_before = m_wallet_flags;
+        auto sync_result = SyncActiveScriptPubKeyMansWithPQHDPolicy(batch, /*create_missing_descriptors=*/true);
+        if (!sync_result) {
+            m_wallet_flags = wallet_flags_before;
+            (void)batch.TxnAbort();
+            WalletLogPrintf("Error: failed to reconcile active SPKMs with PQHD policy on load: %s\n",
+                            util::ErrorString(sync_result).original);
+            return DBErrors::CORRUPT;
+        }
+        if (!batch.TxnCommit()) {
+            m_wallet_flags = wallet_flags_before;
+            (void)batch.TxnAbort();
+            WalletLogPrintf("Error: failed to commit db txn for PQHD policy reconciliation on load\n");
+            return DBErrors::CORRUPT;
+        }
     }
 
     return nLoadWalletRet;
@@ -3834,45 +3976,14 @@ std::set<ScriptPubKeyMan*> CWallet::GetAllScriptPubKeyMans() const
     return spk_mans;
 }
 
-ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal) const
-{
-    const std::map<OutputType, ScriptPubKeyMan*>& spk_managers = internal ? m_internal_spk_managers : m_external_spk_managers;
-    std::map<OutputType, ScriptPubKeyMan*>::const_iterator it = spk_managers.find(type);
-    if (it == spk_managers.end()) {
-        return nullptr;
-    }
-    return it->second;
-}
-
-ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal, std::optional<uint8_t> scheme_override)
+DescriptorScriptPubKeyMan* CWallet::FindPQHDDescriptorForPath(const OutputType& type,
+                                                              bool internal,
+                                                              const uint256& seed_id,
+                                                              uint8_t scheme_prefix) const
 {
     AssertLockHeld(cs_wallet);
-    if (!scheme_override) {
-        return GetScriptPubKeyMan(type, internal);
-    }
 
-    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-        return nullptr;
-    }
-
-    const auto* scheme = pq::SchemeFromPrefix(*scheme_override);
-    if (scheme == nullptr) {
-        return nullptr;
-    }
-
-    const int target_height = GetTargetHeightForOutputs();
-    if (!pq::IsSchemeAllowedAtHeight(scheme->id, Params().GetConsensus(), target_height)) {
-        return nullptr;
-    }
-
-    const auto policy = GetPQHDPolicy();
-    if (!policy) {
-        return nullptr;
-    }
-
-    const uint256 seed_id = internal ? policy->default_change_seed_id : policy->default_seed_id;
-    const uint32_t scheme_u32 = *scheme_override;
-
+    const uint32_t scheme_u32 = scheme_prefix;
     auto matches = [&](DescriptorScriptPubKeyMan* desc_spk_man) -> bool {
         if (desc_spk_man == nullptr) return false;
         const auto& wallet_desc = desc_spk_man->GetWalletDescriptor();
@@ -3897,10 +4008,184 @@ ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool intern
         if (matches(active_desc)) return active_desc;
     }
 
-    for (auto& [id, spk_man] : m_spk_managers) {
+    for (const auto& [_, spk_man] : m_spk_managers) {
         if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man.get())) {
             if (matches(desc_spk_man)) return desc_spk_man;
         }
+    }
+
+    return nullptr;
+}
+
+util::Result<DescriptorScriptPubKeyMan*> CWallet::CreatePQHDDescriptorForPathWithDb(WalletBatch& batch,
+                                                                                      const OutputType& type,
+                                                                                      bool internal,
+                                                                                      const uint256& seed_id,
+                                                                                      uint8_t scheme_prefix,
+                                                                                      int target_height)
+{
+    AssertLockHeld(cs_wallet);
+
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS) || IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER)) {
+        return static_cast<DescriptorScriptPubKeyMan*>(nullptr);
+    }
+    if (!HavePQHDSeed(seed_id)) {
+        return static_cast<DescriptorScriptPubKeyMan*>(nullptr);
+    }
+    if (IsCrypted() && IsLocked()) {
+        return static_cast<DescriptorScriptPubKeyMan*>(nullptr);
+    }
+
+    try {
+        WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_id, scheme_prefix, type, internal, Params().GetConsensus(), target_height);
+        auto spk_manager = std::make_unique<DescriptorScriptPubKeyMan>(*this, m_keypool_size);
+        if (IsCrypted()) {
+            if (!spk_manager->CheckDecryptionKey(vMasterKey) && !spk_manager->Encrypt(vMasterKey, &batch)) {
+                return util::Error{Untranslated("Could not encrypt PQHD descriptor")};
+            }
+        }
+        const uint256 id = w_desc.id;
+        if (auto existing = m_spk_managers.find(id); existing != m_spk_managers.end()) {
+            auto* existing_desc = dynamic_cast<DescriptorScriptPubKeyMan*>(existing->second.get());
+            if (existing_desc) return existing_desc;
+            return util::Error{Untranslated("Conflicting script pubkey manager id while creating PQHD descriptor")};
+        }
+        spk_manager->SetupDescriptor(batch, std::move(w_desc));
+        auto* created = spk_manager.get();
+        AddScriptPubKeyManWithDb(batch, id, std::move(spk_manager));
+        if (batch.HasActiveTxn()) {
+            batch.RegisterTxnListener({
+                .on_commit = {},
+                .on_abort = [this, id]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                    RemoveScriptPubKeyMan(id);
+                },
+            });
+        }
+        return created;
+    } catch (const std::exception& e) {
+        return util::Error{Untranslated(e.what())};
+    }
+}
+
+util::Result<void> CWallet::SyncActiveScriptPubKeyMansWithPQHDPolicy(WalletBatch& batch,
+                                                                      bool create_missing_descriptors)
+{
+    AssertLockHeld(cs_wallet);
+
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS) || !m_pqhd_policy) {
+        return util::Result<void>();
+    }
+    if (IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER)) {
+        return util::Result<void>();
+    }
+
+    const uint256 receive_seed_id = m_pqhd_policy->default_seed_id;
+    const uint256 change_seed_id = m_pqhd_policy->default_change_seed_id;
+    const uint8_t receive_scheme = m_pqhd_policy->default_receive_scheme;
+    const uint8_t change_scheme = m_pqhd_policy->default_change_scheme;
+    if (receive_seed_id.IsNull() || change_seed_id.IsNull()) {
+        return util::Error{Untranslated("PQHD default seed id is not set")};
+    }
+    if (!HavePQHDSeed(receive_seed_id) || !HavePQHDSeed(change_seed_id)) {
+        return util::Error{Untranslated("PQHD default seed id not found in wallet")};
+    }
+
+    const int target_height = GetTargetHeightForOutputs();
+    const Consensus::Params& consensus = Params().GetConsensus();
+    const auto* receive_scheme_info = pq::SchemeFromPrefix(receive_scheme);
+    const auto* change_scheme_info = pq::SchemeFromPrefix(change_scheme);
+    if (receive_scheme_info == nullptr || change_scheme_info == nullptr) {
+        return util::Error{Untranslated("PQHD default scheme id is unknown")};
+    }
+    if (!pq::IsSchemeAllowedAtHeight(receive_scheme_info->id, consensus, target_height) ||
+        !pq::IsSchemeAllowedAtHeight(change_scheme_info->id, consensus, target_height)) {
+        return util::Error{Untranslated("PQHD default scheme is not allowed at current height")};
+    }
+
+    for (bool internal : {false, true}) {
+        const uint8_t scheme_prefix = internal ? change_scheme : receive_scheme;
+        const uint256 seed_id = internal ? change_seed_id : receive_seed_id;
+        for (OutputType type : OUTPUT_TYPES) {
+            if (type == OutputType::BECH32PQ && target_height < consensus.nAuxpowStartHeight) {
+                continue;
+            }
+
+            DescriptorScriptPubKeyMan* desired = FindPQHDDescriptorForPath(type, internal, seed_id, scheme_prefix);
+            if (desired == nullptr && create_missing_descriptors) {
+                auto create_result = CreatePQHDDescriptorForPathWithDb(batch, type, internal, seed_id, scheme_prefix, target_height);
+                if (!create_result) {
+                    return util::Error{util::ErrorString(create_result)};
+                }
+                desired = *create_result;
+            }
+            if (desired == nullptr) {
+                return util::Error{Untranslated(strprintf("Missing PQHD descriptor for output=%s internal=%s",
+                                                          FormatOutputType(type), internal ? "true" : "false"))};
+            }
+
+            auto* active = GetScriptPubKeyMan(type, internal);
+            if (active != desired) {
+                try {
+                    AddActiveScriptPubKeyManWithDb(batch, desired->GetID(), type, internal);
+                } catch (const std::exception& e) {
+                    return util::Error{Untranslated(e.what())};
+                }
+            }
+        }
+    }
+
+    return util::Result<void>();
+}
+
+ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal) const
+{
+    const std::map<OutputType, ScriptPubKeyMan*>& spk_managers = internal ? m_internal_spk_managers : m_external_spk_managers;
+    std::map<OutputType, ScriptPubKeyMan*>::const_iterator it = spk_managers.find(type);
+    if (it == spk_managers.end()) {
+        return nullptr;
+    }
+    return it->second;
+}
+
+ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal, std::optional<uint8_t> scheme_override)
+{
+    AssertLockHeld(cs_wallet);
+    if (!scheme_override) {
+        // For descriptor wallets with PQHD policy, default address/change generation
+        // should track current policy (scheme + seed), not stale active SPKM bindings.
+        if (IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS) && m_pqhd_policy) {
+            const uint8_t policy_scheme = internal ? m_pqhd_policy->default_change_scheme : m_pqhd_policy->default_receive_scheme;
+            if (policy_scheme != 0) {
+                scheme_override = policy_scheme;
+            }
+        }
+        if (!scheme_override) {
+            return GetScriptPubKeyMan(type, internal);
+        }
+    }
+
+    if (!IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        return nullptr;
+    }
+
+    const auto* scheme = pq::SchemeFromPrefix(*scheme_override);
+    if (scheme == nullptr) {
+        return nullptr;
+    }
+
+    const int target_height = GetTargetHeightForOutputs();
+    if (!pq::IsSchemeAllowedAtHeight(scheme->id, Params().GetConsensus(), target_height)) {
+        return nullptr;
+    }
+
+    const auto policy = GetPQHDPolicy();
+    if (!policy) {
+        return nullptr;
+    }
+
+    const uint256 seed_id = internal ? policy->default_change_seed_id : policy->default_seed_id;
+    if (auto* desc_spk_man = FindPQHDDescriptorForPath(type, internal, seed_id, *scheme_override)) {
+        return desc_spk_man;
     }
 
     if (IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER)) {
@@ -3917,20 +4202,23 @@ ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool intern
     const uint64_t total_steps = static_cast<uint64_t>(std::max<int64_t>(m_keypool_size, 1));
     StartWalletCreationProgress(total_steps, progress_title);
     try {
-        WalletDescriptor w_desc = GeneratePQHDWalletDescriptor(seed_id, *scheme_override, type, internal, Params().GetConsensus(), target_height);
-        auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
         WalletBatch batch(GetDatabase());
-        if (IsCrypted()) {
-            if (!spk_manager->CheckDecryptionKey(vMasterKey) && !spk_manager->Encrypt(vMasterKey, &batch)) {
-                throw std::runtime_error(std::string(__func__) + ": Could not encrypt new descriptors");
-            }
+        if (!batch.TxnBegin()) {
+            throw std::runtime_error(std::string(__func__) + ": cannot create db transaction for PQHD descriptor creation");
         }
-        spk_manager->SetupDescriptor(batch, std::move(w_desc));
-        uint256 id = spk_manager->GetID();
-        auto* result = spk_manager.get();
-        AddScriptPubKeyMan(id, std::move(spk_manager));
+        const auto rollback_and_throw = [&](const std::string& message) {
+            (void)batch.TxnAbort();
+            throw std::runtime_error(std::string(__func__) + ": " + message);
+        };
+        auto create_result = CreatePQHDDescriptorForPathWithDb(batch, type, internal, seed_id, *scheme_override, target_height);
+        if (!create_result) {
+            rollback_and_throw(util::ErrorString(create_result).original);
+        }
+        if (!batch.TxnCommit()) {
+            rollback_and_throw("cannot commit db transaction for PQHD descriptor creation");
+        }
         FinishWalletCreationProgress();
-        return result;
+        return *create_result;
     } catch (...) {
         FinishWalletCreationProgress();
         throw;
@@ -4001,14 +4289,65 @@ LegacyDataSPKM* CWallet::GetLegacyDataSPKM() const
     return dynamic_cast<LegacyDataSPKM*>(it->second);
 }
 
-void CWallet::AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
+void CWallet::AddScriptPubKeyManWithDb(WalletBatch& batch, const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
 {
     // Add spkm_man to m_spk_managers before calling any method
     // that might access it.
     const auto& spkm = m_spk_managers[id] = std::move(spkm_man);
+    const int64_t time_first_key = spkm->GetTimeFirstKey();
 
-    // Update birth time if needed
-    MaybeUpdateBirthTime(spkm->GetTimeFirstKey());
+    // Defer birth time updates until transaction commit so failed txns do not
+    // mutate wallet in-memory state.
+    if (batch.HasActiveTxn()) {
+        batch.RegisterTxnListener({
+            .on_commit = [this, time_first_key]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                MaybeUpdateBirthTime(time_first_key);
+            },
+            .on_abort = {},
+        });
+        return;
+    }
+
+    MaybeUpdateBirthTime(time_first_key);
+}
+
+void CWallet::AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
+{
+    WalletBatch batch(GetDatabase());
+    AddScriptPubKeyManWithDb(batch, id, std::move(spkm_man));
+}
+
+void CWallet::RemoveScriptPubKeyMan(const uint256& id)
+{
+    AssertLockHeld(cs_wallet);
+    const auto spkm_it = m_spk_managers.find(id);
+    if (spkm_it == m_spk_managers.end()) return;
+
+    ScriptPubKeyMan* spkm{spkm_it->second.get()};
+
+    const auto remove_active = [&](std::map<OutputType, ScriptPubKeyMan*>& active_spkms) {
+        for (auto it = active_spkms.begin(); it != active_spkms.end();) {
+            if (it->second == spkm) {
+                it = active_spkms.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    };
+    remove_active(m_external_spk_managers);
+    remove_active(m_internal_spk_managers);
+
+    for (auto cache_it = m_cached_spks.begin(); cache_it != m_cached_spks.end();) {
+        auto& spkms = cache_it->second;
+        spkms.erase(std::remove(spkms.begin(), spkms.end(), spkm), spkms.end());
+        if (spkms.empty()) {
+            cache_it = m_cached_spks.erase(cache_it);
+        } else {
+            ++cache_it;
+        }
+    }
+
+    m_spk_managers.erase(spkm_it);
 }
 
 LegacyDataSPKM* CWallet::GetOrCreateLegacyDataSPKM()
@@ -4059,6 +4398,9 @@ std::optional<pqhd::SecureSeed32> CWallet::GetPQHDSeed(const uint256& seed_id) c
 
     const PQHDSeedState& state = it->second;
     if (!state.encrypted) {
+        // Defense in depth: encrypted wallets should not expose plaintext seed
+        // material while locked, even if DB records are malformed/tampered.
+        if (IsCrypted() && vMasterKey.empty()) return std::nullopt;
         std::optional<pqhd::SecureSeed32> out;
         out.emplace();
         if (!out->Set(std::span<const uint8_t>(state.seed.data(), state.seed.size()))) return std::nullopt;
@@ -4076,6 +4418,9 @@ std::optional<pqhd::SecureSeed32> CWallet::GetPQHDSeed(const uint256& seed_id) c
     const bool ok = out->Set(std::span<const uint8_t>(plaintext.data(), plaintext.size()));
     CleanseAndClearVector(plaintext);
     if (!ok) return std::nullopt;
+    // Integrity check: decrypted seed material must match the seed_id used as
+    // the wallet record key and encryption IV.
+    if (pqhd::ComputeSeedID32AsUint256(out->Span()) != seed_id) return std::nullopt;
     return out;
 }
 
@@ -4118,7 +4463,7 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
 
     // Store SeedID32 as a uint256 using the standard uint256 hex representation.
     // The helper normalizes endianness so seed_id.ToString() matches canonical SeedID32 hex.
-    const uint256 seed_id{ComputePQHDSeedID(master_seed.Span())};
+    const uint256 seed_id{pqhd::ComputeSeedID32AsUint256(master_seed.Span())};
 
     if (IsCrypted()) {
         if (IsLocked()) {
@@ -4181,7 +4526,7 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
             }
             spk_manager->SetupDescriptor(batch, std::move(w_desc));
             uint256 id = spk_manager->GetID();
-            AddScriptPubKeyMan(id, std::move(spk_manager));
+            AddScriptPubKeyManWithDb(batch, id, std::move(spk_manager));
             AddActiveScriptPubKeyManWithDb(batch, id, t, internal);
         }
     }
@@ -4212,24 +4557,30 @@ void CWallet::SetupDescriptorScriptPubKeyMans()
         for (bool internal : {false, true}) {
             const UniValue& descriptor_vals = signer_res.find_value(internal ? "internal" : "receive");
             if (!descriptor_vals.isArray()) throw std::runtime_error(std::string(__func__) + ": Unexpected result");
+            std::set<OutputType> imported_output_types;
             for (const UniValue& desc_val : descriptor_vals.get_array().getValues()) {
-                const std::string& desc_str = desc_val.getValStr();
+                const std::string desc_str = desc_val.getValStr();
                 FlatSigningProvider keys;
                 std::string desc_error;
                 auto descs = Parse(desc_str, keys, desc_error, false);
                 if (descs.empty()) {
                     throw std::runtime_error(std::string(__func__) + ": Invalid descriptor \"" + desc_str + "\" (" + desc_error + ")");
                 }
-                auto& desc = descs.at(0);
-                if (!desc->GetOutputType()) {
-                    continue;
+                for (auto& desc : descs) {
+                    const auto out_type = desc->GetOutputType();
+                    if (!out_type) continue;
+                    if (!imported_output_types.emplace(*out_type).second) {
+                        throw std::runtime_error(std::string(__func__) + ": duplicate active descriptor output type from external signer");
+                    }
+                    auto spk_manager = std::unique_ptr<ExternalSignerScriptPubKeyMan>(new ExternalSignerScriptPubKeyMan(*this, m_keypool_size));
+                    spk_manager->SetupDescriptor(batch, std::move(desc));
+                    uint256 id = spk_manager->GetID();
+                    AddScriptPubKeyManWithDb(batch, id, std::move(spk_manager));
+                    AddActiveScriptPubKeyManWithDb(batch, id, *out_type, internal);
                 }
-                OutputType t =  *desc->GetOutputType();
-                auto spk_manager = std::unique_ptr<ExternalSignerScriptPubKeyMan>(new ExternalSignerScriptPubKeyMan(*this, m_keypool_size));
-                spk_manager->SetupDescriptor(batch, std::move(desc));
-                uint256 id = spk_manager->GetID();
-                AddScriptPubKeyMan(id, std::move(spk_manager));
-                AddActiveScriptPubKeyManWithDb(batch, id, t, internal);
+            }
+            if (imported_output_types.empty()) {
+                throw std::runtime_error(std::string(__func__) + ": external signer returned no usable descriptors");
             }
         }
 
@@ -4248,6 +4599,15 @@ void CWallet::AddActiveScriptPubKeyManWithDb(WalletBatch& batch, uint256 id, Out
 {
     if (!batch.WriteActiveScriptPubKeyMan(static_cast<uint8_t>(type), id, internal)) {
         throw std::runtime_error(std::string(__func__) + ": writing active ScriptPubKeyMan id failed");
+    }
+    if (batch.HasActiveTxn()) {
+        batch.RegisterTxnListener({
+            .on_commit = [this, id, type, internal]() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet) {
+                LoadActiveScriptPubKeyMan(id, type, internal);
+            },
+            .on_abort = {},
+        });
+        return;
     }
     LoadActiveScriptPubKeyMan(id, type, internal);
 }
@@ -4508,7 +4868,7 @@ util::Result<void> CWallet::ApplyMigrationData(WalletBatch& local_wallet_batch, 
             return util::Error{_("Error: Duplicate descriptors created during migration. Your wallet may be corrupted.")};
         }
         uint256 id = desc_spkm->GetID();
-        AddScriptPubKeyMan(id, std::move(desc_spkm));
+        AddScriptPubKeyManWithDb(local_wallet_batch, id, std::move(desc_spkm));
     }
 
     // Remove the LegacyScriptPubKeyMan from disk

@@ -111,12 +111,13 @@ static UniValue FinishTransaction(const std::shared_ptr<CWallet> pwallet, const 
 
     // Make a blank psbt
     PartiallySignedTransaction psbtx(rawTx);
+    const bool include_pqhd_origins = options.isObject() && options.exists("include_pqhd_origins") ? options["include_pqhd_origins"].get_bool() : false;
 
     // First fill transaction with our data without signing,
     // so external signers are not asked to sign more than once.
     bool complete;
-    pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false);
-    const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true)};
+    pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, /*finalize=*/true, include_pqhd_origins);
+    const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true, /*n_signed=*/nullptr, /*finalize=*/true, include_pqhd_origins)};
     if (err) {
         throw JSONRPCPSBTError(*err);
     }
@@ -495,6 +496,9 @@ static std::vector<RPCArg> FundTxDoc(bool solving_data = true)
             "replaceable", RPCArg::Type::BOOL, RPCArg::DefaultHint{"wallet default"}, "Marks this transaction as BIP125-replaceable.\n"
             "Allows this transaction to be replaced by a transaction with higher fees"
         },
+        {
+            "include_pqhd_origins", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include Tidecoin PQHD origin proprietary metadata in PSBT inputs/outputs."
+        },
     };
     if (solving_data) {
         args.push_back({"solving_data", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "Keys and scripts needed for producing a final transaction with a dummy signature.\n"
@@ -559,6 +563,7 @@ CreatedTransactionResult FundTransaction(CWallet& wallet, const CMutableTransact
                     {"fee_rate", UniValueType()}, // will be checked by AmountFromValue() in SetFeeEstimateMode()
                     {"feeRate", UniValueType()}, // will be checked by AmountFromValue() below
                     {"psbt", UniValueType(UniValue::VBOOL)},
+                    {"include_pqhd_origins", UniValueType(UniValue::VBOOL)},
                     {"solving_data", UniValueType(UniValue::VOBJ)},
                     {"subtractFeeFromOutputs", UniValueType(UniValue::VARR)},
                     {"subtract_fee_from_outputs", UniValueType(UniValue::VARR)},
@@ -1074,6 +1079,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
                                                                                                                             "The remainder after paying the recipients and fees will be sent to the output script of the "
                                                                                                                             "original change output. The change output’s amount can increase if bumping the transaction "
                                                                                                                             "adds new inputs, otherwise it will decrease. Cannot be used in combination with the 'outputs' option."},
+                    {"include_pqhd_origins", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include Tidecoin PQHD origin proprietary metadata in PSBT inputs/outputs (psbtbumpfee only)."},
                 },
                 RPCArgOptions{.oneline_description="options"}},
         },
@@ -1112,6 +1118,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
     std::vector<CTxOut> outputs;
 
     std::optional<uint32_t> original_change_index;
+    bool include_pqhd_origins{false};
 
     if (!request.params[1].isNull()) {
         UniValue options = request.params[1];
@@ -1124,6 +1131,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
                 {"estimate_mode", UniValueType(UniValue::VSTR)},
                 {"outputs", UniValueType()}, // will be checked by AddOutputs()
                 {"original_change_index", UniValueType(UniValue::VNUM)},
+                {"include_pqhd_origins", UniValueType(UniValue::VBOOL)},
             },
             true, true);
 
@@ -1150,6 +1158,10 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
 
         if (options.exists("original_change_index")) {
             original_change_index = options["original_change_index"].getInt<uint32_t>();
+        }
+
+        if (options.exists("include_pqhd_origins")) {
+            include_pqhd_origins = options["include_pqhd_origins"].get_bool();
         }
     }
 
@@ -1210,7 +1222,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
     } else {
         PartiallySignedTransaction psbtx(mtx);
         bool complete = false;
-        const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false)};
+        const auto err{pwallet->FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, /*finalize=*/true, include_pqhd_origins)};
         CHECK_NONFATAL(!err);
         CHECK_NONFATAL(!complete);
         DataStream ssTx{};
@@ -1657,7 +1669,7 @@ RPCHelpMan walletprocesspsbt()
             "       \"NONE|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\""},
                     {"finalize", RPCArg::Type::BOOL, RPCArg::Default{true}, "Also finalize inputs if possible"},
-                    {"include_pqhd_origins", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include Tidecoin PQHD origin proprietary metadata in PSBT inputs/outputs"},
+                    {"include_pqhd_origins", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include Tidecoin PQHD origin proprietary metadata in PSBT inputs/outputs"},
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
@@ -1693,7 +1705,7 @@ RPCHelpMan walletprocesspsbt()
     // Fill transaction with our data and also sign
     bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
     bool finalize = request.params[3].isNull() ? true : request.params[3].get_bool();
-    bool include_pqhd_origins = request.params[4].isNull() ? true : request.params[4].get_bool();
+    bool include_pqhd_origins = request.params[4].isNull() ? false : request.params[4].get_bool();
     bool complete = true;
 
     if (sign) EnsureWalletIsUnlocked(*pwallet);
@@ -1847,7 +1859,8 @@ RPCHelpMan walletcreatefundedpsbt()
 
     // Fill transaction with out data but don't sign
     bool complete = true;
-    const auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false)};
+    const bool include_pqhd_origins = options.exists("include_pqhd_origins") ? options["include_pqhd_origins"].get_bool() : false;
+    const auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*n_signed=*/nullptr, /*finalize=*/true, include_pqhd_origins)};
     if (err) {
         throw JSONRPCPSBTError(*err);
     }

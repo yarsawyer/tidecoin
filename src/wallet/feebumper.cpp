@@ -346,8 +346,10 @@ bool SignTransaction(CWallet& wallet, CMutableTransaction& mtx) {
         // First fill transaction with our data without signing,
         // so external signers are not asked to sign more than once.
         bool complete;
-        wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false);
-        auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true)};
+        wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*n_signed=*/nullptr,
+                        /*finalize=*/true, /*include_pqhd_origins=*/false);
+        auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true, /*n_signed=*/nullptr,
+                                 /*finalize=*/true, /*include_pqhd_origins=*/false)};
         if (err) return false;
         unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS;
         const std::optional<int> tip_height = wallet.chain().getHeight();

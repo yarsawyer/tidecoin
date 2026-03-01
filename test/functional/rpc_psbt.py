@@ -20,11 +20,13 @@ from test_framework.messages import (
     CTxOut,
     MAX_BIP125_RBF_SEQUENCE,
     WITNESS_SCALE_FACTOR,
+    ser_compact_size,
 )
 from test_framework.psbt import (
     PSBT,
     PSBTMap,
     PSBT_GLOBAL_UNSIGNED_TX,
+    PSBT_GLOBAL_PROPRIETARY,
     PSBT_IN_RIPEMD160,
     PSBT_IN_SHA256,
     PSBT_IN_SIGHASH_TYPE,
@@ -77,6 +79,15 @@ def _map_fixture_outputs_to_tide(outputs):
                 mapped.append(out)
         return mapped
     return outputs
+
+def _make_proprietary_key(map_type: int, identifier: bytes, subtype: int, keydata: bytes = b"") -> bytes:
+    key = bytearray()
+    key.extend(ser_compact_size(map_type))
+    key.extend(ser_compact_size(len(identifier)))
+    key.extend(identifier)
+    key.extend(ser_compact_size(subtype))
+    key.extend(keydata)
+    return bytes(key)
 
 
 class PSBTTest(BitcoinTestFramework):
@@ -353,6 +364,55 @@ class PSBTTest(BitcoinTestFramework):
         decoded_psbt = self.nodes[0].decodepsbt(psbtx["psbt"])
         changepos = psbtx["changepos"]
         assert_equal(decoded_psbt["tx"]["vout"][changepos]["scriptPubKey"]["type"], expected_type)
+
+    def test_coinjoin_psbt_watchonly_coordinator(self):
+        self.log.info("Test CoinJoin-style PSBT flow with watch-only coordinator (no private keys)")
+        coordinator_wallet_name = "coinjoin_coordinator"
+        self.nodes[2].createwallet(wallet_name=coordinator_wallet_name, blank=True, disable_private_keys=True)
+        coordinator = self.nodes[2].get_wallet_rpc(coordinator_wallet_name)
+        assert_equal(coordinator.getwalletinfo()["private_keys_enabled"], False)
+
+        participant0 = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
+        participant1 = self.nodes[1].get_wallet_rpc(self.default_wallet_name)
+
+        participant0_input_addr = participant0.getnewaddress("", "bech32")
+        participant1_input_addr = participant1.getnewaddress("", "bech32")
+        utxo0 = self.create_outpoints(self.nodes[0], outputs=[{participant0_input_addr: 1}])[0]
+        utxo1 = self.create_outpoints(self.nodes[0], outputs=[{participant1_input_addr: 1}])[0]
+        self.generate(self.nodes[0], 1)
+
+        participant0_join_addr = participant0.getnewaddress("", "bech32")
+        participant1_join_addr = participant1.getnewaddress("", "bech32")
+        coinjoin_outputs = {
+            participant0_join_addr: Decimal("0.9999"),
+            participant1_join_addr: Decimal("0.9999"),
+        }
+
+        # Coordinator constructs unsigned PSBT without owning any signing keys.
+        unsigned_psbt = self.nodes[2].createpsbt([utxo0, utxo1], coinjoin_outputs)
+        coordinator_updated = coordinator.walletprocesspsbt(unsigned_psbt, sign=False, sighashtype="ALL", finalize=False)
+        assert_equal(coordinator_updated["complete"], False)
+        decoded_coordinator = self.nodes[2].decodepsbt(coordinator_updated["psbt"])
+        for psbt_in in decoded_coordinator["inputs"]:
+            assert "partial_signatures" not in psbt_in
+
+        # Each participant signs only with its own private material.
+        signed_by_participant0 = participant0.walletprocesspsbt(coordinator_updated["psbt"], sign=True, sighashtype="ALL", finalize=False)["psbt"]
+        signed_by_participant1 = participant1.walletprocesspsbt(coordinator_updated["psbt"], sign=True, sighashtype="ALL", finalize=False)["psbt"]
+
+        # Coordinator combines and finalizes.
+        combined = self.nodes[2].combinepsbt([signed_by_participant0, signed_by_participant1])
+        finalized = self.nodes[2].finalizepsbt(combined, True)
+        assert finalized["complete"]
+        txid = self.nodes[2].sendrawtransaction(finalized["hex"], maxfeerate=0)
+        self.generate(self.nodes[0], 1)
+
+        decoded_final = self.nodes[0].getrawtransaction(txid, True)
+        output_addrs = {vout["scriptPubKey"].get("address") for vout in decoded_final["vout"] if "address" in vout["scriptPubKey"]}
+        assert participant0_join_addr in output_addrs
+        assert participant1_join_addr in output_addrs
+
+        self.nodes[2].unloadwallet(coordinator_wallet_name)
 
     def run_test(self):
         # Create and fund a raw tx for sending 10 BTC
@@ -683,13 +743,22 @@ class PSBTTest(BitcoinTestFramework):
             assert_equal(len(origin["seed_id"]), 64)
             assert origin["path"].startswith("m/")
             path_elems = origin["path"].split("/")
-            assert_greater_than_or_equal(len(path_elems), 5)  # m / purposeh / coinh / schemeh / childh
+            assert_equal(len(path_elems), 7)  # m / purposeh / coinh / schemeh / accounth / changeh / indexh
+            assert_equal(path_elems[1], "10007h")
+            assert_equal(path_elems[2], "6868h")
+            assert path_elems[5] in {"0h", "1h"}
             for elem in path_elems[1:]:
                 assert elem.endswith("h")
             assert_greater_than(len(origin["pubkey"]), 2)
 
-        # Update psbts, should only have data for one input and not the other
-        psbt1 = self.nodes[1].walletprocesspsbt(psbt_orig, False, "ALL")['psbt']
+        # Update psbt with default privacy behavior (no PQHD origins by default).
+        psbt_default = self.nodes[1].walletprocesspsbt(psbt_orig, False, "ALL")['psbt']
+        psbt_default_decoded = self.nodes[0].decodepsbt(psbt_default)
+        assert "pqhd_origins" not in psbt_default_decoded['inputs'][0]
+        assert "pqhd_origins" not in psbt_default_decoded['inputs'][1]
+
+        # Update psbts with explicit PQHD origin opt-in. Should only have data for one input and not the other.
+        psbt1 = self.nodes[1].walletprocesspsbt(psbt_orig, False, "ALL", False, True)['psbt']
         psbt1_decoded = self.nodes[0].decodepsbt(psbt1)
         assert psbt1_decoded['inputs'][0] and not psbt1_decoded['inputs'][1]
         # Tidecoin PQ wallet does not support BIP32 derivation paths in PSBT.
@@ -697,13 +766,49 @@ class PSBTTest(BitcoinTestFramework):
         assert not self.psbt_bip32_derivs_supported
         assert_has_single_pqhd_origin(psbt1_decoded['inputs'][0])
         assert "pqhd_origins" not in psbt1_decoded['inputs'][1]
-        psbt2 = self.nodes[2].walletprocesspsbt(psbt_orig, False, "ALL", False)['psbt']
+        psbt2 = self.nodes[2].walletprocesspsbt(psbt_orig, False, "ALL", False, True)['psbt']
         psbt2_decoded = self.nodes[0].decodepsbt(psbt2)
         assert not psbt2_decoded['inputs'][0] and psbt2_decoded['inputs'][1]
         # Check that BIP32 paths were not added
         assert "bip32_derivs" not in psbt2_decoded['inputs'][1]
         assert "pqhd_origins" not in psbt2_decoded['inputs'][0]
         assert_has_single_pqhd_origin(psbt2_decoded['inputs'][1])
+
+        # Combine PSBTs with explicit PQHD origin records; both inputs should retain origins.
+        combined_with_origins = self.nodes[0].combinepsbt([psbt1, psbt2])
+        combined_with_origins_decoded = self.nodes[0].decodepsbt(combined_with_origins)
+        assert_has_single_pqhd_origin(combined_with_origins_decoded['inputs'][0])
+        assert_has_single_pqhd_origin(combined_with_origins_decoded['inputs'][1])
+        # Verify order-independent behavior.
+        combined_with_origins_rev = self.nodes[0].combinepsbt([psbt2, psbt1])
+        combined_with_origins_rev_decoded = self.nodes[0].decodepsbt(combined_with_origins_rev)
+        assert_has_single_pqhd_origin(combined_with_origins_rev_decoded['inputs'][0])
+        assert_has_single_pqhd_origin(combined_with_origins_rev_decoded['inputs'][1])
+
+        # Output-side origin merge coverage: each wallet contributes origin metadata
+        # for its own output, and combinepsbt must preserve both.
+        node1_out_addr = self.nodes[1].getnewaddress()
+        node2_out_addr = self.nodes[2].getnewaddress()
+        psbt_out_orig = self.nodes[0].createpsbt([utxo1, utxo2], {node1_out_addr: Decimal("12.999"), node2_out_addr: Decimal("12.999")})
+        psbt_out_1 = self.nodes[1].walletprocesspsbt(psbt_out_orig, False, "ALL", False, True)['psbt']
+        psbt_out_2 = self.nodes[2].walletprocesspsbt(psbt_out_orig, False, "ALL", False, True)['psbt']
+        combined_outputs = self.nodes[0].combinepsbt([psbt_out_1, psbt_out_2])
+        combined_outputs_decoded = self.nodes[0].decodepsbt(combined_outputs)
+        assert_has_single_pqhd_origin(combined_outputs_decoded['outputs'][0])
+        assert_has_single_pqhd_origin(combined_outputs_decoded['outputs'][1])
+
+        # Global proprietary merge coverage using manually injected proprietary keys.
+        p1 = PSBT.from_base64(psbt1)
+        p2 = PSBT.from_base64(psbt2)
+        proprietary_id = b"tidecoin"
+        gkey1 = _make_proprietary_key(PSBT_GLOBAL_PROPRIETARY, proprietary_id, 0xAA, b"\x01")
+        gkey2 = _make_proprietary_key(PSBT_GLOBAL_PROPRIETARY, proprietary_id, 0xAB, b"\x02")
+        p1.g.map[gkey1] = b"\x11"
+        p2.g.map[gkey2] = b"\x22"
+        combined_global = self.nodes[0].combinepsbt([p1.to_base64(), p2.to_base64()])
+        combined_global_obj = PSBT.from_base64(combined_global)
+        assert gkey1 in combined_global_obj.g.map
+        assert gkey2 in combined_global_obj.g.map
 
         # Sign PSBTs (workaround issue #18039)
         psbt1 = self.nodes[1].walletprocesspsbt(psbt_orig)['psbt']
@@ -877,6 +982,7 @@ class PSBTTest(BitcoinTestFramework):
         self.test_psbt_incomplete_after_invalid_modification()
 
         self.test_input_confs_control()
+        self.test_coinjoin_psbt_watchonly_coordinator()
 
         # Test that psbts with p2pkh outputs are created properly
         p2pkh = self.nodes[0].getnewaddress(address_type='legacy')

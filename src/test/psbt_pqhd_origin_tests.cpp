@@ -8,6 +8,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <cstdint>
+#include <set>
 #include <span>
 #include <vector>
 
@@ -41,8 +42,8 @@ std::vector<uint32_t> MakePQHDPathForScheme(pq::SchemeId scheme_id)
 PartiallySignedTransaction MakeMinimalPSBT()
 {
     CMutableTransaction mtx;
-    mtx.vin.emplace_back(CTxIn{Txid::FromUint256(uint256::ONE), 0});
-    mtx.vout.emplace_back(CTxOut{1, CScript{}});
+    mtx.vin.emplace_back(Txid::FromUint256(uint256::ONE), 0);
+    mtx.vout.emplace_back(1, CScript{});
     return PartiallySignedTransaction{mtx};
 }
 
@@ -131,14 +132,148 @@ BOOST_AUTO_TEST_CASE(pqhd_origin_decode_rejects_malformed_values)
     entry.value = psbt::tidecoin::MakePQHDOriginValue(uint256::ONE, non_hardened_path);
     BOOST_CHECK(!psbt::tidecoin::DecodePQHDOrigin(entry));
 
+    // Legacy short paths (3 elements) are rejected; PQHD v1 requires 6 elements.
+    const std::vector<uint32_t> short_path{
+        HARDENED | pqhd::PURPOSE,
+        HARDENED | pqhd::COIN_TYPE,
+        HARDENED | static_cast<uint32_t>(static_cast<uint8_t>(pq::SchemeId::FALCON_512)),
+    };
+    entry.value = psbt::tidecoin::MakePQHDOriginValue(uint256::ONE, short_path);
+    BOOST_CHECK(!psbt::tidecoin::DecodePQHDOrigin(entry));
+
+    // Wrong purpose should be rejected.
+    auto bad_purpose_path = MakePQHDPathForScheme(pq::SchemeId::FALCON_512);
+    bad_purpose_path[0] = HARDENED | (pqhd::PURPOSE + 1U);
+    entry.value = psbt::tidecoin::MakePQHDOriginValue(uint256::ONE, bad_purpose_path);
+    BOOST_CHECK(!psbt::tidecoin::DecodePQHDOrigin(entry));
+
+    // Wrong coin type should be rejected.
+    auto bad_coin_path = MakePQHDPathForScheme(pq::SchemeId::FALCON_512);
+    bad_coin_path[1] = HARDENED | (pqhd::COIN_TYPE + 1U);
+    entry.value = psbt::tidecoin::MakePQHDOriginValue(uint256::ONE, bad_coin_path);
+    BOOST_CHECK(!psbt::tidecoin::DecodePQHDOrigin(entry));
+
+    // change must be 0 or 1.
+    auto bad_change_path = MakePQHDPathForScheme(pq::SchemeId::FALCON_512);
+    bad_change_path[4] = HARDENED | 2U;
+    entry.value = psbt::tidecoin::MakePQHDOriginValue(uint256::ONE, bad_change_path);
+    BOOST_CHECK(!psbt::tidecoin::DecodePQHDOrigin(entry));
+
     // Hardened path, but scheme mismatch between path[2] and pubkey prefix.
     const std::vector<uint32_t> mismatch_scheme_path{
         HARDENED | pqhd::PURPOSE,
         HARDENED | pqhd::COIN_TYPE,
         HARDENED | 0x0AU, // ML-DSA-65
+        HARDENED | 0U,
+        HARDENED | 0U,
+        HARDENED | 0U,
     };
     entry.value = psbt::tidecoin::MakePQHDOriginValue(uint256::ONE, mismatch_scheme_path);
     BOOST_CHECK(!psbt::tidecoin::DecodePQHDOrigin(entry));
+}
+
+BOOST_AUTO_TEST_CASE(combine_psbt_preserves_proprietary_records)
+{
+    auto psbt_a = MakeMinimalPSBT();
+    auto psbt_b = MakeMinimalPSBT();
+
+    const uint256 seed_id_a = uint256::ONE;
+    const uint256 seed_id_b{uint8_t{2}};
+
+    const auto in_pubkey_a = MakeDummyTidePubKey(pq::SchemeId::FALCON_512);
+    const auto in_pubkey_b = MakeDummyTidePubKey(pq::SchemeId::MLDSA_65);
+    const auto out_pubkey_a = MakeDummyTidePubKey(pq::SchemeId::FALCON_1024);
+    const auto out_pubkey_b = MakeDummyTidePubKey(pq::SchemeId::MLDSA_87);
+    const auto in_path_a = MakePQHDPathForScheme(pq::SchemeId::FALCON_512);
+    const auto in_path_b = MakePQHDPathForScheme(pq::SchemeId::MLDSA_65);
+    const auto out_path_a = MakePQHDPathForScheme(pq::SchemeId::FALCON_1024);
+    const auto out_path_b = MakePQHDPathForScheme(pq::SchemeId::MLDSA_87);
+
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_a.inputs.at(0).m_proprietary, PSBT_IN_PROPRIETARY, in_pubkey_a, seed_id_a, in_path_a));
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_b.inputs.at(0).m_proprietary, PSBT_IN_PROPRIETARY, in_pubkey_b, seed_id_b, in_path_b));
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_a.outputs.at(0).m_proprietary, PSBT_OUT_PROPRIETARY, out_pubkey_a, seed_id_a, out_path_a));
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_b.outputs.at(0).m_proprietary, PSBT_OUT_PROPRIETARY, out_pubkey_b, seed_id_b, out_path_b));
+
+    PSBTProprietary global_a;
+    global_a.identifier.assign(psbt::tidecoin::PROPRIETARY_IDENTIFIER.begin(), psbt::tidecoin::PROPRIETARY_IDENTIFIER.end());
+    global_a.subtype = 0xAA;
+    const std::vector<unsigned char> global_a_keydata{0x01};
+    global_a.key = psbt::tidecoin::MakeProprietaryKey(PSBT_GLOBAL_PROPRIETARY,
+                                                      std::span<const unsigned char>(global_a.identifier.data(), global_a.identifier.size()),
+                                                      global_a.subtype,
+                                                      std::span<const unsigned char>(global_a_keydata.data(), global_a_keydata.size()));
+    global_a.value = {0xA1};
+    psbt_a.m_proprietary.insert(global_a);
+
+    PSBTProprietary global_b;
+    global_b.identifier.assign(psbt::tidecoin::PROPRIETARY_IDENTIFIER.begin(), psbt::tidecoin::PROPRIETARY_IDENTIFIER.end());
+    global_b.subtype = 0xAB;
+    const std::vector<unsigned char> global_b_keydata{0x02};
+    global_b.key = psbt::tidecoin::MakeProprietaryKey(PSBT_GLOBAL_PROPRIETARY,
+                                                      std::span<const unsigned char>(global_b.identifier.data(), global_b.identifier.size()),
+                                                      global_b.subtype,
+                                                      std::span<const unsigned char>(global_b_keydata.data(), global_b_keydata.size()));
+    global_b.value = {0xB2};
+    psbt_b.m_proprietary.insert(global_b);
+
+    PartiallySignedTransaction combined;
+    BOOST_REQUIRE(CombinePSBTs(combined, {psbt_a, psbt_b}));
+    BOOST_CHECK_EQUAL(combined.m_proprietary.size(), 2U);
+    BOOST_CHECK_EQUAL(combined.inputs.at(0).m_proprietary.size(), 2U);
+    BOOST_CHECK_EQUAL(combined.outputs.at(0).m_proprietary.size(), 2U);
+
+    std::set<uint256> input_seed_ids;
+    for (const auto& entry : combined.inputs.at(0).m_proprietary) {
+        const auto origin = psbt::tidecoin::DecodePQHDOrigin(entry);
+        BOOST_REQUIRE(origin);
+        input_seed_ids.insert(origin->seed_id);
+    }
+    BOOST_CHECK(input_seed_ids.contains(seed_id_a));
+    BOOST_CHECK(input_seed_ids.contains(seed_id_b));
+
+    std::set<uint256> output_seed_ids;
+    for (const auto& entry : combined.outputs.at(0).m_proprietary) {
+        const auto origin = psbt::tidecoin::DecodePQHDOrigin(entry);
+        BOOST_REQUIRE(origin);
+        output_seed_ids.insert(origin->seed_id);
+    }
+    BOOST_CHECK(output_seed_ids.contains(seed_id_a));
+    BOOST_CHECK(output_seed_ids.contains(seed_id_b));
+}
+
+BOOST_AUTO_TEST_CASE(combine_psbt_deduplicates_identical_proprietary_records)
+{
+    auto psbt_a = MakeMinimalPSBT();
+    auto psbt_b = MakeMinimalPSBT();
+
+    const uint256 seed_id = uint256::ONE;
+    const auto in_pubkey = MakeDummyTidePubKey(pq::SchemeId::FALCON_512);
+    const auto out_pubkey = MakeDummyTidePubKey(pq::SchemeId::FALCON_1024);
+    const auto in_path = MakePQHDPathForScheme(pq::SchemeId::FALCON_512);
+    const auto out_path = MakePQHDPathForScheme(pq::SchemeId::FALCON_1024);
+
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_a.inputs.at(0).m_proprietary, PSBT_IN_PROPRIETARY, in_pubkey, seed_id, in_path));
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_b.inputs.at(0).m_proprietary, PSBT_IN_PROPRIETARY, in_pubkey, seed_id, in_path));
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_a.outputs.at(0).m_proprietary, PSBT_OUT_PROPRIETARY, out_pubkey, seed_id, out_path));
+    BOOST_REQUIRE(psbt::tidecoin::AddPQHDOrigin(psbt_b.outputs.at(0).m_proprietary, PSBT_OUT_PROPRIETARY, out_pubkey, seed_id, out_path));
+
+    PSBTProprietary global_prop;
+    global_prop.identifier.assign(psbt::tidecoin::PROPRIETARY_IDENTIFIER.begin(), psbt::tidecoin::PROPRIETARY_IDENTIFIER.end());
+    global_prop.subtype = 0xAA;
+    const std::vector<unsigned char> keydata{0x01};
+    global_prop.key = psbt::tidecoin::MakeProprietaryKey(PSBT_GLOBAL_PROPRIETARY,
+                                                         std::span<const unsigned char>(global_prop.identifier.data(), global_prop.identifier.size()),
+                                                         global_prop.subtype,
+                                                         std::span<const unsigned char>(keydata.data(), keydata.size()));
+    global_prop.value = {0xA1};
+    psbt_a.m_proprietary.insert(global_prop);
+    psbt_b.m_proprietary.insert(global_prop);
+
+    PartiallySignedTransaction combined;
+    BOOST_REQUIRE(CombinePSBTs(combined, {psbt_a, psbt_b}));
+    BOOST_CHECK_EQUAL(combined.m_proprietary.size(), 1U);
+    BOOST_CHECK_EQUAL(combined.inputs.at(0).m_proprietary.size(), 1U);
+    BOOST_CHECK_EQUAL(combined.outputs.at(0).m_proprietary.size(), 1U);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

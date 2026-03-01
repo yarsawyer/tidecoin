@@ -302,6 +302,8 @@ class WalletRescanReserver; //forward declarations for ScanForWalletTransactions
  */
 class CWallet final : public WalletStorage, public interfaces::Chain::Notifications
 {
+    friend struct WalletFlagTxnTestAccess;
+
 private:
     CKeyingMaterial vMasterKey GUARDED_BY(cs_wallet);
 
@@ -430,9 +432,30 @@ private:
     // Appends spk managers into the main 'm_spk_managers'.
     // Must be the only method adding data to it.
     void AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man);
+    // Appends a spk manager and defers in-memory side effects until db txn commit.
+    void AddScriptPubKeyManWithDb(WalletBatch& batch, const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man);
+    // Removes a spk manager from in-memory indexes/caches.
+    void RemoveScriptPubKeyMan(const uint256& id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     // Same as 'AddActiveScriptPubKeyMan' but designed for use within a batch transaction context
     void AddActiveScriptPubKeyManWithDb(WalletBatch& batch, uint256 id, OutputType type, bool internal);
+
+    // Find a descriptor SPKM matching the requested PQHD seed/scheme/path semantics.
+    DescriptorScriptPubKeyMan* FindPQHDDescriptorForPath(const OutputType& type,
+                                                         bool internal,
+                                                         const uint256& seed_id,
+                                                         uint8_t scheme_prefix) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+
+    // Reconcile active SPKM bindings to current PQHD policy defaults.
+    // When create_missing_descriptors=true, missing policy descriptors may be created.
+    util::Result<void> SyncActiveScriptPubKeyMansWithPQHDPolicy(WalletBatch& batch,
+                                                                 bool create_missing_descriptors) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    util::Result<DescriptorScriptPubKeyMan*> CreatePQHDDescriptorForPathWithDb(WalletBatch& batch,
+                                                                                const OutputType& type,
+                                                                                bool internal,
+                                                                                const uint256& seed_id,
+                                                                                uint8_t scheme_prefix,
+                                                                                int target_height) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Store wallet flags */
     void SetWalletFlagWithDB(WalletBatch& batch, uint64_t flags);
@@ -442,6 +465,10 @@ private:
 
     //! Set of both spent and unspent transaction outputs owned by this wallet
     std::unordered_map<COutPoint, WalletTXO, SaltedOutpointHasher> m_txos GUARDED_BY(cs_wallet);
+
+    // Snapshot of wallet flags captured when the first transactional flag write
+    // occurs for a batch. Used to restore in-memory flags on txn abort.
+    std::unordered_map<WalletBatch*, uint64_t> m_wallet_flags_txn_snapshot GUARDED_BY(cs_wallet);
 
     struct PQHDSeedState
     {
@@ -723,7 +750,7 @@ public:
                   bool sign = true,
                   size_t* n_signed = nullptr,
                   bool finalize = true,
-                  bool include_pqhd_origins = true) const;
+                  bool include_pqhd_origins = false) const;
 
     /**
      * Submit the transaction to the node's mempool and then relay to peers.

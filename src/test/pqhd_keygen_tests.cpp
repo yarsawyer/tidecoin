@@ -107,6 +107,48 @@ BOOST_AUTO_TEST_CASE(v1_vectors_master_seed_0_all_schemes_hashes)
         "7b5d56dd11ae1afd25e51b27f014492742b2ca2ebca324efdb0cdcee6a40cf98");
 }
 
+BOOST_AUTO_TEST_CASE(v1_branch_domain_separation_receive_vs_change)
+{
+    const auto master_seed = ParseHexArray<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+    const auto master = pqhd::MakeMasterNode(std::span<const uint8_t, 32>(master_seed));
+
+    const auto derive_keypair = [&](const std::array<uint32_t, 6>& path) {
+        const auto leaf = pqhd::DerivePath(master, path);
+        BOOST_REQUIRE(leaf);
+        const auto stream_key = pqhd::DeriveKeygenStreamKey(std::span<const uint8_t, 32>(leaf->node_secret),
+                                                            std::span<const uint32_t>(path));
+        BOOST_REQUIRE(stream_key);
+        std::vector<uint8_t> pk;
+        pq::SecureKeyBytes sk;
+        BOOST_REQUIRE(pq::KeyGenFromSeed(/*pqhd_version=*/1, pq::SchemeId::FALCON_512, stream_key->Span(), pk, sk));
+        return std::pair<std::string, std::string>{Sha256Hex(pk), Sha256Hex(sk)};
+    };
+
+    const std::array<uint32_t, 6> receive_path{
+        HARDENED | pqhd::PURPOSE,
+        HARDENED | pqhd::COIN_TYPE,
+        HARDENED | static_cast<uint32_t>(static_cast<uint8_t>(pq::SchemeId::FALCON_512)),
+        HARDENED | 0U,
+        HARDENED | 0U,
+        HARDENED | 7U,
+    };
+    auto change_path = receive_path;
+    change_path[4] = HARDENED | 1U;
+
+    const auto [receive_pk_sha, receive_sk_sha] = derive_keypair(receive_path);
+    const auto [change_pk_sha, change_sk_sha] = derive_keypair(change_path);
+
+    // Branches must be domain-separated: same scheme/account/index but different change branch.
+    BOOST_CHECK(receive_pk_sha != change_pk_sha);
+    BOOST_CHECK(receive_sk_sha != change_sk_sha);
+
+    // Deterministic regeneration within each branch.
+    BOOST_CHECK_EQUAL(receive_pk_sha, derive_keypair(receive_path).first);
+    BOOST_CHECK_EQUAL(receive_sk_sha, derive_keypair(receive_path).second);
+    BOOST_CHECK_EQUAL(change_pk_sha, derive_keypair(change_path).first);
+    BOOST_CHECK_EQUAL(change_sk_sha, derive_keypair(change_path).second);
+}
+
 BOOST_AUTO_TEST_CASE(deterministic_keypair_rejects_wrong_seed_length)
 {
     {

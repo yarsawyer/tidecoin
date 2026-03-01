@@ -12,6 +12,7 @@
 #include <uint256.h>
 
 #include <optional>
+#include <set>
 #include <vector>
 
 using PubKeyMap = std::unordered_map<uint32_t, CPubKey>;
@@ -146,6 +147,9 @@ struct Descriptor {
 
     /** Return PQHD seed/path information if this descriptor maps to a single PQHD key path. */
     virtual std::optional<PQHDKeyPathInfo> GetPQHDKeyPathInfo() const = 0;
+
+    /** Return all PQHD seed ids referenced by this descriptor. */
+    virtual std::set<uint256> GetPQHDSeedIDs() const = 0;
 };
 
 /** Parse a `descriptor` string. Included private keys are put in `out`.

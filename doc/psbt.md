@@ -94,8 +94,11 @@ hardware implementations will typically implement multiple roles simultaneously.
 ### Tidecoin-specific PSBT behavior
 
 - Tidecoin wallet PSBT RPCs do not expose a `bip32derivs` toggle.
-- `walletprocesspsbt` supports `include_pqhd_origins` (default `true`) to
+- `walletprocesspsbt` supports `include_pqhd_origins` (default `false`) to
   control emission of Tidecoin proprietary PQHD origin records.
+- `walletcreatefundedpsbt`, `send`/`sendall` (when returning PSBT), and
+  `psbtbumpfee` also support `include_pqhd_origins` (default `false`) for the
+  same metadata emission control.
 - When enabled, wallet-owned single-key inputs/outputs may include
   `tidecoin/PQHD_ORIGIN` metadata in PSBT proprietary keyspaces; disabling this
   flag suppresses metadata emission without changing signing/finalization behavior.
