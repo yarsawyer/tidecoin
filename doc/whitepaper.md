@@ -820,7 +820,7 @@ Tidecoin had no premine, no initial coin offering, and no developer allocation. 
 |-----------|-------|
 | **Ticker** | TDC |
 | **Genesis timestamp** | December 27, 2020, 13:09:40 UTC |
-| **Genesis hash** | `480ecc76...018075` |
+| **Genesis hash** | `480ecc7602d8989f32483377ed66381c391dda6215aeef9e80486a7fd3018075` |
 | **Block time target** | 60 seconds |
 | **Initial block reward** | 40 TDC |
 | **Halving interval (initial)** | 262,800 blocks |
